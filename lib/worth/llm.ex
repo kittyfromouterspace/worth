@@ -15,8 +15,8 @@ defmodule Worth.LLM do
     end
   end
 
-  defp adapter_for(:anthropic), do: Worth.LLM.Anthropic
-  defp adapter_for(:openai), do: Worth.LLM.OpenAI
-  defp adapter_for(:openrouter), do: Worth.LLM.OpenRouter
-  defp adapter_for(_other), do: Worth.LLM.Anthropic
+  def adapter_for(:anthropic), do: Worth.LLM.Anthropic
+  def adapter_for(:openai), do: Worth.LLM.OpenAI
+  def adapter_for(:openrouter), do: Worth.LLM.OpenRouter
+  def adapter_for(_other), do: Worth.LLM.Anthropic
 end

@@ -1,6 +1,7 @@
 import Config
 
 config :worth,
+  ecto_repos: [Worth.Repo],
   llm: [
     default_provider: :anthropic,
     providers: %{
@@ -35,13 +36,16 @@ config :worth, Worth.Repo,
   port: 5432,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
-  pool_size: 10
+  pool_size: 10,
+  types: Worth.PostgrexTypes
 
 config :mneme,
   repo: Worth.Repo,
   embedding: [
     provider: Mneme.Embedding.Mock,
     mock: true
-  ]
+  ],
+  working_memory: [max_entries_per_scope: 50],
+  outcome_feedback: [positive_half_life_delta: 5, negative_half_life_delta: 3]
 
 import_config "#{config_env()}.exs"

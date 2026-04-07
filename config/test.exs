@@ -6,7 +6,8 @@ config :worth, Worth.Repo,
   database: "worth_test",
   hostname: "localhost",
   pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: 10
+  pool_size: 10,
+  types: Worth.PostgrexTypes
 
 config :mneme,
   repo: Worth.Repo,

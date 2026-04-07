@@ -5,6 +5,7 @@ config :worth, Worth.Repo,
   password: "postgres",
   database: "worth_dev",
   hostname: "localhost",
-  pool_size: 10
+  pool_size: 10,
+  types: Worth.PostgrexTypes
 
 config :logger, level: :debug

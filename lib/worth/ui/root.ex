@@ -105,6 +105,259 @@ defmodule Worth.UI.Root do
 
         {%{state | messages: new_messages ++ [{:system, msg}]}, []}
 
+      {:command, {:memory, {:query, query}}} ->
+        case Worth.Memory.Manager.search(query, workspace: state.workspace, limit: 5) do
+          {:ok, %{entries: entries}} when is_list(entries) and entries != [] ->
+            lines =
+              entries
+              |> Enum.map(fn e -> "  [#{Float.round(e.confidence || 0.5, 2)}] #{e.content}" end)
+              |> Enum.join("\n")
+
+            msg = "Memory results for '#{query}':\n#{lines}"
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          _ ->
+            msg = "No memories found for '#{query}'"
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+        end
+
+      {:command, {:memory, {:note, note}}} ->
+        case Worth.Memory.Manager.working_push(note,
+               workspace: state.workspace,
+               importance: 0.5,
+               metadata: %{entry_type: "note", role: "user"}
+             ) do
+          {:ok, _} ->
+            msg = "Note added to working memory."
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          {:error, reason} ->
+            {%{state | messages: new_messages ++ [{:error, "Failed to add note: #{inspect(reason)}"}]}, []}
+        end
+
+      {:command, {:memory, :recent}} ->
+        case Worth.Memory.Manager.recent(workspace: state.workspace, limit: 10) do
+          {:ok, entries} when is_list(entries) and entries != [] ->
+            lines =
+              entries
+              |> Enum.map(fn e -> "  [#{e.entry_type}] #{String.slice(e.content, 0, 80)}" end)
+              |> Enum.join("\n")
+
+            msg = "Recent memories:\n#{lines}"
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          _ ->
+            msg = "No recent memories."
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+        end
+
+      {:command, {:skill, :list}} ->
+        skills = Worth.Skill.Registry.all()
+
+        if skills == [] do
+          msg = "No skills loaded."
+          {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+        else
+          lines =
+            skills
+            |> Enum.map(fn s ->
+              loading = if s.loading == :always, do: "[always]", else: "[on-demand]"
+              "  [#{s.trust_level}] #{loading} #{s.name}: #{String.slice(s.description, 0, 60)}"
+            end)
+            |> Enum.join("\n")
+
+          msg = "Skills:\n#{lines}"
+          {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+        end
+
+      {:command, {:skill, {:read, name}}} ->
+        case Worth.Skill.Service.read_body(name) do
+          {:ok, body} ->
+            preview = String.slice(body, 0, 500)
+            msg = "Skill '#{name}':\n#{preview}"
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          {:error, reason} ->
+            {%{state | messages: new_messages ++ [{:error, "Failed to read skill: #{reason}"}]}, []}
+        end
+
+      {:command, {:skill, {:remove, name}}} ->
+        case Worth.Skill.Service.remove(name) do
+          {:ok, _} ->
+            msg = "Skill '#{name}' removed."
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          {:error, reason} ->
+            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
+        end
+
+      {:command, {:skill, {:history, name}}} ->
+        case Worth.Brain.skill_history(name) do
+          {:ok, versions} when is_list(versions) and versions != [] ->
+            lines =
+              versions
+              |> Enum.map(fn {v, info} -> "  v#{v} (#{info.size} bytes)" end)
+              |> Enum.join("\n")
+
+            msg = "Skill '#{name}' versions:\n#{lines}"
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          _ ->
+            msg = "No version history for '#{name}'."
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+        end
+
+      {:command, {:skill, {:rollback, name, version}}} ->
+        case Worth.Brain.skill_rollback(name, version) do
+          {:ok, info} ->
+            msg = "Skill '#{name}' rolled back to v#{info.rolled_back_to}."
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          {:error, reason} ->
+            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
+        end
+
+      {:command, {:skill, {:refine, name}}} ->
+        case Worth.Brain.skill_refine(name) do
+          {:ok, info} ->
+            msg = "Skill '#{name}' refined to v#{info.version}."
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          {:ok, :no_refinement_needed} ->
+            msg = "Skill '#{name}' does not need refinement."
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          {:error, reason} ->
+            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
+        end
+
+      {:command, {:session, :list}} ->
+        case Worth.Brain.list_sessions() do
+          {:ok, sessions} when is_list(sessions) and sessions != [] ->
+            lines = sessions |> Enum.map(&"  #{&1}") |> Enum.join("\n")
+            msg = "Sessions:\n#{lines}"
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          _ ->
+            msg = "No sessions found."
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+        end
+
+      {:command, {:session, {:resume, session_id}}} ->
+        Worth.Brain.resume_session(session_id)
+        msg = "Resuming session: #{session_id}"
+        {%{state | messages: new_messages ++ [{:system, msg}], status: :running}, []}
+
+      {:command, {:mcp, :list}} ->
+        connections = Worth.Brain.mcp_list()
+
+        if connections == [] do
+          msg = "No MCP servers connected."
+          {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+        else
+          lines =
+            connections
+            |> Enum.map(fn c -> "  [#{c.status}] #{c.name} (#{c.tool_count} tools)" end)
+            |> Enum.join("\n")
+
+          msg = "MCP Servers:\n#{lines}"
+          {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+        end
+
+      {:command, {:mcp, {:connect, name}}} ->
+        case Worth.Mcp.Config.get_server(name) do
+          nil ->
+            msg = "Server '#{name}' not configured. Add it to ~/.worth/config.exs"
+            {%{state | messages: new_messages ++ [{:error, msg}]}, []}
+
+          config ->
+            case Worth.Brain.mcp_connect(name, config) do
+              {:ok, _} ->
+                msg = "Connected to MCP server '#{name}'."
+                {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+              {:error, :already_connected} ->
+                msg = "Already connected to '#{name}'."
+                {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+              {:error, reason} ->
+                {%{state | messages: new_messages ++ [{:error, "Failed to connect: #{inspect(reason)}"}]}, []}
+            end
+        end
+
+      {:command, {:mcp, {:disconnect, name}}} ->
+        case Worth.Brain.mcp_disconnect(name) do
+          :ok ->
+            msg = "Disconnected from '#{name}'."
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          {:error, :not_connected} ->
+            msg = "Server '#{name}' was not connected."
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+        end
+
+      {:command, {:mcp, {:tools, name}}} ->
+        tools = Worth.Brain.mcp_tools(name)
+
+        if tools == [] do
+          msg = "No tools found for server '#{name}'."
+          {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+        else
+          lines =
+            tools
+            |> Enum.map(fn t -> "  #{t["name"]}: #{String.slice(t["description"] || "", 0, 60)}" end)
+            |> Enum.join("\n")
+
+          msg = "Tools from #{name}:\n#{lines}"
+          {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+        end
+
+      {:command, {:kit, {:search, query}}} ->
+        case Worth.Tools.Kits.execute("kit_search", %{"query" => query}, state.workspace) do
+          {:ok, msg} ->
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          {:error, reason} ->
+            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
+        end
+
+      {:command, {:kit, {:install, owner, slug}}} ->
+        case Worth.Tools.Kits.execute(
+               "kit_install",
+               %{"owner" => owner, "slug" => slug, "workspace" => state.workspace},
+               state.workspace
+             ) do
+          {:ok, msg} ->
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          {:error, reason} ->
+            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
+        end
+
+      {:command, {:kit, :list}} ->
+        case Worth.Tools.Kits.execute("kit_list", %{}, state.workspace) do
+          {:ok, msg} ->
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          {:error, reason} ->
+            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
+        end
+
+      {:command, {:kit, {:info, owner, slug}}} ->
+        case Worth.Tools.Kits.execute("kit_info", %{"owner" => owner, "slug" => slug}, state.workspace) do
+          {:ok, msg} ->
+            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
+          {:error, reason} ->
+            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
+        end
+
+      {:command, {:skill, :help}} ->
+        msg =
+          "Skill commands:\n  /skill list\n  /skill read <name>\n  /skill remove <name>\n  /skill history <name>\n  /skill rollback <name> <version>\n  /skill refine <name>"
+
+        {%{state | messages: new_messages ++ [{:system, msg}]}, []}
+
       {:command, {:unknown, cmd}} ->
         msg = "Unknown command: #{cmd}. Type /help for available commands."
         {%{state | messages: new_messages ++ [{:system, msg}]}, []}
@@ -196,17 +449,12 @@ defmodule Worth.UI.Root do
   defp render_header(state) do
     mode_label = "[#{state.mode}]"
 
-    indicator =
-      case state.status do
-        :idle -> " "
-        :running -> "*"
-        :error -> "!"
-      end
+    indicator = Worth.UI.Theme.status_indicator(state.status)
 
     header_text =
       "[#{indicator}] worth > #{state.workspace} #{mode_label}  turn:#{state.turn}  $#{Float.round(state.cost, 3)}"
 
-    text(header_text, Style.from(fg: :cyan, attrs: [:bold]))
+    text(header_text, Worth.UI.Theme.style_for(:header))
   end
 
   defp render_chat(state) do
@@ -229,7 +477,7 @@ defmodule Worth.UI.Root do
   end
 
   defp render_input(state) do
-    text("> #{state.input_text}", Style.from(fg: :green))
+    text("> #{state.input_text}", Worth.UI.Theme.style_for(:user_input))
   end
 
   defp render_sidebar(state, width) do
@@ -282,27 +530,35 @@ defmodule Worth.UI.Root do
   end
 
   defp message_to_nodes({:user, text}) do
+    style = Worth.UI.Theme.style_for(:user_input)
+
     text
     |> String.split("\n")
-    |> Enum.map(fn line -> text("> #{line}", Style.from(fg: :green)) end)
+    |> Enum.map(fn line -> text("> #{line}", style) end)
   end
 
   defp message_to_nodes({:assistant, text}) do
+    style = Worth.UI.Theme.style_for(:assistant)
+
     text
     |> String.split("\n")
-    |> Enum.map(fn line -> text(line) end)
+    |> Enum.map(fn line -> text(line, style) end)
   end
 
   defp message_to_nodes({:system, text}) do
+    style = Worth.UI.Theme.style_for(:system)
+
     text
     |> String.split("\n")
-    |> Enum.map(fn line -> text("[system] #{line}", Style.from(fg: :yellow)) end)
+    |> Enum.map(fn line -> text("[system] #{line}", style) end)
   end
 
   defp message_to_nodes({:error, text}) do
+    style = Worth.UI.Theme.style_for(:error)
+
     text
     |> String.split("\n")
-    |> Enum.map(fn line -> text("[error] #{line}", Style.from(fg: :red)) end)
+    |> Enum.map(fn line -> text("[error] #{line}", style) end)
   end
 
   defp message_to_nodes({:tool_call, %{name: name, input: input}}) do
@@ -313,7 +569,7 @@ defmodule Worth.UI.Root do
 
     [
       text("", nil),
-      text("  >> #{name}(#{input_preview})", Style.from(fg: :blue, attrs: [:dim]))
+      text("  >> #{name}(#{input_preview})", Worth.UI.Theme.style_for(:tool_call))
     ]
   end
 
@@ -321,13 +577,13 @@ defmodule Worth.UI.Root do
     preview = String.slice(output || "", 0, 100)
 
     [
-      text("  << #{name}: #{preview}", Style.from(fg: :magenta, attrs: [:dim]))
+      text("  << #{name}: #{preview}", Worth.UI.Theme.style_for(:tool_result))
     ]
   end
 
   defp message_to_nodes({:thinking, text}) do
     [
-      text("  (thinking: #{String.slice(text, 0, 60)}...)", Style.from(fg: :bright_black, attrs: [:dim]))
+      text("  (thinking: #{String.slice(text, 0, 60)}...)", Worth.UI.Theme.style_for(:thinking))
     ]
   end
 
@@ -405,6 +661,75 @@ defmodule Worth.UI.Root do
       ["/workspace", "new", name] ->
         {:command, {:workspace, {:new, name}}}
 
+      ["/memory", "query", query] ->
+        {:command, {:memory, {:query, query}}}
+
+      ["/memory", "note" | note_parts] ->
+        {:command, {:memory, {:note, Enum.join(note_parts, " ")}}}
+
+      ["/memory", "recent"] ->
+        {:command, {:memory, :recent}}
+
+      ["/skill", "list"] ->
+        {:command, {:skill, :list}}
+
+      ["/skill", "read", name] ->
+        {:command, {:skill, {:read, name}}}
+
+      ["/skill", "remove", name] ->
+        {:command, {:skill, {:remove, name}}}
+
+      ["/skill", "history", name] ->
+        {:command, {:skill, {:history, name}}}
+
+      ["/skill", "rollback", name, version] ->
+        case Integer.parse(version) do
+          {v, ""} -> {:command, {:skill, {:rollback, name, v}}}
+          _ -> {:command, {:unknown, "/skill rollback #{name} #{version}"}}
+        end
+
+      ["/skill", "refine", name] ->
+        {:command, {:skill, {:refine, name}}}
+
+      ["/session", "list"] ->
+        {:command, {:session, :list}}
+
+      ["/session", "resume", session_id] ->
+        {:command, {:session, {:resume, session_id}}}
+
+      ["/mcp", "list"] ->
+        {:command, {:mcp, :list}}
+
+      ["/mcp", "connect", name] ->
+        {:command, {:mcp, {:connect, name}}}
+
+      ["/mcp", "disconnect", name] ->
+        {:command, {:mcp, {:disconnect, name}}}
+
+      ["/mcp", "tools", name] ->
+        {:command, {:mcp, {:tools, name}}}
+
+      ["/kit", "search", query] ->
+        {:command, {:kit, {:search, query}}}
+
+      ["/kit", "install", owner_slash_slug] ->
+        case String.split(owner_slash_slug, "/", parts: 2) do
+          [owner, slug] -> {:command, {:kit, {:install, owner, slug}}}
+          _ -> {:command, {:unknown, "/kit install #{owner_slash_slug}"}}
+        end
+
+      ["/kit", "list"] ->
+        {:command, {:kit, :list}}
+
+      ["/kit", "info", owner_slash_slug] ->
+        case String.split(owner_slash_slug, "/", parts: 2) do
+          [owner, slug] -> {:command, {:kit, {:info, owner, slug}}}
+          _ -> {:command, {:unknown, "/kit info #{owner_slash_slug}"}}
+        end
+
+      ["/skill" | _] ->
+        {:command, {:skill, :help}}
+
       ["/" <> _ = cmd | _] ->
         {:command, {:unknown, cmd}}
 
@@ -416,17 +741,36 @@ defmodule Worth.UI.Root do
   defp help_text do
     """
     Commands:
-      /help              Show this help
-      /quit              Exit worth
-      /clear             Clear chat history
-      /cost              Show session cost and turn count
-      /status            Show current status
-      /mode <mode>       Switch mode: code | research | planned | turn_by_turn
-      /workspace list    List workspaces
-      /workspace new <n> Create workspace
-      /workspace switch  Switch workspace
-      Tab                Toggle sidebar
-      Up/Down            Command history
+      /help                Show this help
+      /quit                Exit worth
+      /clear               Clear chat history
+      /cost                Show session cost and turn count
+      /status              Show current status
+      /mode <mode>         Switch mode: code | research | planned | turn_by_turn
+      /workspace list      List workspaces
+      /workspace new <n>   Create workspace
+      /workspace switch    Switch workspace
+      /memory query <q>    Search global memory
+      /memory note <t>     Add note to working memory
+      /memory recent       Show recent memories
+      /skill list          List skills
+      /skill read <name>   Read skill content
+      /skill remove <n>    Remove a skill
+      /skill history <n>   Show skill version history
+      /skill rollback <n> <v> Roll back skill to version
+      /skill refine <n>    Trigger skill refinement
+      /session list        List past sessions
+      /session resume <id> Resume a session
+      /mcp list            List connected MCP servers
+      /mcp connect <name>  Connect to an MCP server
+      /mcp disconnect <n>  Disconnect from a server
+      /mcp tools <name>    List tools from a server
+      /kit search <query>  Search JourneyKits
+      /kit install <o/s>   Install a kit
+      /kit list            List installed kits
+      /kit info <o/s>      Show kit details
+      Tab                  Toggle sidebar
+      Up/Down              Command history
     """
   end
 

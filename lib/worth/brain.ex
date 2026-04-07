@@ -68,6 +68,42 @@ defmodule Worth.Brain do
     GenServer.call(__MODULE__, {:switch_workspace, name})
   end
 
+  def resume_session(session_id) do
+    GenServer.call(__MODULE__, {:resume_session, session_id})
+  end
+
+  def list_sessions do
+    GenServer.call(__MODULE__, :list_sessions)
+  end
+
+  def skill_history(name) do
+    GenServer.call(__MODULE__, {:skill_history, name})
+  end
+
+  def skill_rollback(name, version) do
+    GenServer.call(__MODULE__, {:skill_rollback, name, version})
+  end
+
+  def skill_refine(name) do
+    GenServer.call(__MODULE__, {:skill_refine, name})
+  end
+
+  def mcp_connect(name, config) do
+    Worth.Mcp.Broker.connect(name, config)
+  end
+
+  def mcp_disconnect(name) do
+    Worth.Mcp.Broker.disconnect(name)
+  end
+
+  def mcp_list do
+    Worth.Mcp.Broker.list_connections()
+  end
+
+  def mcp_tools(server_name) do
+    Worth.Mcp.ToolIndex.tools_for_server(server_name)
+  end
+
   @impl true
   def init(opts) do
     workspace = Keyword.get(opts, :workspace, "personal")
@@ -135,9 +171,46 @@ defmodule Worth.Brain do
   end
 
   def handle_call({:switch_workspace, name}, _from, state) do
+    if state.current_workspace != name do
+      flush_working_memory(state.current_workspace)
+    end
+
     path = Worth.Workspace.Service.resolve_path(name)
     new_state = %{state | current_workspace: name, workspace_path: path, history: [], session_id: generate_session_id()}
     {:reply, :ok, new_state}
+  end
+
+  def handle_call({:resume_session, session_id}, _from, state) do
+    Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
+      result = Worth.Brain.Session.resume(session_id, state.workspace_path, state.current_workspace, state.config)
+      send(self(), {:agent_event, {:session_resumed, result}})
+    end)
+
+    {:reply, :ok, %{state | status: :running}}
+  end
+
+  def handle_call(:list_sessions, _from, state) do
+    sessions = Worth.Brain.Session.list_sessions(state.workspace_path)
+    {:reply, sessions, state}
+  end
+
+  def handle_call({:skill_history, name}, _from, state) do
+    result = Worth.Skill.Versioner.list_versions(name)
+    {:reply, result, state}
+  end
+
+  def handle_call({:skill_rollback, name, version}, _from, state) do
+    result = Worth.Skill.Versioner.rollback(name, version)
+    {:reply, result, state}
+  end
+
+  def handle_call({:skill_refine, name}, _from, state) do
+    llm_fn = fn messages ->
+      Worth.LLM.chat(%{messages: messages}, state.config)
+    end
+
+    result = Worth.Skill.Refiner.refine(name, llm_fn: llm_fn)
+    {:reply, result, state}
   end
 
   @impl true
@@ -149,16 +222,37 @@ defmodule Worth.Brain do
     state =
       case event do
         {:cost, amount} ->
-          %{state | cost_total: state.cost_total + amount}
+          new_cost = state.cost_total + amount
+          limit = state.config[:cost_limit] || 5.0
+
+          if new_cost > limit do
+            if state.ui_pid,
+              do:
+                send(
+                  state.ui_pid,
+                  {:agent_event,
+                   {:error, "Cost limit exceeded ($#{Float.round(new_cost, 3)} / $#{Float.round(limit, 3)})"}}
+                )
+          end
+
+          %{state | cost_total: new_cost}
 
         {:status, status} ->
           %{state | status: status}
 
         {:done, %{cost: cost}} ->
+          maybe_trigger_proactive_review(state)
           %{state | status: :idle, cost_total: state.cost_total + (cost || 0.0)}
 
         {:tool_call, %{name: name}} ->
           %{state | active_tools: state.active_tools ++ [name]}
+
+        {:tool_result, %{name: name, success: false}} ->
+          if String.starts_with?(name, "skill_") do
+            maybe_trigger_refinement(name, state)
+          end
+
+          state
 
         _ ->
           state
@@ -175,11 +269,19 @@ defmodule Worth.Brain do
         Path.expand("~/.worth/workspaces/#{state.current_workspace}")
 
     try do
+      context_opts = [workspace: state.current_workspace, user_message: text]
+
       system_prompt =
-        case Worth.Workspace.Context.build_system_prompt(workspace_path) do
-          {:ok, prompt} -> prompt
-          {:error, _} -> nil
+        case Worth.Workspace.Context.build_system_prompt(workspace_path, context_opts) do
+          {:ok, prompt} when is_binary(prompt) and prompt != "" -> prompt
+          _ -> nil
         end
+
+      Worth.Memory.Manager.working_push(text,
+        workspace: state.current_workspace,
+        importance: 0.3,
+        metadata: %{entry_type: "conversation_turn", role: "user"}
+      )
 
       run_opts = [
         prompt: text,
@@ -200,6 +302,7 @@ defmodule Worth.Brain do
 
       case result do
         {:ok, response} ->
+          store_outcome_feedback(response)
           {:ok, response}
 
         {:error, reason} ->
@@ -211,8 +314,17 @@ defmodule Worth.Brain do
     end
   end
 
+  defp store_outcome_feedback(%{text: text}) when is_binary(text) and text != "" do
+    Worth.Memory.Manager.outcome_good()
+  end
+
+  defp store_outcome_feedback(_), do: :ok
+
   defp build_callbacks(state) do
     ui_pid = state.ui_pid
+    workspace = state.current_workspace
+    workspace_path = state.workspace_path
+    memory_opts = [workspace: workspace]
 
     %{
       llm_chat: fn params ->
@@ -231,54 +343,140 @@ defmodule Worth.Brain do
         :approved
       end,
       knowledge_search: fn query, opts ->
-        if Worth.Config.get([:memory, :enabled], true) do
-          Mneme.search(query, Keyword.put(opts, :scope_id, "worth"))
-        else
-          {:ok, %{entries: [], chunks: [], entities: []}}
-        end
+        merged_opts = Keyword.merge(memory_opts, opts)
+        Worth.Memory.Manager.search(query, merged_opts)
       end,
       knowledge_create: fn params ->
-        if Worth.Config.get([:memory, :enabled], true) do
-          Mneme.remember(params[:content] || params.content, %{
-            scope_id: "worth",
-            content: params[:content] || params.content,
+        content = params[:content] || params[:content]
+
+        create_opts =
+          Keyword.merge(memory_opts,
             entry_type: params[:entry_type] || "fact",
-            metadata: Map.put(params[:metadata] || %{}, :workspace, state.workspace_path)
-          })
-        else
-          {:ok, nil}
-        end
+            source: params[:source] || "agent",
+            metadata: Map.put(params[:metadata] || %{}, :workspace, workspace)
+          )
+
+        Worth.Memory.Manager.remember(content, create_opts)
       end,
       knowledge_recent: fn _scope_id ->
-        if Worth.Config.get([:memory, :enabled], true) do
-          Mneme.Knowledge.recent("worth")
-        else
-          {:ok, []}
-        end
+        Worth.Memory.Manager.recent(memory_opts)
       end,
       on_persist_turn: fn ctx, text ->
         Worth.Persistence.Transcript.append(
           ctx.session_id || state.session_id,
           %{role: "assistant", text: text},
-          state.workspace_path
+          workspace_path
         )
 
         :ok
       end,
-      on_response_facts: fn _ctx, _text ->
+      on_response_facts: fn _ctx, text ->
+        extraction_opts = [
+          workspace: workspace,
+          source_type: "response",
+          llm_fn: fn messages ->
+            Worth.LLM.chat(%{messages: messages}, state.config)
+          end
+        ]
+
+        Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
+          Worth.Memory.FactExtractor.extract_and_store(text, extraction_opts)
+        end)
+
         :ok
       end,
-      on_tool_facts: fn _ws_id, _name, _result, _turn ->
+      on_tool_facts: fn _ws_id, name, result, turn ->
+        result_text = if is_binary(result), do: result, else: inspect(result)
+
+        if String.length(result_text) > 20 do
+          extraction_opts = [
+            workspace: workspace,
+            source_type: "tool:#{name}",
+            turn: turn,
+            llm_fn: fn messages ->
+              Worth.LLM.chat(%{messages: messages}, state.config)
+            end
+          ]
+
+          Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
+            Worth.Memory.FactExtractor.extract_and_store(result_text, extraction_opts)
+          end)
+        end
+
         :ok
       end,
-      search_tools: fn _query, _opts ->
-        []
+      search_tools: fn query, _opts ->
+        memory = Worth.Tools.Memory.definitions()
+        skills = Worth.Tools.Skills.definitions()
+        mcp = Worth.Tools.Mcp.definitions()
+        kits = Worth.Tools.Kits.definitions()
+
+        (memory ++ skills ++ mcp ++ kits)
+        |> Enum.filter(fn d ->
+          String.contains?(d.name, query) or
+            String.contains?(String.downcase(d.description), String.downcase(query))
+        end)
+        |> Enum.map(& &1.name)
       end,
       execute_external_tool: fn name, args, _ctx ->
-        {:error, "External tool '#{name}' not configured"}
+        cond do
+          String.starts_with?(name, "memory_") ->
+            case Worth.Tools.Memory.execute(name, args, workspace) do
+              {:ok, result} -> {:ok, result}
+              {:error, reason} -> {:error, reason}
+            end
+
+          String.starts_with?(name, "skill_") ->
+            case Worth.Tools.Skills.execute(name, args, workspace) do
+              {:ok, result} -> {:ok, result}
+              {:error, reason} -> {:error, reason}
+            end
+
+          String.starts_with?(name, "mcp_") ->
+            case Worth.Tools.Mcp.execute(name, args, workspace) do
+              {:ok, result} -> {:ok, result}
+              {:error, reason} -> {:error, reason}
+            end
+
+          String.starts_with?(name, "kit_") ->
+            case Worth.Tools.Kits.execute(name, args, workspace) do
+              {:ok, result} -> {:ok, result}
+              {:error, reason} -> {:error, reason}
+            end
+
+          String.contains?(name, ":") ->
+            case Worth.Mcp.Gateway.execute(name, args) do
+              {:ok, result} -> {:ok, result}
+              {:error, reason} -> {:error, reason}
+            end
+
+          true ->
+            {:error, "External tool '#{name}' not configured"}
+        end
       end,
-      get_tool_schema: fn _name ->
-        {:error, :not_found}
+      get_tool_schema: fn name ->
+        all_defs =
+          Worth.Tools.Memory.definitions() ++
+            Worth.Tools.Skills.definitions() ++
+            Worth.Tools.Mcp.definitions() ++ Worth.Tools.Kits.definitions()
+
+        definition =
+          all_defs
+          |> Enum.find(&(&1.name == name))
+
+        cond do
+          definition ->
+            {:ok, definition}
+
+          String.contains?(name, ":") ->
+            case Worth.Mcp.ToolIndex.get_schema(name) do
+              {:ok, schema} -> {:ok, schema}
+              {:error, _} -> {:error, :not_found}
+            end
+
+          true ->
+            {:error, :not_found}
+        end
       end
     }
   end
@@ -295,5 +493,50 @@ defmodule Worth.Brain do
 
   defp generate_session_id do
     "worth-#{:rand.uniform(1_000_000) |> Integer.to_string() |> String.pad_leading(6, "0")}"
+  end
+
+  defp flush_working_memory(workspace) do
+    try do
+      Worth.Memory.Manager.working_flush(workspace: workspace)
+    rescue
+      _ -> :ok
+    end
+  end
+
+  defp maybe_trigger_refinement(tool_name, state) do
+    skill_name = tool_name |> String.replace_prefix("skill_", "")
+
+    if Worth.Skill.Evaluator.should_refine?(skill_name) do
+      llm_fn = fn messages ->
+        Worth.LLM.chat(%{messages: messages}, state.config)
+      end
+
+      Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
+        Worth.Skill.Refiner.refine(skill_name, llm_fn: llm_fn)
+      end)
+    end
+  end
+
+  defp maybe_trigger_proactive_review(state) do
+    Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
+      Worth.Skill.Registry.all()
+      |> Enum.filter(&(&1.trust_level == :learned))
+      |> Enum.each(fn skill ->
+        case Worth.Skill.Refiner.proactive_review(skill.name) do
+          {:ok, :review_needed, info} ->
+            if state.ui_pid do
+              send(
+                state.ui_pid,
+                {:agent_event,
+                 {:system,
+                  "Skill '#{skill.name}' may need review (#{info.success_rate}% success, #{info.usage_count} uses)"}}
+              )
+            end
+
+          _ ->
+            :ok
+        end
+      end)
+    end)
   end
 end

@@ -38,7 +38,7 @@ defmodule Worth.Persistence.Transcript do
   end
 
   @impl true
-  def list_sessions(workspace_path) do
+  def list_sessions(workspace_path, _opts \\ []) do
     path = Path.join(workspace_path, ".worth/transcript.jsonl")
 
     case File.read(path) do

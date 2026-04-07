@@ -1,7 +1,7 @@
 defmodule Worth.Workspace.ServiceTest do
   use ExUnit.Case, async: true
 
-  @test_dir System.tmp_env!() |> Path.join("worth-test-ws-#{:rand.uniform(100_000)}")
+  @test_dir System.tmp_dir!() |> Path.join("worth-test-ws-#{:rand.uniform(100_000)}")
 
   setup do
     File.mkdir_p!(@test_dir)
