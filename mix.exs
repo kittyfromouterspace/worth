@@ -6,6 +6,11 @@ defmodule Worth.MixProject do
       app: :worth,
       version: "0.1.0",
       elixir: "~> 1.19",
+      description: "A terminal-based AI assistant built on Elixir/BEAM",
+      package: [
+        licenses: ["BSD-3-Clause"],
+        links: %{"GitHub" => "https://github.com/kittyfromouterspace/worth"}
+      ],
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),

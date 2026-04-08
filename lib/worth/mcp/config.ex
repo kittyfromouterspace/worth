@@ -15,7 +15,7 @@ defmodule Worth.Mcp.Config do
     load(workspace_path) |> Map.get(to_string(name))
   end
 
-  def add_server(name, config, persist \\ :global) do
+  def add_server(name, config, _persist \\ :global) do
     name = to_string(name)
     servers = load_global()
     updated = Map.put(servers, name, config)
@@ -115,11 +115,11 @@ defmodule Worth.Mcp.Config do
     end
   end
 
-  defp save_global(servers) do
+  defp save_global(_servers) do
     dir = Path.dirname(@global_config_path)
     File.mkdir_p!(dir)
 
-    config_content =
+    _config_content =
       "~/.worth/config.exs" |> Path.expand() |> File.read() ||
         "%{}"
 

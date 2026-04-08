@@ -184,7 +184,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 |------|--------|-------|
 | `Worth.Skill.Refiner` -- reactive refinement (analyze failures, update skills) + proactive review | Done | `lib/worth/skills/refiner.ex` |
 | `Worth.Skill.Versioner` -- version management, rollback, history | Done | `lib/worth/skills/versioner.ex` |
-| `Worth.LLM.Router` -- primary/lightweight tier routing | Done | `lib/worth/llm/router.ex` |
+| Tier routing -- primary/lightweight via `AgentEx.ModelRouter`, dispatched in `Worth.LLM.chat/2` | Done | `lib/worth/llm.ex` |
 | `Worth.UI.Theme` -- configurable dark/light/minimal themes with style_for | Done | `lib/worth/ui/theme.ex` |
 | `Worth.Brain.Session` -- session resumption via AgentEx.resume/1 | Done | `lib/worth/brain/session.ex` |
 | Wire Refiner into Brain (skill failure -> reactive refinement, proactive review after turns) | Done | `lib/worth/brain.ex` |
@@ -197,7 +197,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | UI commands: /skill history, /skill rollback, /skill refine, /session list, /session resume | Done | `lib/worth/ui/root.ex` |
 | `Worth.LLM.adapter_for/1` made public for Router access | Done | `lib/worth/llm.ex` |
 | `Worth.Persistence.Transcript.list_sessions/2` arity fix per behaviour | Done | `lib/worth/persistence/transcript.ex` |
-| Tests: Refiner, Versioner, Router, Theme | Done | `test/worth/skills/refiner_test.exs`, `test/worth/skills/versioner_test.exs`, `test/worth/llm/router_test.exs`, `test/worth/ui/theme_test.exs` |
+| Tests: Refiner, Versioner, Theme | Done | `test/worth/skills/refiner_test.exs`, `test/worth/skills/versioner_test.exs`, `test/worth/ui/theme_test.exs` |
 
 **Key decisions made during implementation:**
 
@@ -211,7 +211,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 
 5. **Skill version history**: `Worth.Skill.Versioner` saves skill snapshots to `.worth/history/vN.md` before any modification. Rollback restores a previous version while saving the current state first.
 
-6. **LLM Router**: `Worth.LLM.Router` supports `:primary` and `:lightweight` tiers. Providers can declare a `tier:` field in config. Lightweight tier is intended for fact extraction, refinement, and other background tasks.
+6. **LLM Router**: tier routing (`:primary` / `:lightweight`) lives in `AgentEx.ModelRouter`, which discovers free OpenRouter models via `AgentEx.ModelRouter.Free` and attaches the resolved route to LLM call params under `"_route"`. `Worth.LLM.chat/2` honors that key first, dispatching to the matching adapter (e.g. `Worth.LLM.OpenRouter` with `OPENROUTER_API_KEY`), and falls back to the statically configured provider only when no route is present or the route call fails.
 
 ### Phase 6: MCP Integration -- NOT STARTED
 

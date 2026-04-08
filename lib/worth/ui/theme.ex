@@ -1,4 +1,6 @@
 defmodule Worth.UI.Theme do
+  alias TermUI.Renderer.Style
+
   @default_theme %{
     header: {:cyan, [:bold]},
     user_input: {:green, []},
@@ -50,10 +52,13 @@ defmodule Worth.UI.Theme do
     theme = current()
 
     case Map.get(theme, element, {:default, []}) do
-      {fg, attrs} when is_list(attrs) -> TermUI.Style.from(fg: fg, attrs: attrs)
-      fg when is_atom(fg) -> TermUI.Style.from(fg: fg)
+      {fg, attrs} when is_list(attrs) -> Style.new(fg: normalize_color(fg), attrs: attrs)
+      fg when is_atom(fg) -> Style.new(fg: normalize_color(fg))
     end
   end
+
+  defp normalize_color(:default), do: nil
+  defp normalize_color(other), do: other
 
   def status_indicator(status) do
     theme = current()

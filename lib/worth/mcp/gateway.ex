@@ -4,9 +4,6 @@ defmodule Worth.Mcp.Gateway do
       {:mcp, server_name, original_name, _schema} ->
         execute_mcp_tool(server_name, original_name, args)
 
-      {:builtin, _} ->
-        {:error, "Builtin tools are handled by agent_ex directly"}
-
       {:error, :not_found} ->
         {:error, "Tool '#{tool_name}' not found in MCP tool index"}
     end

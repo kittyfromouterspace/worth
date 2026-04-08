@@ -40,5 +40,16 @@ defmodule Worth.Config do
     end
   end
 
+  # Keyword pairs: preserve the key, recurse into the value. Without this
+  # clause `Enum.map` over a keyword list passes each `{k, v}` tuple
+  # through the catch-all and any nested `{:env, ...}` inside `v` never
+  # gets resolved — leading to Req warnings about non-string header
+  # values when an adapter receives the raw tuple as its api_key.
+  # Order matters: this MUST come after the `{:env, var}` clause,
+  # because `:env` is also an atom and would otherwise match here first.
+  defp resolve_env_values({k, v}) when is_atom(k) do
+    {k, resolve_env_values(v)}
+  end
+
   defp resolve_env_values(other), do: other
 end

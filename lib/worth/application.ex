@@ -6,6 +6,7 @@ defmodule Worth.Application do
     children = [
       Worth.Repo,
       Worth.Config,
+      Worth.UI.LogBuffer,
       {Phoenix.PubSub, name: Worth.PubSub},
       {Registry, keys: :unique, name: Worth.Registry},
       {Task.Supervisor, name: Worth.TaskSupervisor},

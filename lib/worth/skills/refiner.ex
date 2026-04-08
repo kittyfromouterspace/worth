@@ -148,7 +148,6 @@ defmodule Worth.Skill.Refiner do
           })
     }
 
-    path = Worth.Skill.Service.read(skill.name) |> elem(1) |> get_in([:path])
     resolve_and_save(skill.name, updated)
   end
 

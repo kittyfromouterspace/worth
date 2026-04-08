@@ -1,65 +1,53 @@
 defmodule Worth.LLM.OpenRouter do
+  @moduledoc """
+  OpenRouter adapter shim.
+
+  All wire-format translation lives in
+  `AgentEx.LLM.Transport.OpenAIChatCompletions`. This module is the
+  thin per-provider piece: it knows the OpenRouter base URL, the
+  `OPENROUTER_API_KEY` env var, and the analytics headers OpenRouter
+  recommends. Adding a new OpenAI-compatible provider (Groq, Together,
+  Fireworks, …) is a copy of this file with a different base URL and
+  env var.
+  """
+
   @behaviour Worth.LLM.Adapter
 
-  @base_url "https://openrouter.ai/api/v1/chat/completions"
+  alias AgentEx.LLM.Transport.OpenAIChatCompletions
+  alias Worth.LLM.Shim
+
+  require Logger
+
+  @default_base_url "https://openrouter.ai/api/v1"
 
   @impl true
   def chat(params, config) do
     api_key = config[:api_key]
     model = config[:default_model] || "anthropic/claude-sonnet-4"
+    base_url = config[:base_url] || @default_base_url
 
     if is_nil(api_key) or api_key == "" do
       {:error, "OPENROUTER_API_KEY not configured"}
     else
-      messages = transform_messages(params["messages"] || params[:messages] || [])
+      canonical = Shim.canonical_params(params, model)
 
-      body = %{
-        model: model,
-        messages: messages,
-        max_tokens: params["max_tokens"] || 4096
-      }
-
-      headers = [
-        {"Authorization", "Bearer #{api_key}"},
-        {"content-type", "application/json"}
+      extra_headers = [
+        {"HTTP-Referer", "https://github.com/lenzg/worth"},
+        {"X-Title", "worth"}
       ]
 
-      case Req.post(@base_url, json: body, headers: headers, receive_timeout: 120_000) do
-        {:ok, %{status: 200, body: response}} ->
-          {:ok, normalize_response(response)}
+      request =
+        OpenAIChatCompletions.build_chat_request(canonical,
+          base_url: base_url,
+          api_key: api_key,
+          extra_headers: extra_headers
+        )
 
-        {:ok, %{status: status, body: %{"error" => %{"message" => msg}}}} ->
-          {:error, "OpenRouter API error (#{status}): #{msg}"}
+      Logger.debug(
+        "Worth.LLM.OpenRouter request: model=#{model} messages=#{length(canonical.messages)} tools=#{length(canonical.tools)} url=#{request.url}"
+      )
 
-        {:error, exception} ->
-          {:error, "HTTP error: #{Exception.message(exception)}"}
-      end
+      Shim.send_and_parse(request, OpenAIChatCompletions, model: model, provider_label: "OpenRouter")
     end
-  end
-
-  defp transform_messages(messages) when is_list(messages) do
-    Enum.map(messages, fn msg ->
-      role = msg["role"] || msg[:role]
-      content = msg["content"] || msg[:content]
-      %{"role" => role, "content" => content}
-    end)
-  end
-
-  defp normalize_response(response) do
-    choice = hd(response["choices"] || [%{}])
-
-    %{
-      "content" => [
-        %{
-          "type" => "text",
-          "text" => get_in(choice, ["message", "content"]) || ""
-        }
-      ],
-      "stop_reason" => choice["finish_reason"] || "stop",
-      "usage" => %{
-        "input_tokens" => get_in(response, ["usage", "prompt_tokens"]) || 0,
-        "output_tokens" => get_in(response, ["usage", "completion_tokens"]) || 0
-      }
-    }
   end
 end

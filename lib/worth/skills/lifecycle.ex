@@ -18,7 +18,7 @@ defmodule Worth.Skill.Lifecycle do
     )
   end
 
-  def create_from_failure(name, description, failure_context, opts \\ []) do
+  def create_from_failure(name, description, failure_context, _opts \\ []) do
     content =
       "## Failure Recovery: #{description}\n\n#{failure_context}\n\n## Guidelines\n\n- Identify the failure pattern early\n- Apply the recovery steps systematically\n- Validate the fix before proceeding\n"
 

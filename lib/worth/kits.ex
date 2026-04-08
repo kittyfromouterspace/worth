@@ -72,12 +72,16 @@ defmodule Worth.Kits do
     case File.read(config_file) do
       {:ok, json} ->
         case Jason.decode(json) do
-          {:ok, kits} -> {:ok, kits}
-          _ -> {:ok, %{}}
+          {:ok, kits} when is_map(kits) -> {:ok, kits}
+          {:ok, _} -> {:ok, %{}}
+          {:error, _} = err -> err
         end
 
-      _ ->
+      {:error, :enoent} ->
         {:ok, %{}}
+
+      {:error, _} = err ->
+        err
     end
   end
 

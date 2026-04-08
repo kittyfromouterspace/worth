@@ -46,7 +46,31 @@ defmodule Worth.CLI do
     Application.put_env(:worth, :current_workspace_path, workspace_path)
     Application.put_env(:worth, :current_mode, mode)
 
+    Worth.Brain.switch_workspace(workspace)
+    Worth.Brain.switch_mode(mode)
+
+    install_tui_logger()
+
     TermUI.Runtime.run(root: Worth.UI.Root, workspace: workspace, mode: mode)
+  end
+
+  # Redirect every log event into Worth.UI.LogBuffer and remove the
+  # default console handler so nothing else writes to stdout while the
+  # TUI owns the screen. Without this, debug/info chatter (Ecto queries,
+  # MCP client traces, free-model detection, etc.) is splattered into
+  # the rendered buffer and corrupts the display.
+  defp install_tui_logger do
+    _ = :logger.remove_handler(:default)
+    _ = :logger.remove_handler(Logger)
+
+    case :logger.add_handler(:worth_tui, Worth.UI.LogHandler, %{}) do
+      :ok -> :ok
+      {:error, {:already_exists, _}} -> :ok
+      _other -> :ok
+    end
+
+    require Logger
+    Logger.info("Worth TUI logger active. File log: #{Worth.UI.LogHandler.file_path()}")
   end
 
   defp init_workspace(name) do

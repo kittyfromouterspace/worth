@@ -122,7 +122,7 @@ defmodule Worth.Tools.Skills do
 
     case Worth.Skill.Service.install(%{type: :content, name: name, content: content}, opts) do
       {:ok, ^name} -> {:ok, "Skill '#{name}' installed successfully."}
-      {:error, reason} -> {:error, "Failed to install: #{reason}"}
+      other -> {:error, "Failed to install: #{inspect(other)}"}
     end
   end
 
@@ -143,7 +143,7 @@ defmodule Worth.Tools.Skills do
 
     case Worth.Skill.Service.install(%{type: :content, name: name, content: content}, opts) do
       {:ok, ^name} -> {:ok, "Learned skill '#{name}' created."}
-      {:error, reason} -> {:error, "Failed to create skill: #{reason}"}
+      other -> {:error, "Failed to create skill: #{inspect(other)}"}
     end
   end
 

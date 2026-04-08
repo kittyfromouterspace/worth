@@ -206,7 +206,7 @@ defmodule Worth.Brain do
 
   def handle_call({:skill_refine, name}, _from, state) do
     llm_fn = fn messages ->
-      Worth.LLM.chat(%{messages: messages}, state.config)
+      Worth.LLM.chat_tier(%{messages: messages}, :lightweight, state.config)
     end
 
     result = Worth.Skill.Refiner.refine(name, llm_fn: llm_fn)
@@ -375,7 +375,7 @@ defmodule Worth.Brain do
           workspace: workspace,
           source_type: "response",
           llm_fn: fn messages ->
-            Worth.LLM.chat(%{messages: messages}, state.config)
+            Worth.LLM.chat_tier(%{messages: messages}, :lightweight, state.config)
           end
         ]
 
@@ -394,7 +394,7 @@ defmodule Worth.Brain do
             source_type: "tool:#{name}",
             turn: turn,
             llm_fn: fn messages ->
-              Worth.LLM.chat(%{messages: messages}, state.config)
+              Worth.LLM.chat_tier(%{messages: messages}, :lightweight, state.config)
             end
           ]
 
@@ -508,7 +508,7 @@ defmodule Worth.Brain do
 
     if Worth.Skill.Evaluator.should_refine?(skill_name) do
       llm_fn = fn messages ->
-        Worth.LLM.chat(%{messages: messages}, state.config)
+        Worth.LLM.chat_tier(%{messages: messages}, :lightweight, state.config)
       end
 
       Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->

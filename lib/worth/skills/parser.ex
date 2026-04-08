@@ -3,7 +3,7 @@ defmodule Worth.Skill.Parser do
 
   def parse(skill_md_content) when is_binary(skill_md_content) do
     case split_frontmatter(skill_md_content) do
-      {nil, body} ->
+      {nil, _body} ->
         {:error, "No frontmatter found in SKILL.md"}
 
       {frontmatter_str, body} ->

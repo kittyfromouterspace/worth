@@ -1,31 +1,73 @@
 defmodule Worth.UI.Root do
+  @moduledoc """
+  Root TermUI Elm component for the worth TUI.
+
+  This module is intentionally thin: it owns the UI state struct, routes
+  terminal events to messages, dispatches updates, and composes the view
+  from the per-region render modules in `Worth.UI.*`.
+
+  Anything that grows beyond a few lines should move into one of:
+
+    * `Worth.UI.Header`   — top bar
+    * `Worth.UI.Chat`     — main conversation
+    * `Worth.UI.Sidebar`  — right-hand panel
+    * `Worth.UI.Input`    — input prompt
+    * `Worth.UI.Message`  — message-tuple → render blocks
+    * `Worth.UI.Commands` — slash command parsing + dispatch
+    * `Worth.UI.Events`   — agent_event mailbox draining
+  """
+
   use TermUI.Elm
 
-  alias TermUI.{Event, Style, Command}
+  import TermUI.Component.Helpers
+  alias TermUI.Event
+  alias Worth.UI.{Chat, Commands, Events, Header, Input, Sidebar}
+
+  @poll_interval 50
+  @model_refresh_interval 2_000
 
   @impl true
   def init(opts) do
-    state = %{
+    Process.send_after(self(), :check_events, @poll_interval)
+    Process.send_after(self(), :refresh_model, 100)
+    Worth.Brain.set_ui_pid(self())
+
+    {width, height} = detect_terminal_size()
+
+    %{
       messages: [],
       input_text: "",
       status: :idle,
       cost: 0.0,
       workspace: opts[:workspace] || "personal",
       mode: opts[:mode] || :code,
-      model: opts[:model] || "claude-sonnet-4",
+      models: %{
+        primary: %{label: nil, source: nil},
+        lightweight: %{label: nil, source: nil}
+      },
       turn: 0,
       streaming_text: "",
       cursor_pos: 0,
       input_history: [],
       history_index: -1,
-      sidebar_visible: false,
-      sidebar_tab: :workspace,
-      width: 80,
-      height: 24
+      sidebar_visible: true,
+      sidebar_tab: :status,
+      width: width,
+      height: height
     }
-
-    {state, [Command.interval(50, :check_events)]}
   end
+
+  # TermUI only broadcasts Resize on SIGWINCH, never at startup, so we
+  # have to ask the terminal directly here. Fall back to a sensible
+  # default if the query fails (e.g. running under a non-tty harness).
+  defp detect_terminal_size do
+    case TermUI.Terminal.get_terminal_size() do
+      {:ok, {rows, cols}} -> {cols, rows}
+      _ -> {80, 24}
+    end
+  end
+
+  # ----- event_to_msg -----
 
   @impl true
   def event_to_msg(%Event.Key{key: :enter}, _state), do: {:msg, :submit_input}
@@ -35,10 +77,20 @@ defmodule Worth.UI.Root do
   def event_to_msg(%Event.Key{key: :up}, _state), do: {:msg, :history_prev}
   def event_to_msg(%Event.Key{key: :down}, _state), do: {:msg, :history_next}
   def event_to_msg(%Event.Key{key: :tab}, _state), do: {:msg, :toggle_sidebar}
-  def event_to_msg(%Event.Key{char: char}, _state) when is_binary(char), do: {:msg, {:type_char, char}}
+  def event_to_msg(%Event.Key{char: "1"}, _state), do: {:msg, {:sidebar_tab, :workspace}}
+  def event_to_msg(%Event.Key{char: "2"}, _state), do: {:msg, {:sidebar_tab, :tools}}
+  def event_to_msg(%Event.Key{char: "3"}, _state), do: {:msg, {:sidebar_tab, :skills}}
+  def event_to_msg(%Event.Key{char: "4"}, _state), do: {:msg, {:sidebar_tab, :status}}
+  def event_to_msg(%Event.Key{char: "5"}, _state), do: {:msg, {:sidebar_tab, :logs}}
+
+  def event_to_msg(%Event.Key{char: char}, _state) when is_binary(char),
+    do: {:msg, {:type_char, char}}
+
   def event_to_msg(%Event.Key{key: key}, _state) when is_atom(key), do: :ignore
   def event_to_msg(%Event.Resize{width: w, height: h}, _state), do: {:msg, {:resize, w, h}}
   def event_to_msg(_, _), do: :ignore
+
+  # ----- update -----
 
   @impl true
   def update(:submit_input, %{input_text: ""} = state), do: {state, []}
@@ -46,326 +98,16 @@ defmodule Worth.UI.Root do
   def update(:submit_input, state) do
     text = state.input_text
 
-    history =
-      if text != "" and (state.input_history == [] or hd(state.input_history) != text) do
-        [text | state.input_history] |> Enum.take(100)
-      else
-        state.input_history
-      end
+    state =
+      state
+      |> Map.put(:input_text, "")
+      |> Map.put(:cursor_pos, 0)
+      |> Map.put(:turn, state.turn + 1)
+      |> Map.put(:input_history, push_history(state.input_history, text))
+      |> Map.put(:history_index, -1)
+      |> append_message({:user, text})
 
-    state = %{state | input_text: "", cursor_pos: 0, turn: state.turn + 1, input_history: history, history_index: -1}
-    new_messages = state.messages ++ [{:user, text}]
-
-    case parse_command(text) do
-      {:command, :quit} ->
-        {state, [Command.quit()]}
-
-      {:command, :clear} ->
-        {%{state | messages: [], streaming_text: ""}, []}
-
-      {:command, :cost} ->
-        msg = "Session cost: $#{Float.round(state.cost, 4)} | Turns: #{state.turn}"
-        {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-      {:command, :help} ->
-        help = help_text()
-        {%{state | messages: new_messages ++ [{:system, help}]}, []}
-
-      {:command, {:mode, mode}} ->
-        Worth.Brain.switch_mode(mode)
-        msg = "Switched to #{mode} mode"
-        {%{state | messages: new_messages ++ [{:system, msg}], mode: mode}, []}
-
-      {:command, {:workspace, :list}} ->
-        workspaces = Worth.Workspace.Service.list()
-        msg = "Workspaces: #{Enum.join(workspaces, ", ")}"
-        {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-      {:command, {:workspace, {:switch, name}}} ->
-        Worth.Brain.switch_workspace(name)
-        msg = "Switched to workspace: #{name}"
-        {%{state | messages: new_messages ++ [{:system, msg}], workspace: name}, []}
-
-      {:command, {:workspace, {:new, name}}} ->
-        case Worth.Workspace.Service.create(name) do
-          {:ok, _path} ->
-            Worth.Brain.switch_workspace(name)
-            msg = "Created and switched to workspace: #{name}"
-            {%{state | messages: new_messages ++ [{:system, msg}], workspace: name}, []}
-
-          {:error, reason} ->
-            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
-        end
-
-      {:command, {:status, _}} ->
-        status = Worth.Brain.get_status()
-
-        msg =
-          "Mode: #{status.mode} | Profile: #{status.profile} | Workspace: #{status.workspace} | Cost: $#{Float.round(status.cost, 3)}"
-
-        {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-      {:command, {:memory, {:query, query}}} ->
-        case Worth.Memory.Manager.search(query, workspace: state.workspace, limit: 5) do
-          {:ok, %{entries: entries}} when is_list(entries) and entries != [] ->
-            lines =
-              entries
-              |> Enum.map(fn e -> "  [#{Float.round(e.confidence || 0.5, 2)}] #{e.content}" end)
-              |> Enum.join("\n")
-
-            msg = "Memory results for '#{query}':\n#{lines}"
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          _ ->
-            msg = "No memories found for '#{query}'"
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-        end
-
-      {:command, {:memory, {:note, note}}} ->
-        case Worth.Memory.Manager.working_push(note,
-               workspace: state.workspace,
-               importance: 0.5,
-               metadata: %{entry_type: "note", role: "user"}
-             ) do
-          {:ok, _} ->
-            msg = "Note added to working memory."
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          {:error, reason} ->
-            {%{state | messages: new_messages ++ [{:error, "Failed to add note: #{inspect(reason)}"}]}, []}
-        end
-
-      {:command, {:memory, :recent}} ->
-        case Worth.Memory.Manager.recent(workspace: state.workspace, limit: 10) do
-          {:ok, entries} when is_list(entries) and entries != [] ->
-            lines =
-              entries
-              |> Enum.map(fn e -> "  [#{e.entry_type}] #{String.slice(e.content, 0, 80)}" end)
-              |> Enum.join("\n")
-
-            msg = "Recent memories:\n#{lines}"
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          _ ->
-            msg = "No recent memories."
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-        end
-
-      {:command, {:skill, :list}} ->
-        skills = Worth.Skill.Registry.all()
-
-        if skills == [] do
-          msg = "No skills loaded."
-          {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-        else
-          lines =
-            skills
-            |> Enum.map(fn s ->
-              loading = if s.loading == :always, do: "[always]", else: "[on-demand]"
-              "  [#{s.trust_level}] #{loading} #{s.name}: #{String.slice(s.description, 0, 60)}"
-            end)
-            |> Enum.join("\n")
-
-          msg = "Skills:\n#{lines}"
-          {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-        end
-
-      {:command, {:skill, {:read, name}}} ->
-        case Worth.Skill.Service.read_body(name) do
-          {:ok, body} ->
-            preview = String.slice(body, 0, 500)
-            msg = "Skill '#{name}':\n#{preview}"
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          {:error, reason} ->
-            {%{state | messages: new_messages ++ [{:error, "Failed to read skill: #{reason}"}]}, []}
-        end
-
-      {:command, {:skill, {:remove, name}}} ->
-        case Worth.Skill.Service.remove(name) do
-          {:ok, _} ->
-            msg = "Skill '#{name}' removed."
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          {:error, reason} ->
-            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
-        end
-
-      {:command, {:skill, {:history, name}}} ->
-        case Worth.Brain.skill_history(name) do
-          {:ok, versions} when is_list(versions) and versions != [] ->
-            lines =
-              versions
-              |> Enum.map(fn {v, info} -> "  v#{v} (#{info.size} bytes)" end)
-              |> Enum.join("\n")
-
-            msg = "Skill '#{name}' versions:\n#{lines}"
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          _ ->
-            msg = "No version history for '#{name}'."
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-        end
-
-      {:command, {:skill, {:rollback, name, version}}} ->
-        case Worth.Brain.skill_rollback(name, version) do
-          {:ok, info} ->
-            msg = "Skill '#{name}' rolled back to v#{info.rolled_back_to}."
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          {:error, reason} ->
-            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
-        end
-
-      {:command, {:skill, {:refine, name}}} ->
-        case Worth.Brain.skill_refine(name) do
-          {:ok, info} ->
-            msg = "Skill '#{name}' refined to v#{info.version}."
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          {:ok, :no_refinement_needed} ->
-            msg = "Skill '#{name}' does not need refinement."
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          {:error, reason} ->
-            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
-        end
-
-      {:command, {:session, :list}} ->
-        case Worth.Brain.list_sessions() do
-          {:ok, sessions} when is_list(sessions) and sessions != [] ->
-            lines = sessions |> Enum.map(&"  #{&1}") |> Enum.join("\n")
-            msg = "Sessions:\n#{lines}"
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          _ ->
-            msg = "No sessions found."
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-        end
-
-      {:command, {:session, {:resume, session_id}}} ->
-        Worth.Brain.resume_session(session_id)
-        msg = "Resuming session: #{session_id}"
-        {%{state | messages: new_messages ++ [{:system, msg}], status: :running}, []}
-
-      {:command, {:mcp, :list}} ->
-        connections = Worth.Brain.mcp_list()
-
-        if connections == [] do
-          msg = "No MCP servers connected."
-          {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-        else
-          lines =
-            connections
-            |> Enum.map(fn c -> "  [#{c.status}] #{c.name} (#{c.tool_count} tools)" end)
-            |> Enum.join("\n")
-
-          msg = "MCP Servers:\n#{lines}"
-          {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-        end
-
-      {:command, {:mcp, {:connect, name}}} ->
-        case Worth.Mcp.Config.get_server(name) do
-          nil ->
-            msg = "Server '#{name}' not configured. Add it to ~/.worth/config.exs"
-            {%{state | messages: new_messages ++ [{:error, msg}]}, []}
-
-          config ->
-            case Worth.Brain.mcp_connect(name, config) do
-              {:ok, _} ->
-                msg = "Connected to MCP server '#{name}'."
-                {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-              {:error, :already_connected} ->
-                msg = "Already connected to '#{name}'."
-                {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-              {:error, reason} ->
-                {%{state | messages: new_messages ++ [{:error, "Failed to connect: #{inspect(reason)}"}]}, []}
-            end
-        end
-
-      {:command, {:mcp, {:disconnect, name}}} ->
-        case Worth.Brain.mcp_disconnect(name) do
-          :ok ->
-            msg = "Disconnected from '#{name}'."
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          {:error, :not_connected} ->
-            msg = "Server '#{name}' was not connected."
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-        end
-
-      {:command, {:mcp, {:tools, name}}} ->
-        tools = Worth.Brain.mcp_tools(name)
-
-        if tools == [] do
-          msg = "No tools found for server '#{name}'."
-          {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-        else
-          lines =
-            tools
-            |> Enum.map(fn t -> "  #{t["name"]}: #{String.slice(t["description"] || "", 0, 60)}" end)
-            |> Enum.join("\n")
-
-          msg = "Tools from #{name}:\n#{lines}"
-          {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-        end
-
-      {:command, {:kit, {:search, query}}} ->
-        case Worth.Tools.Kits.execute("kit_search", %{"query" => query}, state.workspace) do
-          {:ok, msg} ->
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          {:error, reason} ->
-            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
-        end
-
-      {:command, {:kit, {:install, owner, slug}}} ->
-        case Worth.Tools.Kits.execute(
-               "kit_install",
-               %{"owner" => owner, "slug" => slug, "workspace" => state.workspace},
-               state.workspace
-             ) do
-          {:ok, msg} ->
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          {:error, reason} ->
-            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
-        end
-
-      {:command, {:kit, :list}} ->
-        case Worth.Tools.Kits.execute("kit_list", %{}, state.workspace) do
-          {:ok, msg} ->
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          {:error, reason} ->
-            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
-        end
-
-      {:command, {:kit, {:info, owner, slug}}} ->
-        case Worth.Tools.Kits.execute("kit_info", %{"owner" => owner, "slug" => slug}, state.workspace) do
-          {:ok, msg} ->
-            {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-          {:error, reason} ->
-            {%{state | messages: new_messages ++ [{:error, reason}]}, []}
-        end
-
-      {:command, {:skill, :help}} ->
-        msg =
-          "Skill commands:\n  /skill list\n  /skill read <name>\n  /skill remove <name>\n  /skill history <name>\n  /skill rollback <name> <version>\n  /skill refine <name>"
-
-        {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-      {:command, {:unknown, cmd}} ->
-        msg = "Unknown command: #{cmd}. Type /help for available commands."
-        {%{state | messages: new_messages ++ [{:system, msg}]}, []}
-
-      :message ->
-        send_message_to_brain(text)
-        {%{state | messages: new_messages, status: :running, streaming_text: ""}, []}
-    end
+    Commands.handle(Commands.parse(text), text, state)
   end
 
   def update(:backspace, state) do
@@ -378,7 +120,8 @@ defmodule Worth.UI.Root do
     end
   end
 
-  def update(:cursor_left, state), do: {%{state | cursor_pos: max(state.cursor_pos - 1, 0)}, []}
+  def update(:cursor_left, state),
+    do: {%{state | cursor_pos: max(state.cursor_pos - 1, 0)}, []}
 
   def update(:cursor_right, state) do
     {%{state | cursor_pos: min(state.cursor_pos + 1, String.length(state.input_text))}, []}
@@ -404,9 +147,11 @@ defmodule Worth.UI.Root do
     end
   end
 
-  def update(:toggle_sidebar, state) do
-    {%{state | sidebar_visible: not state.sidebar_visible}, []}
-  end
+  def update(:toggle_sidebar, state),
+    do: {%{state | sidebar_visible: not state.sidebar_visible}, []}
+
+  def update({:sidebar_tab, tab}, state),
+    do: {%{state | sidebar_tab: tab, sidebar_visible: true}, []}
 
   def update({:type_char, char}, state) do
     {before, after_c} = String.split_at(state.input_text, state.cursor_pos)
@@ -417,374 +162,133 @@ defmodule Worth.UI.Root do
   def update({:resize, w, h}, state), do: {%{state | width: w, height: h}, []}
 
   def update(:check_events, state) do
-    state = drain_events(state)
-    {state, [Command.interval(50, :check_events)]}
+    state = Events.drain(state)
+    Process.send_after(self(), :check_events, @poll_interval)
+    {state, []}
+  end
+
+  def update(:refresh_model, state) do
+    state = poll_resolved_model(state)
+    Process.send_after(self(), :refresh_model, @model_refresh_interval)
+    {state, []}
   end
 
   def update(_, state), do: {state, []}
 
-  @impl true
-  def view(state) do
-    header = render_header(state)
-    chat_nodes = render_chat(state)
-    input_line = render_input(state)
+  # ----- handle_info -----
 
-    if state.sidebar_visible do
-      {chat_w, sidebar_w} = split_widths(state.width)
-
-      stack(:horizontal, [
-        box([header, box(chat_nodes, height: :auto), input_line], width: chat_w),
-        render_sidebar(state, sidebar_w)
-      ])
-    else
-      stack(:vertical, [header, box(chat_nodes, height: :auto), input_line])
-    end
+  def handle_info(:check_events, state) do
+    state = Events.drain(state)
+    Process.send_after(self(), :check_events, @poll_interval)
+    {state, []}
   end
 
-  defp split_widths(total) do
-    sidebar_w = min(30, div(total, 3))
+  def handle_info(:refresh_model, state) do
+    state = poll_resolved_model(state)
+    Process.send_after(self(), :refresh_model, @model_refresh_interval)
+    {state, []}
+  end
+
+  def handle_info({:agent_event, _}, state) do
+    {Events.drain(state), []}
+  end
+
+  def handle_info(_msg, state), do: {state, []}
+
+  # ----- view -----
+
+  @impl true
+  def view(state) do
+    chat = Chat.render(state)
+
+    body =
+      if state.sidebar_visible do
+        {chat_w, sidebar_w} = split_widths(state.width)
+
+        stack(:horizontal, [
+          box([chat], width: chat_w),
+          box([Sidebar.render(state)], width: sidebar_w)
+        ])
+      else
+        chat
+      end
+
+    stack(:vertical, [Header.render(state), body, Input.render(state)])
+  end
+
+  # Sidebar takes ~1/3 of the screen, clamped to a comfortable readable
+  # range (32..60 cols). On very narrow terminals it falls back to a
+  # quarter-width strip so the chat area still has room to breathe.
+  defp split_widths(total) when total < 100 do
+    sidebar_w = max(24, div(total, 4))
     {total - sidebar_w, sidebar_w}
   end
 
-  defp render_header(state) do
-    mode_label = "[#{state.mode}]"
-
-    indicator = Worth.UI.Theme.status_indicator(state.status)
-
-    header_text =
-      "[#{indicator}] worth > #{state.workspace} #{mode_label}  turn:#{state.turn}  $#{Float.round(state.cost, 3)}"
-
-    text(header_text, Worth.UI.Theme.style_for(:header))
+  defp split_widths(total) do
+    sidebar_w = total |> div(3) |> min(60) |> max(32)
+    {total - sidebar_w, sidebar_w}
   end
 
-  defp render_chat(state) do
-    all_nodes =
-      state.messages
-      |> Enum.flat_map(&message_to_nodes/1)
-      |> then(fn nodes ->
-        if state.streaming_text != "" and state.status == :running do
-          nodes ++ message_to_nodes({:assistant, state.streaming_text})
-        else
-          nodes
-        end
-      end)
+  # ----- helpers -----
 
-    if all_nodes == [] do
-      [text("Welcome to worth. Type a message or /help for commands.", Style.from(fg: :bright_black))]
+  defp push_history(history, text) do
+    if text != "" and (history == [] or hd(history) != text) do
+      [text | history] |> Enum.take(100)
     else
-      all_nodes
+      history
     end
   end
 
-  defp render_input(state) do
-    text("> #{state.input_text}", Worth.UI.Theme.style_for(:user_input))
+  # Ask AgentEx.ModelRouter what it would resolve right now for both
+  # tiers and fold the answers into state. Runs every
+  # @model_refresh_interval ms so the Status panel reflects the live
+  # router — e.g. after the first OpenRouter free-model fetch completes,
+  # or after a route cools down and a different one becomes the best.
+  # The :model_selected event from drain/1 still wins on actual LLM
+  # calls (it can update either tier slot independently based on the
+  # tier the call was for).
+  #
+  # Wrapped in safe_resolve/1 because the UI process must never die
+  # from a router-side bug — we'd lose the user's whole session.
+  defp poll_resolved_model(state) do
+    state
+    |> refresh_tier(:primary)
+    |> refresh_tier(:lightweight)
   end
 
-  defp render_sidebar(state, width) do
-    tabs_label =
-      case state.sidebar_tab do
-        :workspace -> "Workspace"
-        :tools -> "Tools"
-        :status -> "Status"
-      end
+  defp refresh_tier(state, tier) do
+    case safe_resolve(tier) do
+      {:ok, route} when is_map(route) ->
+        slot = route_to_slot(route)
+        current = Map.get(state.models, tier)
 
-    content =
-      case state.sidebar_tab do
-        :workspace ->
-          ws_list = Worth.Workspace.Service.list()
-
-          ws_lines =
-            if ws_list == [],
-              do: ["  (none)"],
-              else:
-                Enum.map(ws_list, fn ws ->
-                  if ws == state.workspace, do: "  * #{ws}", else: "    #{ws}"
-                end)
-
-          [text("Workspaces:", Style.from(attrs: [:bold])) | Enum.map(ws_lines, &text/1)]
-
-        :tools ->
-          tools =
-            ~w(read_file write_file edit_file bash list_files skill_list skill_read memory_query search_tools use_tool)
-
-          [
-            text("Active Tools:", Style.from(attrs: [:bold]))
-            | Enum.map(tools, fn t -> text("  #{t}", Style.from(fg: :bright_black)) end)
-          ]
-
-        :status ->
-          [
-            text("Status:", Style.from(attrs: [:bold])),
-            text("  Mode: #{state.mode}"),
-            text("  Cost: $#{Float.round(state.cost, 3)}"),
-            text("  Turns: #{state.turn}"),
-            text("  Model: #{state.model}", Style.from(fg: :bright_black))
-          ]
-      end
-
-    box(
-      [text("[Tab: #{tabs_label}] (Tab to toggle)", Style.from(fg: :yellow)) | content],
-      style: Style.new(),
-      width: width
-    )
-  end
-
-  defp message_to_nodes({:user, text}) do
-    style = Worth.UI.Theme.style_for(:user_input)
-
-    text
-    |> String.split("\n")
-    |> Enum.map(fn line -> text("> #{line}", style) end)
-  end
-
-  defp message_to_nodes({:assistant, text}) do
-    style = Worth.UI.Theme.style_for(:assistant)
-
-    text
-    |> String.split("\n")
-    |> Enum.map(fn line -> text(line, style) end)
-  end
-
-  defp message_to_nodes({:system, text}) do
-    style = Worth.UI.Theme.style_for(:system)
-
-    text
-    |> String.split("\n")
-    |> Enum.map(fn line -> text("[system] #{line}", style) end)
-  end
-
-  defp message_to_nodes({:error, text}) do
-    style = Worth.UI.Theme.style_for(:error)
-
-    text
-    |> String.split("\n")
-    |> Enum.map(fn line -> text("[error] #{line}", style) end)
-  end
-
-  defp message_to_nodes({:tool_call, %{name: name, input: input}}) do
-    input_preview =
-      input
-      |> (fn i -> if is_map(i), do: Jason.encode!(i, pretty: false), else: inspect(i) end).()
-      |> String.slice(0, 80)
-
-    [
-      text("", nil),
-      text("  >> #{name}(#{input_preview})", Worth.UI.Theme.style_for(:tool_call))
-    ]
-  end
-
-  defp message_to_nodes({:tool_result, %{name: name, output: output}}) do
-    preview = String.slice(output || "", 0, 100)
-
-    [
-      text("  << #{name}: #{preview}", Worth.UI.Theme.style_for(:tool_result))
-    ]
-  end
-
-  defp message_to_nodes({:thinking, text}) do
-    [
-      text("  (thinking: #{String.slice(text, 0, 60)}...)", Worth.UI.Theme.style_for(:thinking))
-    ]
-  end
-
-  defp drain_events(state) do
-    receive do
-      {:agent_event, {:text_chunk, chunk}} ->
-        drain_events(%{state | streaming_text: state.streaming_text <> chunk})
-
-      {:agent_event, {:status, status}} ->
-        drain_events(%{state | status: status})
-
-      {:agent_event, {:cost, amount}} ->
-        drain_events(%{state | cost: state.cost + amount})
-
-      {:agent_event, {:tool_call, %{name: name, input: input}}} ->
-        messages = state.messages ++ [{:tool_call, %{name: name, input: input}}]
-        drain_events(%{state | messages: messages})
-
-      {:agent_event, {:tool_result, %{name: name, output: output}}} ->
-        messages = state.messages ++ [{:tool_result, %{name: name, output: output}}]
-        drain_events(%{state | messages: messages})
-
-      {:agent_event, {:thinking_chunk, text}} ->
-        messages = state.messages ++ [{:thinking, text}]
-        drain_events(%{state | messages: messages})
-
-      {:agent_event, {:done, %{text: text}}} ->
-        final = if state.streaming_text != "", do: state.streaming_text, else: text || ""
-        messages = state.messages ++ [{:assistant, final}]
-        %{state | messages: messages, streaming_text: "", status: :idle}
-
-      {:agent_event, {:error, reason}} ->
-        messages = state.messages ++ [{:error, "Error: #{reason}"}]
-        %{state | messages: messages, status: :idle, streaming_text: ""}
-
-      {:agent_event, _} ->
-        drain_events(state)
-    after
-      0 -> state
-    end
-  end
-
-  defp parse_command(text) do
-    case String.split(text, " ", parts: 2) do
-      ["/quit"] ->
-        {:command, :quit}
-
-      ["/clear"] ->
-        {:command, :clear}
-
-      ["/cost"] ->
-        {:command, :cost}
-
-      ["/help"] ->
-        {:command, :help}
-
-      ["/status"] ->
-        {:command, {:status, nil}}
-
-      ["/mode", mode] ->
-        case mode do
-          m when m in ["code", "research", "planned", "turn_by_turn"] ->
-            {:command, {:mode, String.to_atom(m)}}
-
-          _ ->
-            {:command, {:unknown, "/mode #{mode}"}}
+        if current == slot do
+          state
+        else
+          %{state | models: Map.put(state.models, tier, slot)}
         end
-
-      ["/workspace", "list"] ->
-        {:command, {:workspace, :list}}
-
-      ["/workspace", "switch", name] ->
-        {:command, {:workspace, {:switch, name}}}
-
-      ["/workspace", "new", name] ->
-        {:command, {:workspace, {:new, name}}}
-
-      ["/memory", "query", query] ->
-        {:command, {:memory, {:query, query}}}
-
-      ["/memory", "note" | note_parts] ->
-        {:command, {:memory, {:note, Enum.join(note_parts, " ")}}}
-
-      ["/memory", "recent"] ->
-        {:command, {:memory, :recent}}
-
-      ["/skill", "list"] ->
-        {:command, {:skill, :list}}
-
-      ["/skill", "read", name] ->
-        {:command, {:skill, {:read, name}}}
-
-      ["/skill", "remove", name] ->
-        {:command, {:skill, {:remove, name}}}
-
-      ["/skill", "history", name] ->
-        {:command, {:skill, {:history, name}}}
-
-      ["/skill", "rollback", name, version] ->
-        case Integer.parse(version) do
-          {v, ""} -> {:command, {:skill, {:rollback, name, v}}}
-          _ -> {:command, {:unknown, "/skill rollback #{name} #{version}"}}
-        end
-
-      ["/skill", "refine", name] ->
-        {:command, {:skill, {:refine, name}}}
-
-      ["/session", "list"] ->
-        {:command, {:session, :list}}
-
-      ["/session", "resume", session_id] ->
-        {:command, {:session, {:resume, session_id}}}
-
-      ["/mcp", "list"] ->
-        {:command, {:mcp, :list}}
-
-      ["/mcp", "connect", name] ->
-        {:command, {:mcp, {:connect, name}}}
-
-      ["/mcp", "disconnect", name] ->
-        {:command, {:mcp, {:disconnect, name}}}
-
-      ["/mcp", "tools", name] ->
-        {:command, {:mcp, {:tools, name}}}
-
-      ["/kit", "search", query] ->
-        {:command, {:kit, {:search, query}}}
-
-      ["/kit", "install", owner_slash_slug] ->
-        case String.split(owner_slash_slug, "/", parts: 2) do
-          [owner, slug] -> {:command, {:kit, {:install, owner, slug}}}
-          _ -> {:command, {:unknown, "/kit install #{owner_slash_slug}"}}
-        end
-
-      ["/kit", "list"] ->
-        {:command, {:kit, :list}}
-
-      ["/kit", "info", owner_slash_slug] ->
-        case String.split(owner_slash_slug, "/", parts: 2) do
-          [owner, slug] -> {:command, {:kit, {:info, owner, slug}}}
-          _ -> {:command, {:unknown, "/kit info #{owner_slash_slug}"}}
-        end
-
-      ["/skill" | _] ->
-        {:command, {:skill, :help}}
-
-      ["/" <> _ = cmd | _] ->
-        {:command, {:unknown, cmd}}
 
       _ ->
-        :message
+        state
     end
   end
 
-  defp help_text do
-    """
-    Commands:
-      /help                Show this help
-      /quit                Exit worth
-      /clear               Clear chat history
-      /cost                Show session cost and turn count
-      /status              Show current status
-      /mode <mode>         Switch mode: code | research | planned | turn_by_turn
-      /workspace list      List workspaces
-      /workspace new <n>   Create workspace
-      /workspace switch    Switch workspace
-      /memory query <q>    Search global memory
-      /memory note <t>     Add note to working memory
-      /memory recent       Show recent memories
-      /skill list          List skills
-      /skill read <name>   Read skill content
-      /skill remove <n>    Remove a skill
-      /skill history <n>   Show skill version history
-      /skill rollback <n> <v> Roll back skill to version
-      /skill refine <n>    Trigger skill refinement
-      /session list        List past sessions
-      /session resume <id> Resume a session
-      /mcp list            List connected MCP servers
-      /mcp connect <name>  Connect to an MCP server
-      /mcp disconnect <n>  Disconnect from a server
-      /mcp tools <name>    List tools from a server
-      /kit search <query>  Search JourneyKits
-      /kit install <o/s>   Install a kit
-      /kit list            List installed kits
-      /kit info <o/s>      Show kit details
-      Tab                  Toggle sidebar
-      Up/Down              Command history
-    """
+  defp route_to_slot(route) do
+    label = Map.get(route, :label) || Map.get(route, :model_id) || "?"
+    provider = Map.get(route, :provider_name, "?")
+    source = Map.get(route, :source, :unknown)
+    %{label: label, source: "#{source}/#{provider}"}
   end
 
-  defp send_message_to_brain(text) do
-    ui_pid = self()
+  defp safe_resolve(tier) do
+    AgentEx.ModelRouter.resolve(tier)
+  rescue
+    _ -> :error
+  catch
+    :exit, _ -> :error
+  end
 
-    Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-      case Worth.Brain.send_message(text) do
-        {:ok, response} ->
-          send(ui_pid, {:agent_event, {:done, response}})
-
-        {:error, reason} ->
-          send(ui_pid, {:agent_event, {:error, reason}})
-      end
-    end)
+  defp append_message(state, msg) do
+    %{state | messages: state.messages ++ [msg]}
   end
 end

@@ -68,7 +68,7 @@ defmodule Worth.Mcp.ToolIndex do
     :ets.tab2list(@table)
     |> Enum.filter(fn {_key, srv, _, _} -> srv == server end)
     |> Enum.filter(fn {key, _, _, _} -> not String.contains?(key, ":") end)
-    |> Enum.map(fn {key, _srv, _original, schema} ->
+    |> Enum.map(fn {_key, _srv, _original, schema} ->
       Map.put(schema, "server", server)
     end)
   end
