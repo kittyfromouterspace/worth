@@ -13,9 +13,9 @@ defmodule Worth.UI.Sidebar do
   @log_tail 50
 
   def render(state) do
-    header = box([text("[#{tab_dots(state.sidebar_tab)}]", Style.new(fg: :cyan))])
+    header = box([text("[#{tab_dots(state.sidebar_tab)}]", TermUI.Renderer.Style.new(fg: :cyan))])
 
-    content = box(tab_content(state), style: Style.new(bg: :black))
+    content = box(tab_content(state), style: TermUI.Renderer.Style.new(bg: :black))
 
     stack(:vertical, [header, content])
   end
@@ -30,48 +30,79 @@ defmodule Worth.UI.Sidebar do
   defp tab_content(%{sidebar_tab: :status} = state), do: status_tab(state)
   defp tab_content(%{sidebar_tab: :logs} = state), do: logs_tab(state)
 
-  defp workspace_tab(_state) do
+  def workspace_tab(_state) do
     ws_list = Worth.Workspace.Service.list()
     lines = if ws_list == [], do: ["(none)"], else: Enum.map(ws_list, &"  #{&1}")
-    [text("Workspace", Style.new(attrs: [:bold])) | Enum.map(lines, &text(&1))]
+    [text("Workspace", TermUI.Renderer.Style.new(attrs: [:bold])) | Enum.map(lines, &text(&1))]
   end
 
-  defp tools_tab(_state) do
+  def tools_tab(_state) do
     tools = ~w(read_file write_file edit_file bash list_files memory_query skill_list)
 
     [
-      text("Tools", Style.new(attrs: [:bold]))
-      | Enum.map(tools, &text("  #{&1}", Style.new(fg: :bright_black)))
+      text("Tools", TermUI.Renderer.Style.new(attrs: [:bold]))
+      | Enum.map(tools, &text("  #{&1}", TermUI.Renderer.Style.new(fg: :bright_black)))
     ]
   end
 
-  defp skills_tab(_state) do
+  def skills_tab(_state) do
     skills = Worth.Skill.Registry.all()
 
     if skills == [] do
-      [text("Skills", Style.new(attrs: [:bold])), text("  (none)", Style.new(fg: :bright_black))]
+      [text("Skills", TermUI.Renderer.Style.new(attrs: [:bold])), text("  (none)", TermUI.Renderer.Style.new(fg: :bright_black))]
     else
       lines = Enum.map(skills, fn s -> "  #{s.name} [#{s.trust_level}]" end)
-      [text("Skills", Style.new(attrs: [:bold])) | Enum.map(lines, &text(&1))]
+      [text("Skills", TermUI.Renderer.Style.new(attrs: [:bold])) | Enum.map(lines, &text(&1))]
     end
   end
 
-  defp status_tab(state) do
+  def status_tab(state) do
     primary = Map.get(state.models, :primary, %{})
     lightweight = Map.get(state.models, :lightweight, %{})
 
-    [
-      text("Status", Style.new(attrs: [:bold])),
+    catalog_info = AgentEx.LLM.Catalog.info()
+
+    model_lines = [
+      text("Status", TermUI.Renderer.Style.new(attrs: [:bold])),
       text("  Mode:  #{state.mode}"),
       text("  Cost:  $#{Float.round(state.cost, 4)}"),
       text("  Turns: #{state.turn}"),
-      text("  Models", Style.new(attrs: [:bold])),
-      text("    primary:     #{model_line(primary)}", Style.new(fg: :bright_black)),
-      text("      via #{source_line(primary)}", Style.new(fg: :bright_black)),
-      text("    lightweight: #{model_line(lightweight)}", Style.new(fg: :bright_black)),
-      text("      via #{source_line(lightweight)}", Style.new(fg: :bright_black))
+      text("  Models (#{catalog_info.model_count} in catalog)", TermUI.Renderer.Style.new(attrs: [:bold])),
+      text("    primary:     #{model_line(primary)}", TermUI.Renderer.Style.new(fg: :bright_black)),
+      text("      via #{source_line(primary)} #{model_meta(primary)}", TermUI.Renderer.Style.new(fg: :bright_black)),
+      text("    lightweight: #{model_line(lightweight)}", TermUI.Renderer.Style.new(fg: :bright_black)),
+      text("      via #{source_line(lightweight)} #{model_meta(lightweight)}", TermUI.Renderer.Style.new(fg: :bright_black))
     ]
+
+    provider_lines =
+      catalog_info.providers
+      |> Enum.map(fn {id, stat} ->
+        label = id |> Atom.to_string() |> String.capitalize()
+
+        detail =
+          case stat.status do
+            :ok -> "#{stat.count} models"
+            :static -> "#{stat.count} (static)"
+            :fallback -> "#{stat.count} (fallback)"
+            :no_creds -> "no key"
+          end
+
+        text("    #{label}: #{detail}", TermUI.Renderer.Style.new(fg: :bright_black))
+      end)
+
+    if provider_lines == [] do
+      model_lines
+    else
+      model_lines ++ [text("  Providers", TermUI.Renderer.Style.new(attrs: [:bold])) | provider_lines]
+    end
   end
+
+  defp model_meta(%{context_window: ctx}) when is_integer(ctx) and ctx > 0 do
+    ctx_k = div(ctx, 1000)
+    "(#{ctx_k}k ctx)"
+  end
+
+  defp model_meta(_), do: ""
 
   defp model_line(%{label: label}) when is_binary(label) and label != "", do: label
   defp model_line(_), do: "(detecting…)"
@@ -79,21 +110,21 @@ defmodule Worth.UI.Sidebar do
   defp source_line(%{source: source}) when is_binary(source) and source != "", do: source
   defp source_line(_), do: "no route yet"
 
-  defp logs_tab(_state) do
+  def logs_tab(_state) do
     entries = Worth.UI.LogBuffer.recent(@log_tail)
 
     body =
       if entries == [] do
-        [text("  (no log entries)", Style.new(fg: :bright_black))]
+        [text("  (no log entries)", TermUI.Renderer.Style.new(fg: :bright_black))]
       else
         Enum.map(entries, &log_line/1)
       end
 
-    [text("Logs", Style.new(attrs: [:bold])) | body]
+    [text("Logs", TermUI.Renderer.Style.new(attrs: [:bold])) | body]
   end
 
   defp log_line(%{level: level, text: line}) do
-    text("  [#{short_level(level)}] #{truncate(line)}", Style.new(fg: log_color(level)))
+    text("  [#{short_level(level)}] #{truncate(line)}", TermUI.Renderer.Style.new(fg: log_color(level)))
   end
 
   defp short_level(:emergency), do: "emrg"

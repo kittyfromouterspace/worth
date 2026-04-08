@@ -127,6 +127,9 @@ defmodule Worth.Brain do
       active_tools: []
     }
 
+    tiers = Worth.Workspace.Identity.tier_overrides(state.workspace_path)
+    AgentEx.ModelRouter.set_tier_overrides(tiers)
+
     {:ok, state}
   end
 
@@ -177,6 +180,10 @@ defmodule Worth.Brain do
 
     path = Worth.Workspace.Service.resolve_path(name)
     new_state = %{state | current_workspace: name, workspace_path: path, history: [], session_id: generate_session_id()}
+
+    tiers = Worth.Workspace.Identity.tier_overrides(path)
+    AgentEx.ModelRouter.set_tier_overrides(tiers)
+
     {:reply, :ok, new_state}
   end
 

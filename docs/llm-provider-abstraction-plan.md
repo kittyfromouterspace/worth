@@ -1,6 +1,6 @@
 # LLM Provider Abstraction — Implementation Plan
 
-> Status: **Phase 2 complete. Phase 3 next.** Decisions locked.
+> Status: **Phase 3 complete. Phase 4 next.** Decisions locked.
 > Phases are written so each one is independently shippable. The plan
 > still expects refinement during implementation but the architectural
 > choices are settled. See the **Implementation progress** section at
@@ -1213,6 +1213,74 @@ repos; `agent_ex` 352 tests / `worth` 117 tests, 0 failures.
    but is not yet wired into a scheduled refresh. Phase 3's Catalog
    GenServer will call `fetch_catalog/1` on boot and every 10 minutes.
 
-### Phase 3 — Catalog + capability tags + IDENTITY tiers ⏳
+### Phase 3 — Catalog + capability tags + IDENTITY tiers ✅ (2026-04-08)
 
-Pending Phase 2.
+**Status:** Shipped. `mix compile --warnings-as-errors` clean in both
+repos; `agent_ex` 363 tests / `worth` 123 tests, 0 failures.
+
+**Files created (agent_ex):**
+- `lib/agent_ex/llm/catalog.ex` — GenServer with `find/1`, `lookup/2`,
+  `for_provider/1`, `all/0`, `refresh/0`, `refresh_provider/1`, `info/0`
+- `test/agent_ex/llm/catalog_test.exs` — 11 tests
+
+**Files created (worth):**
+- `lib/worth/workspace/identity.ex` — Frontmatter parser with `llm:`
+  block schema validation via `nimble_options`
+- `test/worth/workspace/identity_test.exs` — 6 tests
+
+**Files modified (agent_ex):**
+- `lib/agent_ex/model_router.ex` — Rewritten to query `Catalog.find/1`
+  instead of `Free.free_routes/1`. Added `set_tier_overrides/1`,
+  `clear_tier_overrides/0`. Cooldown table preserved as ETS-backed
+  per-model-id health tracking.
+- `lib/agent_ex/application.ex` — Added `Catalog` to supervision tree
+  (before ModelRouter)
+- `config/config.exs` — Added `catalog:` config block with persist path
+- `lib/agent_ex.ex` — Added `:tier_overrides` option support alongside
+  legacy `:model_routes`
+
+**Files modified (worth):**
+- `lib/worth/brain.ex` — `init/1` and `switch_workspace` handler now
+  load tier overrides from IDENTITY.md frontmatter and pass them to
+  `AgentEx.ModelRouter.set_tier_overrides/1`
+- `lib/worth/ui/sidebar.ex` — Status tab now shows catalog model count,
+  provider fetch statuses, and context window metadata. Tab functions
+  changed from `defp` to `def` for root.ex access.
+- `lib/worth/ui/commands.ex` — Added `/catalog refresh` slash command
+- `lib/worth/ui/root.ex` — Fixed pre-existing warnings (unused vars,
+  missing Style alias)
+
+**Key design decisions:**
+
+1. **Catalog is schema-versioned at v1.** Persisted to `~/.worth/catalog.json`.
+   On version mismatch, the cache is dropped and a network refresh is forced.
+2. **Boot sequence:** Catalog loads from disk immediately (warm path),
+   then fires async network refresh ~100ms later. The sidebar paints
+   instantly from cached data.
+3. **ModelRouter now queries Catalog for everything.** The old
+   `ModelRouter.Free` module is still in the supervision tree (for
+   backward compat during tests) but `resolve_all/1` no longer calls it.
+   It can be deleted in a follow-up cleanup.
+4. **Workspace tier overrides work via IDENTITY.md frontmatter.** The
+   `llm.tiers.primary: "provider/model-id"` syntax is parsed on workspace
+   switch and overrides the catalog's default tier resolution.
+5. **`Catalog.find/1` supports compound capability filters:**
+   `Catalog.find(has: [:chat, :tools, :free])` returns free models with
+   tool support from any provider.
+
+**Judgment calls Phase 4+ needs to know about:**
+
+1. **`ModelRouter.Free` is still supervised but unused.** Tests that
+   depend on it (the `Free` route discovery tests) still pass because
+   the GenServer starts and refreshes independently. It can be safely
+   removed in a cleanup commit.
+2. **Catalog persistence happens on every refresh**, not just on clean
+   shutdown. If the process crashes mid-write, the JSON may be corrupt.
+   A follow-up should write to a temp file and rename atomically.
+3. **The `project_result/1` projection layer still exists in `Worth.LLM`.**
+   It should be retired once ModeRouter is updated to read `%Response{}`
+   structs directly (deferring to a future cleanup).
+
+### Phase 4 — Embeddings + reembed migration ⏳
+
+Pending Phase 3.

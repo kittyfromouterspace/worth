@@ -21,6 +21,7 @@ defmodule Worth.UI.Root do
 
   import TermUI.Component.Helpers
   alias TermUI.Event
+  alias TermUI.Widgets.Tabs
   alias Worth.UI.{Chat, Commands, Events, Header, Input, Sidebar}
 
   @poll_interval 50
@@ -50,8 +51,14 @@ defmodule Worth.UI.Root do
       cursor_pos: 0,
       input_history: [],
       history_index: -1,
-      sidebar_visible: true,
-      sidebar_tab: :status,
+      tabs: %{
+        workspace: %{label: "Workspace", content: Sidebar.workspace_tab(%{})},
+        tools: %{label: "Tools", content: Sidebar.tools_tab(%{})},
+        skills: %{label: "Skills", content: Sidebar.skills_tab(%{})},
+        status: %{label: "Status", content: Sidebar.status_tab(%{})},
+        logs: %{label: "Logs", content: Sidebar.logs_tab(%{})}
+      },
+      selected_tab: :status,
       width: width,
       height: height
     }
@@ -72,16 +79,12 @@ defmodule Worth.UI.Root do
   @impl true
   def event_to_msg(%Event.Key{key: :enter}, _state), do: {:msg, :submit_input}
   def event_to_msg(%Event.Key{key: :backspace}, _state), do: {:msg, :backspace}
-  def event_to_msg(%Event.Key{key: :left}, _state), do: {:msg, :cursor_left}
-  def event_to_msg(%Event.Key{key: :right}, _state), do: {:msg, :cursor_right}
+  def event_to_msg(%Event.Key{key: :left}, _state), do: {:msg, {:tabs_event, %Event.Key{key: :left}}}
+  def event_to_msg(%Event.Key{key: :right}, _state), do: {:msg, {:tabs_event, %Event.Key{key: :right}}}
   def event_to_msg(%Event.Key{key: :up}, _state), do: {:msg, :history_prev}
   def event_to_msg(%Event.Key{key: :down}, _state), do: {:msg, :history_next}
-  def event_to_msg(%Event.Key{key: :tab}, _state), do: {:msg, :toggle_sidebar}
-  def event_to_msg(%Event.Key{char: "1"}, _state), do: {:msg, {:sidebar_tab, :workspace}}
-  def event_to_msg(%Event.Key{char: "2"}, _state), do: {:msg, {:sidebar_tab, :tools}}
-  def event_to_msg(%Event.Key{char: "3"}, _state), do: {:msg, {:sidebar_tab, :skills}}
-  def event_to_msg(%Event.Key{char: "4"}, _state), do: {:msg, {:sidebar_tab, :status}}
-  def event_to_msg(%Event.Key{char: "5"}, _state), do: {:msg, {:sidebar_tab, :logs}}
+  def event_to_msg(%Event.Key{key: :home}, _state), do: {:msg, {:tabs_event, %Event.Key{key: :home}}}
+  def event_to_msg(%Event.Key{key: :end}, _state), do: {:msg, {:tabs_event, %Event.Key{key: :end}}}
 
   def event_to_msg(%Event.Key{char: char}, _state) when is_binary(char),
     do: {:msg, {:type_char, char}}
@@ -118,6 +121,32 @@ defmodule Worth.UI.Root do
     else
       {state, []}
     end
+  end
+
+  def update({:tabs_event, %Event.Key{key: :left}}, state) do
+    {:ok, new_tabs} = Tabs.handle_event(%Event.Key{key: :left}, state.tabs)
+    %{state | tabs: new_tabs}
+  end
+
+  def update({:tabs_event, %Event.Key{key: :right}}, state) do
+    {:ok, new_tabs} = Tabs.handle_event(%Event.Key{key: :right}, state.tabs)
+    %{state | tabs: new_tabs}
+  end
+
+  def update({:tabs_event, %Event.Key{key: :home}}, state) do
+    {:ok, new_tabs} = Tabs.handle_event(%Event.Key{key: :home}, state.tabs)
+    %{state | tabs: new_tabs}
+  end
+
+  def update({:tabs_event, %Event.Key{key: :end}}, state) do
+    {:ok, new_tabs} = Tabs.handle_event(%Event.Key{key: :end}, state.tabs)
+    %{state | tabs: new_tabs}
+  end
+
+  def update({:tabs_event, %Event.Key{key: :enter}}, state) do
+    {:ok, new_tabs} = Tabs.handle_event(%Event.Key{key: :enter}, state.tabs)
+    selected_tab = Tabs.get_selected(new_tabs)
+    %{state | tabs: new_tabs, selected_tab: selected_tab}
   end
 
   def update(:cursor_left, state),
@@ -207,7 +236,13 @@ defmodule Worth.UI.Root do
 
         stack(:horizontal, [
           box([chat], width: chat_w),
-          box([Sidebar.render(state)], width: sidebar_w)
+          box(
+            [
+              text("[#{state.selected_tab}]", TermUI.Renderer.Style.new(fg: :cyan)),
+              Tabs.render(state.tabs, %{width: sidebar_w, height: state.height - 3})
+            ],
+            width: sidebar_w
+          )
         ])
       else
         chat

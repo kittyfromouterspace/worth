@@ -50,6 +50,7 @@ defmodule Worth.UI.Commands do
       ["/provider", "list"] -> {:command, {:provider, :list}}
       ["/provider", "enable", id] -> {:command, {:provider, {:enable, String.to_atom(id)}}}
       ["/provider", "disable", id] -> {:command, {:provider, {:disable, String.to_atom(id)}}}
+      ["/catalog", "refresh"] -> {:command, {:catalog, :refresh}}
       ["/skill" | _] -> {:command, {:skill, :help}}
       ["/" <> _ = cmd | _] -> {:command, {:unknown, cmd}}
       _ -> :message
@@ -377,6 +378,12 @@ defmodule Worth.UI.Commands do
     end
   end
 
+  def handle({:command, {:catalog, :refresh}}, _text, state) do
+    AgentEx.LLM.Catalog.refresh()
+    info = AgentEx.LLM.Catalog.info()
+    {append_system(state, "Catalog refresh triggered. #{info.model_count} models loaded."), []}
+  end
+
   def handle({:command, {:skill, :help}}, _text, state) do
     msg =
       "Skill commands:\n  /skill list\n  /skill read <name>\n  /skill remove <name>\n  /skill history <name>\n  /skill rollback <name> <version>\n  /skill refine <name>"
@@ -458,6 +465,7 @@ defmodule Worth.UI.Commands do
       /provider list       List registered providers
       /provider enable <id> Enable a provider
       /provider disable <id> Disable a provider
+      /catalog refresh     Refresh model catalog from providers
       Tab                  Toggle sidebar
       Up/Down              Command history
     """
