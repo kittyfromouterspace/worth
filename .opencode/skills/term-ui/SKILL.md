@@ -44,22 +44,43 @@ State should contain only what's needed for rendering and event handling.
 
 ### 2. `event_to_msg/2` - Convert Events to Messages
 
-Transform terminal events into application-specific messages:
+**IMPORTANT**: Always use `@impl true` annotation for TermUI callbacks.
 
 ```elixir
-def event_to_msg(%Event.Key{key: :enter}, state) do
+@impl true
+def event_to_msg(%Event.Key{key: :enter}, _state) do
   {:msg, {:submit, state.input}}
 end
 
+@impl true
 def event_to_msg(%Event.Key{key: :escape}, _state) do
   {:msg, :cancel}
 end
 
-def event_to_msg(%Event.Mouse{action: :click, x: x, y: y}, _state) do
-  {:msg, {:clicked, x, y}}
+@impl true
+def event_to_msg(_event, _state), do: :ignore
+```
+
+#### Understanding Event.Key
+
+The `Event.Key` struct has two mutually exclusive fields:
+- `key` - atom (`:enter`, `:left`, `:backspace`, etc.)
+- `char` - string (`"a"`, `"1"`, etc.)
+
+When `char` is present, `key` is `nil`, and vice versa.
+
+```elixir
+# Match on character keys using ~w() for strings
+@impl true
+def event_to_msg(%Event.Key{char: char}, _state) when char in ~w(1 2 3 4 5) do
+  {:msg, {:select_tab, String.to_integer(char)}}
 end
 
-def event_to_msg(_event, _state), do: :ignore
+# Match on key atoms
+@impl true
+def event_to_msg(%Event.Key{key: k}, _state) when k in ~w(left right up down) do
+  {:msg, {:navigate, k}}
+end
 ```
 
 Return values:
@@ -74,19 +95,23 @@ Return values:
 Process messages and return new state with optional commands:
 
 ```elixir
+@impl true
 def update(:increment, state) do
   {%{state | count: state.count + 1}, []}
 end
 
+@impl true
 def update({:set_name, name}, state) do
   {%{state | name: name}, []}
 end
 
 # Commands for side effects (async operations)
+@impl true
 def update(:load_data, state) do
   {state, [Command.timer(0, :do_load_data)]}
 end
 
+@impl true
 def update(:do_load_data, state) do
   case fetch_data() do
     {:ok, data} -> 
@@ -104,6 +129,7 @@ Return format: `{new_state, commands}`
 Pure function that transforms state into render tree:
 
 ```elixir
+@impl true
 def view(state) do
   stack(:vertical, [
     header(state),
@@ -127,15 +153,32 @@ stack(:vertical, [widget1, widget2, widget3])
 
 # Horizontal stack  
 stack(:horizontal, [sidebar, main_panel])
+```
 
-# Grid layout
-grid([ 
-  [header, header],
-  [sidebar, main]
-], 
-  [Constraint::Percentage(20), Constraint::Percentage(80)],
-  [Constraint::Percentage(30), Constraint::Percentage(70)]
-)
+### Rendering Helpers
+
+Import helpers in your module:
+
+```elixir
+import TermUI.Component.Helpers
+alias TermUI.Renderer.Style
+
+# Create render nodes
+text("Hello", Style.new(fg: :cyan))
+box([content], width: 80, style: Style.new(bg: :black))
+stack(:vertical, [a, b, c])
+```
+
+**IMPORTANT**: Use keyword lists for optional arguments, not maps:
+
+```elixir
+# Correct
+box([content], width: 80, style: Style.new(bg: :black))
+Sidebar.render(state, sidebar_width: 30)
+
+# Incorrect - will cause BadMapError
+box([content], %{width: 80})
+Sidebar.render(state, %{width: 30})
 ```
 
 ### Component-Based Design
@@ -143,19 +186,25 @@ grid([
 Break UI into independent, reusable components:
 
 ```elixir
-defmodule MyApp.DataTable do
+defmodule MyApp.Sidebar do
   use TermUI.Elm
   
-  # Each component manages its own state
-  def init(opts) do
-    %{data: opts.data, selected: nil, sort: :asc}
+  import TermUI.Component.Helpers
+  
+  @tabs [:workspace, :tools, :skills, :status]
+  
+  def render(state, opts \\ []) do
+    width = Keyword.get(opts, :sidebar_width, 30)
+    active = Map.get(state, :selected_tab, :status)
+    
+    header = box([text("[#{tab_indicator(active)}]")], width: width)
+    content = box(tab_content(state, active), width: width)
+    
+    stack(:vertical, [header, content])
   end
   
-  # Components communicate via messages
-  def event_to_msg(%Event.Key{key: "s"}, _state), do: {:msg, :toggle_sort}
-  def update(:toggle_sort, state) do
-    sort = if state.sort == :asc, do: :desc, else: :asc
-    %{state | sort: sort}
+  defp tab_indicator(active) do
+    Enum.map_join(@tabs, "", fn t -> if t == active, do: "●", else: "○" end)
   end
 end
 ```
@@ -173,35 +222,83 @@ end
 #### Non-blocking Event Processing
 ```elixir
 # Separate input handling from state updates
+@impl true
 def event_to_msg(%Event.Key{key: "q"}, _state), do: {:msg, :quit_request}
+
+@impl true
 def update(:quit_request, state) do
   {state, [:quit]}  # Command to actually quit
 end
+```
+
+#### Building Custom Tab Navigation
+
+Instead of using TermUI's Tabs widget directly (which requires complex integration), build your own:
+
+```elixir
+# In your component
+def init(opts) do
+  %{
+    selected_tab: :status,
+    tabs: [:workspace, :tools, :skills, :status, :logs]
+  }
+end
+
+# Handle number keys for direct tab access
+@impl true
+def event_to_msg(%Event.Key{char: char}, _state) when char in ~w(1 2 3 4 5) do
+  tab = Enum.at([:workspace, :tools, :skills, :status, :logs], String.to_integer(char) - 1)
+  {:msg, {:sidebar_tab, tab}}
+end
+
+# Handle arrow keys for tab navigation
+@impl true
+def event_to_msg(%Event.Key{key: :left}, _state), do: {:msg, {:tabs_event, :left}}
+@impl true
+def event_to_msg(%Event.Key{key: :right}, _state), do: {:msg, {:tabs_event, :right}}
+
+@impl true
+def update({:tabs_event, %Event.Key{key: :left}}, state) do
+  tabs = state.tabs
+  idx = Enum.find_index(tabs, &(&1 == state.selected_tab))
+  new_idx = if idx > 0, do: idx - 1, else: length(tabs) - 1
+  %{state | selected_tab: Enum.at(tabs, new_idx)}
+end
+
+@impl true
+def update({:tabs_event, %Event.Key{key: :right}}, state) do
+  tabs = state.tabs
+  idx = Enum.find_index(tabs, &(&1 == state.selected_tab))
+  new_idx = rem(idx + 1, length(tabs))
+  %{state | selected_tab: Enum.at(tabs, new_idx)}
+end
+
+@impl true
+def update({:sidebar_tab, tab}, state), do: { %{state | selected_tab: tab}, [] }
 ```
 
 #### Keyboard Navigation Standards
 - `q` / `Esc`: Quit or cancel
 - `Enter`: Confirm/Select
 - `Space`: Toggle/select
-- `Tab` / `Shift+Tab`: Navigate between fields
 - Arrow keys: Navigate within lists/grids
-- `g`: Go to top
-- `G`: Go to bottom
-- `/`: Start search/filter
-- `n` / `N`: Next/previous search match
+- `1-5`: Direct navigation (when building custom tabs)
+- `Home` / `End`: Jump to first/last
 
 #### Modal Dialogs
 ```elixir
+@impl true
 def update(:request_delete, state) do
   {%{state | show_confirm_delete: true}, []}
 end
 
+@impl true
 def update(:confirm_delete, state) do
-  # Perform deletion
   {%{state | items: List.delete(state.items, state.item_to_delete), 
            show_confirm_delete: false}, []}
 end
 
+@impl true
 def update(:cancel_delete, state) do
   %{state | show_confirm_delete: false}
 end
@@ -219,6 +316,8 @@ TermUI provides a rich widget library:
 - **Feedback**: Dialog, AlertDialog, Toast, LogViewer
 - **BEAM Integration**: ProcessMonitor, SupervisionTreeViewer, ClusterDashboard
 - **Custom**: Canvas for direct drawing
+
+**Note on Tabs Widget**: The built-in Tabs widget has a specific API requiring `id`, `label`, and `content` fields for each tab. Integration can be complex. For simpler use cases, building custom tab state as shown above is often easier.
 
 ### Styling and Theming
 
@@ -248,24 +347,39 @@ Handle async operations without blocking the UI:
 
 ```elixir
 # Timer-based updates
+@impl true
 def update(:start_clock, state) do
   {state, [Command.timer(1000, :tick)]}
 end
 
+@impl true
 def update(:tick, state) do
   {%{state | time: DateTime.utc_now()}, []}
 end
 
 # Async task execution
+@impl true
 def update(:fetch_user_data, state) do
   {state, [Command.async(fn -> 
     HTTPoison.get!("https://api.example.com/user")
   end)]}
 end
 
+@impl true
 def update({:http_response, %{status_code: 200, body: body}}, state) do
   {:ok, data} = Jason.decode(body)
   {%{state | user_data: data, loading: false}, []}
+end
+```
+
+### Focus System
+
+TermUI dispatches keyboard events to the focused component. By default, events go to `:root`.
+
+```elixir
+# Events route to focused_component (default :root)
+defp dispatch_event(%Event.Key{} = event, state) do
+  dispatch_to_component(state.focused_component, event, state)
 end
 ```
 
@@ -291,10 +405,13 @@ export TERM_UI_IEX_MODE=true
 
 ### Unit Tests
 
+**IMPORTANT**: RenderNode is a struct, not a tuple. Access content via struct fields:
+
 ```elixir
 defmodule MyApp.CounterTest do
   use ExUnit.Case
   alias TermUI.Event
+  alias TermUI.Component.RenderNode
   alias MyApp.Counter
 
   test "init sets initial state" do
@@ -311,6 +428,14 @@ defmodule MyApp.CounterTest do
   test "up arrow sends increment message" do
     event = %Event.Key{key: :up}
     assert {:msg, :increment} = Counter.event_to_msg(event, %{})
+  end
+
+  # Testing view functions
+  test "render returns text node with correct content" do
+    state = %{text: "Hello"}
+    [result] = MyApp.View.render(state)
+    # Access content as struct field, NOT with elem/1
+    assert result.content == "Hello"
   end
 end
 ```
@@ -332,10 +457,12 @@ end
 ```elixir
 def init(_opts), do: %{status: :loading, data: nil}
 
+@impl true
 def update(:load, state) do
   {%{state | status: :loading}, [Command.timer(0, :do_load)]}
 end
 
+@impl true
 def update(:do_load, state) do
   case fetch_data() do
     {:ok, data} -> 
@@ -345,6 +472,7 @@ def update(:do_load, state) do
   end
 end
 
+@impl true
 def view(state) do
   cond do
     state.status == :loading -> spinner()
@@ -356,33 +484,31 @@ end
 
 ### Form Validation
 ```elixir
+@impl true
 def update({:field_changed, :email, value}, state) do
   is_valid = String.match?(value, ~r/^[^@\s]+@[^@\s]+\.[^@\s]+$/)
   error = if is_valid, do: nil, else: "Invalid email format"
   %{state | email: value, email_error: error}
 end
-
-def view(state) do
-  inputs = [
-    text_input(:email, state.email, 
-      error: state.email_error,
-      validator: &validate_email/1
-    )
-  ]
-  form(inputs)
-end
 ```
 
-### Infinite Lists with Virtual Scrolling
+### Handling Periodic Updates
+
+Use `Process.send_after` for polling (simpler than Commands for basic polling):
+
 ```elixir
-def update({:scrolled, offset}, state) do
-  visible_start = offset
-  visible_end = offset + state.viewport_size
-  visible_items = Enum.slice(state.all_items, visible_start, visible_end)
-  %{state | 
-    scroll_offset: offset,
-    visible_items: visible_items
-  }
+@poll_interval 50
+
+def init(opts) do
+  Process.send_after(self(), :check_events, @poll_interval)
+  %{messages: [], status: :idle}
+end
+
+@impl true
+def update(:check_events, state) do
+  state = drain_messages(state)
+  Process.send_after(self(), :check_events, @poll_interval)
+  {state, []}
 end
 ```
 
@@ -418,11 +544,22 @@ end
 # Standard execution
 mix run --no-halt
 
+# With workspace and mode
+mix run --no-halt -- -w my_workspace -m code
+
 # Direct execution
 elixir -S mix run lib/my_app.ex
 
 # In IEx (for development)
 iex> TermUI.Runtime.run(root: MyApp.Application)
 ```
+
+## Common Pitfalls
+
+1. **Missing `@impl true`**: Always annotate callbacks
+2. **Using maps instead of keyword lists**: For `box/2`, `stack/2`, etc.
+3. **Using `elem/1` on RenderNode**: Access `render_node.content` instead
+4. **Matching both key and char**: They're mutually exclusive in Event.Key
+5. **Forgetting state fields**: Always initialize all required fields in `init/1`
 
 This unified skill provides comprehensive guidance for building terminal applications with TermUI, combining framework-specific patterns with general TUI best practices for creating robust, maintainable, and feature-rich terminal user interfaces.

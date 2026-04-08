@@ -21,7 +21,6 @@ defmodule Worth.UI.Root do
 
   import TermUI.Component.Helpers
   alias TermUI.Event
-  alias TermUI.Widgets.Tabs
   alias Worth.UI.{Chat, Commands, Events, Header, Input, Sidebar}
 
   @poll_interval 50
@@ -51,13 +50,7 @@ defmodule Worth.UI.Root do
       cursor_pos: 0,
       input_history: [],
       history_index: -1,
-      tabs: %{
-        workspace: %{label: "Workspace", content: Sidebar.workspace_tab(%{})},
-        tools: %{label: "Tools", content: Sidebar.tools_tab(%{})},
-        skills: %{label: "Skills", content: Sidebar.skills_tab(%{})},
-        status: %{label: "Status", content: Sidebar.status_tab(%{})},
-        logs: %{label: "Logs", content: Sidebar.logs_tab(%{})}
-      },
+      sidebar_visible: true,
       selected_tab: :status,
       width: width,
       height: height
@@ -77,20 +70,33 @@ defmodule Worth.UI.Root do
   # ----- event_to_msg -----
 
   @impl true
-  def event_to_msg(%Event.Key{key: :enter}, _state), do: {:msg, :submit_input}
-  def event_to_msg(%Event.Key{key: :backspace}, _state), do: {:msg, :backspace}
-  def event_to_msg(%Event.Key{key: :left}, _state), do: {:msg, {:tabs_event, %Event.Key{key: :left}}}
-  def event_to_msg(%Event.Key{key: :right}, _state), do: {:msg, {:tabs_event, %Event.Key{key: :right}}}
-  def event_to_msg(%Event.Key{key: :up}, _state), do: {:msg, :history_prev}
-  def event_to_msg(%Event.Key{key: :down}, _state), do: {:msg, :history_next}
-  def event_to_msg(%Event.Key{key: :home}, _state), do: {:msg, {:tabs_event, %Event.Key{key: :home}}}
-  def event_to_msg(%Event.Key{key: :end}, _state), do: {:msg, {:tabs_event, %Event.Key{key: :end}}}
+  def event_to_msg(%Event.Key{key: k} = e, _state) when k in ~w(left right home end enter backspace up down) do
+    {:msg, {:tabs_event, e}}
+  end
 
+  @impl true
+  def event_to_msg(%Event.Key{char: char}, _state) when char in ~w(1 2 3 4 5) do
+    tab =
+      case char do
+        "1" -> :workspace
+        "2" -> :tools
+        "3" -> :skills
+        "4" -> :status
+        "5" -> :logs
+      end
+
+    {:msg, {:sidebar_tab, tab}}
+  end
+
+  @impl true
   def event_to_msg(%Event.Key{char: char}, _state) when is_binary(char),
     do: {:msg, {:type_char, char}}
 
+  @impl true
   def event_to_msg(%Event.Key{key: key}, _state) when is_atom(key), do: :ignore
+  @impl true
   def event_to_msg(%Event.Resize{width: w, height: h}, _state), do: {:msg, {:resize, w, h}}
+  @impl true
   def event_to_msg(_, _), do: :ignore
 
   # ----- update -----
@@ -124,29 +130,29 @@ defmodule Worth.UI.Root do
   end
 
   def update({:tabs_event, %Event.Key{key: :left}}, state) do
-    {:ok, new_tabs} = Tabs.handle_event(%Event.Key{key: :left}, state.tabs)
-    %{state | tabs: new_tabs}
+    tabs = [:workspace, :tools, :skills, :status, :logs]
+    current_idx = Enum.find_index(tabs, &(&1 == state.selected_tab))
+    new_idx = if current_idx > 0, do: current_idx - 1, else: length(tabs) - 1
+    %{state | selected_tab: Enum.at(tabs, new_idx)}
   end
 
   def update({:tabs_event, %Event.Key{key: :right}}, state) do
-    {:ok, new_tabs} = Tabs.handle_event(%Event.Key{key: :right}, state.tabs)
-    %{state | tabs: new_tabs}
+    tabs = [:workspace, :tools, :skills, :status, :logs]
+    current_idx = Enum.find_index(tabs, &(&1 == state.selected_tab))
+    new_idx = rem(current_idx + 1, length(tabs))
+    %{state | selected_tab: Enum.at(tabs, new_idx)}
   end
 
   def update({:tabs_event, %Event.Key{key: :home}}, state) do
-    {:ok, new_tabs} = Tabs.handle_event(%Event.Key{key: :home}, state.tabs)
-    %{state | tabs: new_tabs}
+    %{state | selected_tab: :workspace}
   end
 
   def update({:tabs_event, %Event.Key{key: :end}}, state) do
-    {:ok, new_tabs} = Tabs.handle_event(%Event.Key{key: :end}, state.tabs)
-    %{state | tabs: new_tabs}
+    %{state | selected_tab: :logs}
   end
 
   def update({:tabs_event, %Event.Key{key: :enter}}, state) do
-    {:ok, new_tabs} = Tabs.handle_event(%Event.Key{key: :enter}, state.tabs)
-    selected_tab = Tabs.get_selected(new_tabs)
-    %{state | tabs: new_tabs, selected_tab: selected_tab}
+    {state, []}
   end
 
   def update(:cursor_left, state),
@@ -180,7 +186,7 @@ defmodule Worth.UI.Root do
     do: {%{state | sidebar_visible: not state.sidebar_visible}, []}
 
   def update({:sidebar_tab, tab}, state),
-    do: {%{state | sidebar_tab: tab, sidebar_visible: true}, []}
+    do: {%{state | selected_tab: tab}, []}
 
   def update({:type_char, char}, state) do
     {before, after_c} = String.split_at(state.input_text, state.cursor_pos)
@@ -236,13 +242,7 @@ defmodule Worth.UI.Root do
 
         stack(:horizontal, [
           box([chat], width: chat_w),
-          box(
-            [
-              text("[#{state.selected_tab}]", TermUI.Renderer.Style.new(fg: :cyan)),
-              Tabs.render(state.tabs, %{width: sidebar_w, height: state.height - 3})
-            ],
-            width: sidebar_w
-          )
+          Sidebar.render(state, sidebar_width: sidebar_w)
         ])
       else
         chat
