@@ -1,5 +1,6 @@
 defmodule Worth.Brain do
   use GenServer
+  require Logger
 
   defstruct [
     :ui_pid,
@@ -12,7 +13,6 @@ defmodule Worth.Brain do
     :mode,
     :profile,
     :tool_permissions,
-    :pending_approval,
     :active_tools
   ]
 
@@ -51,14 +51,6 @@ defmodule Worth.Brain do
     GenServer.call(__MODULE__, :get_status)
   end
 
-  def approve_tool(tool_call_id) do
-    GenServer.call(__MODULE__, {:approve_tool, tool_call_id})
-  end
-
-  def deny_tool(tool_call_id) do
-    GenServer.call(__MODULE__, {:deny_tool, tool_call_id})
-  end
-
   def switch_mode(mode) do
     GenServer.call(__MODULE__, {:switch_mode, mode})
   end
@@ -85,6 +77,10 @@ defmodule Worth.Brain do
 
   def skill_refine(name) do
     GenServer.call(__MODULE__, {:skill_refine, name})
+  end
+
+  def skill_promote(name) do
+    GenServer.call(__MODULE__, {:skill_promote, name})
   end
 
   def mcp_connect(name, config) do
@@ -121,10 +117,7 @@ defmodule Worth.Brain do
       current_workspace: workspace,
       workspace_path:
         Keyword.get(opts, :workspace_path) ||
-          Path.expand(
-            "workspaces/#{workspace}",
-            Worth.Config.Store.home_directory()
-          ),
+          Worth.Workspace.Service.resolve_path(workspace),
       session_id: generate_session_id(),
       history: [],
       config: Worth.Config.get_all(),
@@ -132,7 +125,6 @@ defmodule Worth.Brain do
       mode: mode,
       profile: mode_to_profile(mode),
       tool_permissions: @default_tool_permissions,
-      pending_approval: nil,
       active_tools: []
     }
 
@@ -168,14 +160,6 @@ defmodule Worth.Brain do
     end)
 
     {:noreply, %{state | status: :running}}
-  end
-
-  def handle_call({:approve_tool, _tool_call_id}, _from, state) do
-    {:reply, :ok, state}
-  end
-
-  def handle_call({:deny_tool, _tool_call_id}, _from, state) do
-    {:reply, :denied, state}
   end
 
   def handle_call({:switch_mode, mode}, _from, state) do
@@ -246,6 +230,21 @@ defmodule Worth.Brain do
     {:reply, result, state}
   end
 
+  def handle_call({:skill_promote, name}, _from, state) do
+    result = Worth.Skill.Lifecycle.promote(name)
+
+    case result do
+      {:ok, :needs_user_approval, target} ->
+        case Worth.Skill.Lifecycle.execute_promotion(name, target) do
+          {:ok, _} = success -> {:reply, success, state}
+          error -> {:reply, error, state}
+        end
+
+      error ->
+        {:reply, error, state}
+    end
+  end
+
   @impl true
   def handle_info({:agent_event, event}, state) do
     if state.ui_pid do
@@ -264,11 +263,9 @@ defmodule Worth.Brain do
         {:tool_call, %{name: name}} ->
           %{state | active_tools: state.active_tools ++ [name]}
 
-        {:tool_result, %{name: name, success: false}} ->
-          if String.starts_with?(name, "skill_") do
-            maybe_trigger_refinement(name, state)
-          end
-
+        {:tool_trace, name, _input, _output, true = _is_error, _ws}
+        when is_binary(name) ->
+          maybe_trigger_refinement(name, state)
           state
 
         _ ->
@@ -282,13 +279,16 @@ defmodule Worth.Brain do
     callbacks = build_callbacks(state)
 
     workspace_path =
-      state.workspace_path ||
-        Path.expand(
-          "workspaces/#{state.current_workspace}",
-          Worth.Config.Store.home_directory()
-        )
+      state.workspace_path || Worth.Workspace.Service.resolve_path(state.current_workspace)
 
     try do
+      # Persist user message to transcript
+      Worth.Persistence.Transcript.append(
+        state.session_id,
+        %{role: "user", text: text},
+        workspace_path
+      )
+
       context_opts = [workspace: state.current_workspace, user_message: text]
 
       system_prompt =
@@ -317,6 +317,7 @@ defmodule Worth.Brain do
       ]
 
       run_opts = if system_prompt, do: Keyword.put(run_opts, :system_prompt, system_prompt), else: run_opts
+      run_opts = apply_model_routing(run_opts)
 
       result = AgentEx.run(run_opts)
 
@@ -367,7 +368,7 @@ defmodule Worth.Brain do
         Worth.Memory.Manager.search(query, merged_opts)
       end,
       knowledge_create: fn params ->
-        content = params[:content] || params[:content]
+        content = params[:content]
 
         create_opts =
           Keyword.merge(memory_opts,
@@ -426,76 +427,33 @@ defmodule Worth.Brain do
         :ok
       end,
       search_tools: fn query, _opts ->
-        memory = Worth.Tools.Memory.definitions()
-        skills = Worth.Tools.Skills.definitions()
-        mcp = Worth.Tools.Mcp.definitions()
-        kits = Worth.Tools.Kits.definitions()
-
-        (memory ++ skills ++ mcp ++ kits)
+        Worth.Tools.Router.all_definitions()
         |> Enum.filter(fn d ->
-          String.contains?(d.name, query) or
-            String.contains?(String.downcase(d.description), String.downcase(query))
+          name = d[:name] || d["name"] || ""
+          desc = d[:description] || d["description"] || ""
+          String.contains?(name, query) or String.contains?(String.downcase(desc), String.downcase(query))
         end)
-        |> Enum.map(& &1.name)
+        |> Enum.map(fn d -> d[:name] || d["name"] end)
       end,
       execute_external_tool: fn name, args, _ctx ->
-        cond do
-          String.starts_with?(name, "memory_") ->
-            case Worth.Tools.Memory.execute(name, args, workspace) do
-              {:ok, result} -> {:ok, result}
-              {:error, reason} -> {:error, reason}
-            end
-
-          String.starts_with?(name, "skill_") ->
-            case Worth.Tools.Skills.execute(name, args, workspace) do
-              {:ok, result} -> {:ok, result}
-              {:error, reason} -> {:error, reason}
-            end
-
-          String.starts_with?(name, "mcp_") ->
-            case Worth.Tools.Mcp.execute(name, args, workspace) do
-              {:ok, result} -> {:ok, result}
-              {:error, reason} -> {:error, reason}
-            end
-
-          String.starts_with?(name, "kit_") ->
-            case Worth.Tools.Kits.execute(name, args, workspace) do
-              {:ok, result} -> {:ok, result}
-              {:error, reason} -> {:error, reason}
-            end
-
-          String.contains?(name, ":") ->
-            case Worth.Mcp.Gateway.execute(name, args) do
-              {:ok, result} -> {:ok, result}
-              {:error, reason} -> {:error, reason}
-            end
-
-          true ->
-            {:error, "External tool '#{name}' not configured"}
-        end
+        result = Worth.Tools.Router.execute(name, args, workspace)
+        track_skill_tool_usage(name, args, result)
+        result
       end,
       get_tool_schema: fn name ->
-        all_defs =
-          Worth.Tools.Memory.definitions() ++
-            Worth.Tools.Skills.definitions() ++
-            Worth.Tools.Mcp.definitions() ++ Worth.Tools.Kits.definitions()
-
-        definition =
-          all_defs
-          |> Enum.find(&(&1.name == name))
-
-        cond do
-          definition ->
-            {:ok, definition}
-
-          String.contains?(name, ":") ->
-            case Worth.Mcp.ToolIndex.get_schema(name) do
-              {:ok, schema} -> {:ok, schema}
-              {:error, _} -> {:error, :not_found}
+        case Worth.Tools.Router.get_schema(name) do
+          nil ->
+            if String.contains?(name, ":") do
+              case Worth.Mcp.ToolIndex.get_schema(name) do
+                {:ok, schema} -> {:ok, schema}
+                {:error, _} -> {:error, :not_found}
+              end
+            else
+              {:error, :not_found}
             end
 
-          true ->
-            {:error, :not_found}
+          schema ->
+            {:ok, schema}
         end
       end
     }
@@ -505,6 +463,27 @@ defmodule Worth.Brain do
   defp mode_to_profile(:research), do: :conversational
   defp mode_to_profile(:coding_agent), do: :claude_code
   defp mode_to_profile(_), do: :agentic
+
+  defp apply_model_routing(opts) do
+    case Application.get_env(:worth, :model_routing) do
+      %{mode: "auto", preference: pref, filter: filter} ->
+        opts
+        |> Keyword.put(:model_selection_mode, :auto)
+        |> Keyword.put(:model_preference, String.to_existing_atom(pref))
+        |> maybe_put_filter(filter)
+
+      %{mode: "manual", filter: filter} ->
+        opts
+        |> Keyword.put(:model_selection_mode, :manual)
+        |> maybe_put_filter(filter)
+
+      _ ->
+        opts
+    end
+  end
+
+  defp maybe_put_filter(opts, "free_only"), do: Keyword.put(opts, :model_filter, :free_only)
+  defp maybe_put_filter(opts, _), do: opts
 
   defp mode_to_agent_mode(:code), do: :agentic
   defp mode_to_agent_mode(:research), do: :conversational
@@ -520,7 +499,34 @@ defmodule Worth.Brain do
     try do
       Worth.Memory.Manager.working_flush(workspace: workspace)
     rescue
-      _ -> :ok
+      e ->
+        Logger.warning("Failed to flush working memory: #{Exception.message(e)}")
+        :ok
+    end
+  end
+
+  defp track_skill_tool_usage("skill_read", %{"name" => skill_name}, result) do
+    success? = match?({:ok, _}, result)
+
+    Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
+      Worth.Skill.Service.record_usage(skill_name, success?)
+      maybe_suggest_promotion(skill_name)
+    end)
+  end
+
+  defp track_skill_tool_usage(_tool, _args, _result), do: :ok
+
+  defp maybe_suggest_promotion(skill_name) do
+    case Worth.Skill.Evaluator.should_promote?(skill_name) do
+      {:promote, target} ->
+        Phoenix.PubSub.broadcast(
+          Worth.PubSub,
+          "brain:events",
+          {:skill_promotion_available, skill_name, target}
+        )
+
+      _ ->
+        :ok
     end
   end
 

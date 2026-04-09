@@ -62,13 +62,44 @@ defmodule Worth.Config do
   end
 
   @doc """
-  Store a secret keyed by its env-var name. The secret is written to disk
-  under `[:secrets, env_var]` and immediately exported into the process
-  environment so it is visible to credential resolvers.
+  Store a secret keyed by its env-var name. If the encrypted vault is
+  unlocked, the secret goes into the encrypted DB store. Otherwise it
+  falls back to the plaintext disk config.
   """
   def put_secret(env_var, value) when is_binary(env_var) and is_binary(value) do
     System.put_env(env_var, value)
-    put_setting([:secrets, env_var], value)
+
+    if vault_available?() do
+      Worth.Settings.put(env_var, value, "secret")
+    else
+      put_setting([:secrets, env_var], value)
+    end
+  end
+
+  @doc """
+  Export secrets from the encrypted vault into the process environment.
+  Called after vault unlock so credential resolvers can find them.
+  """
+  def export_vault_secrets do
+    if vault_available?() do
+      for setting <- Worth.Settings.all_by_category("secret") do
+        if is_binary(setting.encrypted_value) and setting.encrypted_value != "" do
+          System.put_env(setting.key, setting.encrypted_value)
+        end
+      end
+
+      :ok
+    else
+      :noop
+    end
+  end
+
+  defp vault_available? do
+    not Worth.Settings.locked?()
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
   end
 
   @doc """

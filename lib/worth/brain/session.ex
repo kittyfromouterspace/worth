@@ -34,7 +34,7 @@ defmodule Worth.Brain.Session do
         Worth.Memory.Manager.search(query, Keyword.merge([workspace: workspace], opts))
       end,
       knowledge_create: fn params ->
-        content = params[:content] || params[:content]
+        content = params[:content]
         Worth.Memory.Manager.remember(content, workspace: workspace, entry_type: params[:entry_type] || "fact")
       end,
       knowledge_recent: fn _scope_id ->
@@ -52,31 +52,21 @@ defmodule Worth.Brain.Session do
       on_response_facts: fn _ctx, _text -> :ok end,
       on_tool_facts: fn _ws_id, _name, _result, _turn -> :ok end,
       search_tools: fn query, _opts ->
-        (Worth.Tools.Memory.definitions() ++ Worth.Tools.Skills.definitions())
+        Worth.Tools.Router.all_definitions()
         |> Enum.filter(fn d ->
-          String.contains?(d.name, query) or
-            String.contains?(String.downcase(d.description), String.downcase(query))
+          name = d[:name] || d["name"] || ""
+          desc = d[:description] || d["description"] || ""
+          String.contains?(name, query) or String.contains?(String.downcase(desc), String.downcase(query))
         end)
-        |> Enum.map(& &1.name)
+        |> Enum.map(fn d -> d[:name] || d["name"] end)
       end,
       execute_external_tool: fn name, args, _ctx ->
-        cond do
-          String.starts_with?(name, "memory_") ->
-            Worth.Tools.Memory.execute(name, args, workspace)
-
-          String.starts_with?(name, "skill_") ->
-            Worth.Tools.Skills.execute(name, args, workspace)
-
-          true ->
-            {:error, "External tool '#{name}' not configured"}
-        end
+        Worth.Tools.Router.execute(name, args, workspace)
       end,
       get_tool_schema: fn name ->
-        (Worth.Tools.Memory.definitions() ++ Worth.Tools.Skills.definitions())
-        |> Enum.find(&(&1.name == name))
-        |> case do
+        case Worth.Tools.Router.get_schema(name) do
           nil -> {:error, :not_found}
-          defn -> {:ok, defn}
+          schema -> {:ok, schema}
         end
       end
     }

@@ -1,6 +1,8 @@
 defmodule Worth.Persistence.Transcript do
   @behaviour AgentEx.Persistence.Transcript
 
+  require Logger
+
   @impl true
   def append(session_id, event, workspace_path) do
     dir = Path.join(workspace_path, ".worth")
@@ -21,7 +23,7 @@ defmodule Worth.Persistence.Transcript do
         entries =
           content
           |> String.split("\n", trim: true)
-          |> Enum.map(&Jason.decode!/1)
+          |> Enum.flat_map(&decode_line/1)
           |> Enum.filter(&(&1["session_id"] == session_id))
 
         {:ok, entries}
@@ -32,9 +34,19 @@ defmodule Worth.Persistence.Transcript do
   end
 
   @impl true
-  def load_since(session_id, _timestamp, workspace_path) do
+  def load_since(session_id, timestamp, workspace_path) do
     {:ok, entries} = load(session_id, workspace_path)
-    {:ok, entries}
+
+    filtered =
+      Enum.filter(entries, fn entry ->
+        case entry["timestamp"] do
+          nil -> true
+          ts when is_binary(ts) -> ts >= to_string(timestamp)
+          _ -> true
+        end
+      end)
+
+    {:ok, filtered}
   end
 
   @impl true
@@ -46,7 +58,7 @@ defmodule Worth.Persistence.Transcript do
         sessions =
           content
           |> String.split("\n", trim: true)
-          |> Enum.map(&Jason.decode!/1)
+          |> Enum.flat_map(&decode_line/1)
           |> Enum.map(& &1["session_id"])
           |> Enum.uniq()
 
@@ -54,6 +66,15 @@ defmodule Worth.Persistence.Transcript do
 
       {:error, :enoent} ->
         {:ok, []}
+    end
+  end
+
+  defp decode_line(line) do
+    case Jason.decode(line) do
+      {:ok, entry} -> [entry]
+      {:error, _} ->
+        Logger.warning("Transcript: skipping corrupt line")
+        []
     end
   end
 end

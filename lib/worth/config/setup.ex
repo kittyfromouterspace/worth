@@ -43,11 +43,28 @@ defmodule Worth.Config.Setup do
 
   @doc "Currently configured OpenRouter API key, or nil."
   def openrouter_key do
-    case Config.get([:secrets, @openrouter_env]) do
-      nil -> System.get_env(@openrouter_env)
-      "" -> nil
-      key when is_binary(key) -> key
+    # Prefer encrypted vault, fall back to in-memory config, then env
+    vault_value = vault_secret(@openrouter_env)
+
+    case vault_value do
+      key when is_binary(key) and key != "" -> key
+      _ ->
+        case Config.get([:secrets, @openrouter_env]) do
+          nil -> System.get_env(@openrouter_env)
+          "" -> nil
+          key when is_binary(key) -> key
+        end
     end
+  end
+
+  defp vault_secret(key) do
+    if not Worth.Settings.locked?() do
+      Worth.Settings.get(key)
+    end
+  rescue
+    _ -> nil
+  catch
+    :exit, _ -> nil
   end
 
   @doc "Currently configured embedding model id, or nil."

@@ -18,6 +18,13 @@ defmodule Worth.LLM do
 
   require Logger
 
+  @providers %{
+    "openrouter" => AgentEx.LLM.Provider.OpenRouter,
+    "anthropic" => AgentEx.LLM.Provider.Anthropic,
+    "openai" => AgentEx.LLM.Provider.OpenAI,
+    "groq" => AgentEx.LLM.Provider.Groq
+  }
+
   # ----- chat/2: single dispatch -----
 
   def chat(params, config \\ %{}) do
@@ -178,11 +185,12 @@ defmodule Worth.LLM do
     end
   end
 
-  defp provider_for_route("openrouter"), do: {:ok, AgentEx.LLM.Provider.OpenRouter}
-  defp provider_for_route("anthropic"), do: {:ok, AgentEx.LLM.Provider.Anthropic}
-  defp provider_for_route("openai"), do: {:ok, AgentEx.LLM.Provider.OpenAI}
-  defp provider_for_route("groq"), do: {:ok, AgentEx.LLM.Provider.Groq}
-  defp provider_for_route(_), do: :error
+  defp provider_for_route(name) do
+    case Map.fetch(@providers, name) do
+      {:ok, mod} -> {:ok, mod}
+      :error -> :error
+    end
+  end
 
   defp strip_route(params) when is_map(params) do
     params
@@ -204,15 +212,18 @@ defmodule Worth.LLM do
     project_result(result)
   end
 
-  defp provider_module_for(:anthropic), do: AgentEx.LLM.Provider.Anthropic
-  defp provider_module_for(:openai), do: AgentEx.LLM.Provider.OpenAI
-  defp provider_module_for(:openrouter), do: AgentEx.LLM.Provider.OpenRouter
-  defp provider_module_for(:groq), do: AgentEx.LLM.Provider.Groq
+  defp provider_module_for(provider) do
+    key = if is_atom(provider), do: Atom.to_string(provider), else: provider
 
-  defp provider_module_for(other) do
-    case AgentEx.LLM.ProviderRegistry.get(other) do
-      nil -> AgentEx.LLM.Provider.Anthropic
-      module -> module
+    case Map.get(@providers, key) do
+      nil ->
+        case AgentEx.LLM.ProviderRegistry.get(provider) do
+          nil -> AgentEx.LLM.Provider.Anthropic
+          module -> module
+        end
+
+      module ->
+        module
     end
   end
 
