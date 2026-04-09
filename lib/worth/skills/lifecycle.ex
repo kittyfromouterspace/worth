@@ -52,6 +52,30 @@ defmodule Worth.Skill.Lifecycle do
     end
   end
 
+  def execute_promotion(skill_name, target_level) do
+    case Worth.Skill.Service.read(skill_name) do
+      {:ok, skill} ->
+        if Worth.Skill.Trust.meets_promotion_criteria?(skill, target_level) do
+          updated = %{skill | trust_level: target_level}
+          path = Worth.Skill.Paths.resolve(skill_name)
+
+          if path do
+            Worth.Skill.Versioner.save_version(skill_name)
+            File.write!(Path.join(path, "SKILL.md"), Worth.Skill.Parser.to_frontmatter_string(updated))
+            Worth.Skill.Registry.refresh()
+            {:ok, %{name: skill_name, promoted_to: target_level}}
+          else
+            {:error, "Skill directory not found"}
+          end
+        else
+          {:error, "Skill does not meet promotion criteria for #{target_level}"}
+        end
+
+      error ->
+        error
+    end
+  end
+
   defp build_skill_content(experience, nil) do
     @create_prompt <> experience <> "\n\n## Instructions\n\n[Agent-generated skill from experience]"
   end

@@ -1,34 +1,37 @@
 defmodule Worth.Skill.Versioner do
-  alias Worth.Config.Store
+  alias Worth.Skill.Paths
 
   @history_dir ".worth/history"
 
   def save_version(skill_name) do
-    case Worth.Skill.Service.read(skill_name) do
-      {:ok, skill} ->
-        version = skill.evolution[:version] || 1
-        dir = history_dir(skill_name)
-        File.mkdir_p!(dir)
+    with {:ok, skill} <- Worth.Skill.Service.read(skill_name),
+         dir when is_binary(dir) <- history_dir(skill_name) do
+      version = skill.evolution[:version] || 1
+      File.mkdir_p!(dir)
 
-        filename = "v#{version}.md"
-        path = Path.join(dir, filename)
+      filename = "v#{version}.md"
+      path = Path.join(dir, filename)
 
-        if not File.exists?(path) do
-          content = Worth.Skill.Parser.to_frontmatter_string(skill)
-          File.write!(path, content)
-          {:ok, path}
-        else
-          {:ok, :already_saved}
-        end
-
-      error ->
-        error
+      if not File.exists?(path) do
+        content = Worth.Skill.Parser.to_frontmatter_string(skill)
+        File.write!(path, content)
+        {:ok, path}
+      else
+        {:ok, :already_saved}
+      end
+    else
+      {:error, _} = error -> error
     end
   end
 
   def list_versions(skill_name) do
-    dir = history_dir(skill_name)
+    case history_dir(skill_name) do
+      {:error, _} = error -> error
+      dir -> list_versions_from_dir(dir)
+    end
+  end
 
+  defp list_versions_from_dir(dir) do
     if File.dir?(dir) do
       versions =
         dir
@@ -50,52 +53,38 @@ defmodule Worth.Skill.Versioner do
   end
 
   def rollback(skill_name, target_version) do
-    dir = history_dir(skill_name)
-    path = Path.join(dir, "v#{target_version}.md")
-
-    with {:ok, _} <- Worth.Skill.Service.read(skill_name),
+    with dir when is_binary(dir) <- history_dir(skill_name),
+         path = Path.join(dir, "v#{target_version}.md"),
+         {:ok, _} <- Worth.Skill.Service.read(skill_name),
          true <- File.exists?(path),
          {:ok, _} <- Worth.Skill.Parser.parse_file(path) do
       save_version(skill_name)
 
       case File.read(path) do
         {:ok, content} ->
-          skill_dir = resolve_skill_dir(skill_name)
+          case Paths.resolve(skill_name) do
+            nil ->
+              {:error, "Skill directory not found"}
 
-          if skill_dir do
-            File.write!(Path.join(skill_dir, "SKILL.md"), content)
-            Worth.Skill.Registry.refresh()
-            {:ok, %{name: skill_name, rolled_back_to: target_version}}
-          else
-            {:error, "Skill directory not found"}
+            skill_dir ->
+              File.write!(Path.join(skill_dir, "SKILL.md"), content)
+              Worth.Skill.Registry.refresh()
+              {:ok, %{name: skill_name, rolled_back_to: target_version}}
           end
 
         {:error, reason} ->
           {:error, "Failed to read version file: #{reason}"}
       end
     else
+      {:error, _} = error -> error
       false -> {:error, "Version v#{target_version} not found for '#{skill_name}'"}
-      {:error, reason} -> {:error, reason}
     end
   end
 
   defp history_dir(skill_name) do
-    case resolve_skill_dir(skill_name) do
-      nil -> Path.join("/tmp", "worth-skill-history-#{skill_name}")
+    case Paths.resolve(skill_name) do
+      nil -> {:error, :skill_not_found}
       dir -> Path.join(dir, @history_dir)
-    end
-  end
-
-  defp resolve_skill_dir(name) do
-    core = Path.join(:code.priv_dir(:worth), "core_skills")
-    user = Path.join(Path.expand("skills", Store.home_directory()), name)
-    learned = Path.join(Path.expand("skills/learned", Store.home_directory()), name)
-
-    cond do
-      File.dir?(Path.join(core, name)) -> Path.join(core, name)
-      File.dir?(user) -> user
-      File.dir?(learned) -> learned
-      true -> nil
     end
   end
 end

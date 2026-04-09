@@ -1,5 +1,5 @@
 defmodule Worth.Skill.Refiner do
-  alias Worth.Config.Store
+  alias Worth.Skill.Paths
 
   @refinement_prompt """
   The following skill has been producing poor results. Analyze the failures and suggest improved instructions.
@@ -154,27 +154,14 @@ defmodule Worth.Skill.Refiner do
   end
 
   defp resolve_and_save(name, skill) do
-    case resolve_skill_dir(name) do
-      nil ->
-        {:error, "Skill directory not found"}
-
-      dir ->
-        File.write!(Path.join(dir, "SKILL.md"), Worth.Skill.Parser.to_frontmatter_string(skill))
-        Worth.Skill.Registry.refresh()
-        {:ok, %{name: name, version: skill.evolution[:version]}}
-    end
-  end
-
-  defp resolve_skill_dir(name) do
-    core = Path.join(:code.priv_dir(:worth), "core_skills")
-    user = Path.join(Path.expand("skills", Store.home_directory()), name)
-    learned = Path.join(Path.expand("skills/learned", Store.home_directory()), name)
-
-    cond do
-      File.dir?(Path.join(core, name)) -> Path.join(core, name)
-      File.dir?(user) -> user
-      File.dir?(learned) -> learned
-      true -> nil
+    with {:ok, _} <- Worth.Skill.Validator.validate(skill),
+         dir when is_binary(dir) <- Paths.resolve(name) do
+      File.write!(Path.join(dir, "SKILL.md"), Worth.Skill.Parser.to_frontmatter_string(skill))
+      Worth.Skill.Registry.refresh()
+      {:ok, %{name: name, version: skill.evolution[:version]}}
+    else
+      nil -> {:error, "Skill directory not found"}
+      {:error, errors} -> {:error, "Validation failed: #{inspect(errors)}"}
     end
   end
 end

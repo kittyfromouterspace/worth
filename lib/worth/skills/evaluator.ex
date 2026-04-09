@@ -9,14 +9,24 @@ defmodule Worth.Skill.Evaluator do
 
   def should_promote?(skill_name) do
     case Worth.Skill.Service.read(skill_name) do
-      {:ok, skill} ->
-        Worth.Skill.Trust.meets_promotion_criteria?(skill, :installed) and
-          skill.trust_level in [:learned, :unverified]
+      {:ok, skill} when skill.trust_level in [:learned, :unverified] ->
+        next_levels = Worth.Skill.Trust.promotion_path(skill.trust_level)
+
+        Enum.find(next_levels, fn target ->
+          Worth.Skill.Trust.meets_promotion_criteria?(skill, target)
+        end)
+        |> case do
+          nil -> false
+          target -> {:promote, target}
+        end
 
       _ ->
         false
     end
   end
+
+  @min_usage_for_refinement 5
+  @refinement_threshold 0.6
 
   def should_refine?(skill_name) do
     case Worth.Skill.Service.read(skill_name) do
@@ -24,7 +34,7 @@ defmodule Worth.Skill.Evaluator do
         evolution = skill.evolution
         usage = evolution[:usage_count] || 0
         rate = evolution[:success_rate] || 0.0
-        usage > 0 and rate < 0.6
+        usage >= @min_usage_for_refinement and rate < @refinement_threshold
 
       _ ->
         false

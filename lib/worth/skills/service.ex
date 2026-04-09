@@ -1,8 +1,5 @@
 defmodule Worth.Skill.Service do
-  alias Worth.Config.Store
-
-  @skills_dir "skills"
-  @core_skills_dir Path.join(:code.priv_dir(:worth), "core_skills")
+  alias Worth.Skill.Paths
 
   def list(opts \\ []) do
     core = list_core_skills()
@@ -20,7 +17,7 @@ defmodule Worth.Skill.Service do
   end
 
   def read(name) do
-    case resolve_skill_path(name) do
+    case Paths.resolve(name) do
       nil -> {:error, "Skill '#{name}' not found"}
       dir -> Worth.Skill.Parser.parse_file(Path.join(dir, "SKILL.md"))
     end
@@ -37,7 +34,7 @@ defmodule Worth.Skill.Service do
 
   def install(%{type: :local, path: path}, _opts) do
     name = Path.basename(path)
-    dest = Path.join([Path.expand(@skills_dir, Store.home_directory()), name])
+    dest = Path.join(Paths.user_dir(), name)
 
     if File.dir?(dest) do
       {:error, "Skill '#{name}' already installed"}
@@ -57,49 +54,55 @@ defmodule Worth.Skill.Service do
     trust_level = Keyword.get(opts, :trust_level, :learned)
     provenance = Keyword.get(opts, :provenance, :agent)
 
-    dest = Path.join([Path.expand(@skills_dir, Store.home_directory()), name])
-    File.mkdir_p!(dest)
+    skill = %{
+      name: name,
+      description: Keyword.get(opts, :description, "Agent-created skill"),
+      body: content,
+      loading: :on_demand,
+      model_tier: :any,
+      provenance: provenance,
+      trust_level: trust_level,
+      license: nil,
+      allowed_tools: nil,
+      metadata: %{},
+      evolution: %{
+        created_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+        created_by: Atom.to_string(provenance),
+        version: 1,
+        refinement_count: 0,
+        success_count: 0,
+        success_rate: 0.0,
+        usage_count: 0,
+        last_used: nil,
+        last_refined: nil,
+        superseded_by: nil,
+        superseded_from: [],
+        feedback_summary: nil
+      }
+    }
 
-    skill_md =
-      Worth.Skill.Parser.to_frontmatter_string(%{
-        name: name,
-        description: Keyword.get(opts, :description, "Agent-created skill"),
-        body: content,
-        loading: :on_demand,
-        model_tier: :any,
-        provenance: provenance,
-        trust_level: trust_level,
-        license: nil,
-        allowed_tools: nil,
-        metadata: %{},
-        evolution: %{
-          created_at: DateTime.utc_now() |> DateTime.to_iso8601(),
-          created_by: Atom.to_string(provenance),
-          version: 1,
-          refinement_count: 0,
-          success_rate: 0.0,
-          usage_count: 0,
-          last_used: nil,
-          last_refined: nil,
-          superseded_by: nil,
-          superseded_from: [],
-          feedback_summary: nil
-        }
-      })
+    case Worth.Skill.Validator.validate(skill) do
+      {:ok, _} ->
+        dest = Path.join(Paths.user_dir(), name)
+        File.mkdir_p!(dest)
+        skill_md = Worth.Skill.Parser.to_frontmatter_string(skill)
+        File.write!(Path.join(dest, "SKILL.md"), skill_md)
+        Worth.Skill.Registry.refresh()
+        {:ok, name}
 
-    File.write!(Path.join(dest, "SKILL.md"), skill_md)
-    Worth.Skill.Registry.refresh()
-    {:ok, name}
+      {:error, errors} ->
+        {:error, "Validation failed: #{Enum.join(errors, ", ")}"}
+    end
   end
 
   def remove(name) do
-    path = resolve_skill_path(name)
+    path = Paths.resolve(name)
 
     cond do
       path == nil ->
         {:error, "Skill '#{name}' not found"}
 
-      String.starts_with?(path, @core_skills_dir) ->
+      Paths.core?(name) ->
         {:error, "Cannot remove core skill '#{name}'"}
 
       true ->
@@ -115,7 +118,7 @@ defmodule Worth.Skill.Service do
   end
 
   def exists?(name) do
-    resolve_skill_path(name) != nil
+    Paths.resolve(name) != nil
   end
 
   def record_usage(name, success?) do
@@ -125,10 +128,7 @@ defmodule Worth.Skill.Service do
         now = DateTime.utc_now() |> DateTime.to_iso8601()
 
         usage_count = (evolution[:usage_count] || 0) + 1
-
-        success_count =
-          (evolution[:success_rate] || 0.0) * (usage_count - 1) + if(success?, do: 1.0, else: 0.0)
-
+        success_count = (evolution[:success_count] || 0) + if(success?, do: 1, else: 0)
         success_rate = Float.round(success_count / usage_count, 4)
 
         updated = %{
@@ -136,15 +136,21 @@ defmodule Worth.Skill.Service do
           | evolution:
               Map.merge(evolution, %{
                 usage_count: usage_count,
+                success_count: success_count,
                 success_rate: success_rate,
                 last_used: now
               })
         }
 
-        path = resolve_skill_path(name)
-        File.write!(Path.join(path, "SKILL.md"), Worth.Skill.Parser.to_frontmatter_string(updated))
-        Worth.Skill.Registry.refresh()
-        {:ok, updated}
+        case Paths.resolve(name) do
+          nil ->
+            {:error, "Skill '#{name}' not found"}
+
+          path ->
+            File.write!(Path.join(path, "SKILL.md"), Worth.Skill.Parser.to_frontmatter_string(updated))
+            Worth.Skill.Registry.refresh()
+            {:ok, updated}
+        end
 
       error ->
         error
@@ -152,12 +158,14 @@ defmodule Worth.Skill.Service do
   end
 
   defp list_core_skills do
-    if File.dir?(@core_skills_dir) do
-      @core_skills_dir
+    dir = Paths.core_dir()
+
+    if File.dir?(dir) do
+      dir
       |> File.ls!()
-      |> Enum.filter(&File.dir?(Path.join(@core_skills_dir, &1)))
+      |> Enum.filter(&File.dir?(Path.join(dir, &1)))
       |> Enum.map(fn name ->
-        load_metadata(Path.join(@core_skills_dir, name), name, :core)
+        load_metadata(Path.join(dir, name), name, :core)
       end)
       |> Enum.reject(&is_nil/1)
     else
@@ -166,8 +174,8 @@ defmodule Worth.Skill.Service do
   end
 
   defp list_user_skills do
-    dir = Path.expand(@skills_dir, Store.home_directory())
-    learned_dir = Path.join(dir, "learned")
+    dir = Paths.user_dir()
+    learned_dir = Paths.learned_dir()
 
     skills =
       if File.dir?(dir) do
@@ -226,19 +234,6 @@ defmodule Worth.Skill.Service do
       end
     else
       nil
-    end
-  end
-
-  defp resolve_skill_path(name) do
-    core_path = Path.join(@core_skills_dir, name)
-    user_path = Path.join(Path.expand(@skills_dir, Store.home_directory()), name)
-    learned_path = Path.join([Path.expand(@skills_dir, Store.home_directory()), "learned", name])
-
-    cond do
-      File.dir?(core_path) -> core_path
-      File.dir?(user_path) -> user_path
-      File.dir?(learned_path) -> learned_path
-      true -> nil
     end
   end
 
