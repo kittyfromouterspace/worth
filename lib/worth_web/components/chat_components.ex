@@ -186,25 +186,12 @@ defmodule WorthWeb.ChatComponents do
 
     ~H"""
     <aside class="w-72 color(:background) border-l color(:border) overflow-y-auto shrink-0 text-sm">
-      <%!-- Tab bar --%>
-      <div class="flex border-b color(:border)">
-        <button
-          :for={{key, label} <- @tabs}
-          phx-click="select_tab"
-          phx-value-tab={key}
-          class={[
-            "px-3 py-1.5 text-xs font-medium cursor-pointer transition-colors",
-            key == @tab && "color(:primary) text-ctp-base",
-            key != @tab && "color(:text_muted) hover:color(:text) hover:bg-ctp-surface0"
-          ]}
-        >
-          {label}
-        </button>
-      </div>
-
-      <%!-- Tab content --%>
-      <div class="p-3 space-y-1">
-        <.tab_content tab={@tab} models={@models} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
+      <div class="p-3 space-y-4">
+        <.tab_content tab={:status} models={@models} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
+        <.tab_content tab={:usage} models={@models} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
+        <.tab_content tab={:tools} models={@models} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
+        <.tab_content tab={:skills} models={@models} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
+        <.tab_content tab={:logs} models={@models} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
       </div>
     </aside>
     """

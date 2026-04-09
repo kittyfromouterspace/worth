@@ -43,6 +43,7 @@ defmodule Worth.UI.Commands do
       ["/catalog", "refresh"] -> {:command, {:catalog, :refresh}}
       ["/usage"] -> {:command, :usage}
       ["/usage", "refresh"] -> {:command, {:usage, :refresh}}
+      ["/settings"] -> {:command, :settings}
       ["/setup"] -> {:command, {:setup, :show}}
       ["/setup", rest] -> parse_setup(rest)
       ["/skill" | _] -> {:command, {:skill, :help}}
@@ -118,6 +119,7 @@ defmodule Worth.UI.Commands do
       /catalog refresh     Refresh model catalog from providers
       /usage               Show provider quota and session cost
       /usage refresh       Refresh usage snapshots
+      /settings            Open settings panel (API keys, preferences)
       /setup               Show setup status
       /setup openrouter <k> Save OpenRouter API key
       /setup embedding <m> Set embedding model id

@@ -41,7 +41,8 @@ defmodule WorthWeb.ChatLive do
        history_index: -1,
        view: :chat,
        has_history: prior_messages != [],
-       settings_form: default_settings_form()
+       settings_form: default_settings_form(),
+       theme_module: Worth.Theme.Registry.resolve()
      )}
   end
 
@@ -90,6 +91,7 @@ defmodule WorthWeb.ChatLive do
       |> push_input_history(text)
       |> stream_insert(:messages, %{id: msg_id(), type: :user, content: text})
       |> push_event("clear_input", %{})
+      |> push_event("scroll_to_bottom", %{})
 
     case Worth.UI.Commands.parse(text) do
       :message ->
@@ -112,13 +114,6 @@ defmodule WorthWeb.ChatLive do
 
   def handle_event("keydown", %{"key" => "Tab"}, socket) do
     {:noreply, update(socket, :sidebar_visible, &(!&1))}
-  end
-
-  def handle_event("keydown", %{"key" => key}, socket)
-      when key in ["1", "2", "3", "4", "5"] do
-    tabs = [:status, :usage, :tools, :skills, :logs]
-    idx = String.to_integer(key) - 1
-    {:noreply, assign(socket, selected_tab: Enum.at(tabs, idx, :status))}
   end
 
   def handle_event("keydown", %{"key" => "Escape"}, socket) do
@@ -230,7 +225,7 @@ defmodule WorthWeb.ChatLive do
 
   def handle_event("settings_set_theme", %{"theme" => theme_name}, socket) do
     case Worth.Theme.Registry.get(theme_name) do
-      {:ok, _theme_mod} ->
+      {:ok, theme_mod} ->
         Application.put_env(:worth, :theme, theme_name)
 
         try do
@@ -241,7 +236,15 @@ defmodule WorthWeb.ChatLive do
           _ -> nil
         end
 
-        socket = load_settings_form(socket)
+        socket =
+          socket
+          |> assign(theme_module: theme_mod)
+          |> load_settings_form()
+          |> push_event("apply_theme", %{
+            bg_class: theme_mod.colors()[:background] || "",
+            css: theme_mod.css()
+          })
+
         {:noreply, append_system_message(socket, "Theme changed to #{theme_name}.")}
 
       {:error, _} ->
@@ -420,7 +423,9 @@ defmodule WorthWeb.ChatLive do
   defp format_model_slot(_), do: %{label: nil, source: nil}
 
   def append_system_message(socket, msg) do
-    stream_insert(socket, :messages, %{id: msg_id(), type: :system, content: msg})
+    socket
+    |> stream_insert(:messages, %{id: msg_id(), type: :system, content: msg})
+    |> push_event("scroll_to_bottom", %{})
   end
 
   defp push_input_history(socket, text) do
@@ -454,15 +459,24 @@ defmodule WorthWeb.ChatLive do
   def refresh_settings_form(socket), do: load_settings_form(socket)
 
   defp load_settings_form(socket) do
-    preferences =
-      Worth.Settings.all_by_category("preference")
-      |> Enum.map(fn s -> %{key: s.key, value: s.encrypted_value} end)
+    locked = safe_vault_call(fn -> Worth.Settings.locked?() end, true)
+
+    {providers, preferences} =
+      if locked do
+        {[], []}
+      else
+        prefs =
+          Worth.Settings.all_by_category("preference")
+          |> Enum.map(fn s -> %{key: s.key, value: s.encrypted_value} end)
+
+        {provider_list(), prefs}
+      end
 
     assign(socket,
       settings_form: %{
-        locked: Worth.Settings.locked?(),
-        has_password: Worth.Settings.has_password?(),
-        providers: provider_list(),
+        locked: locked,
+        has_password: safe_vault_call(fn -> Worth.Settings.has_password?() end, false),
+        providers: providers,
         preferences: preferences,
         themes: theme_list(),
         current_theme: current_theme_name(),
