@@ -44,7 +44,10 @@
         </div>
 
         <%!-- Empty state --%>
-        <div :if={@streaming_text == "" && @status == :idle && @turn == 0} class="flex items-center justify-center h-full">
+        <div
+          :if={@streaming_text == "" && @status == :idle && @turn == 0}
+          class="flex items-center justify-center h-full"
+        >
           <div class="text-center text-ctp-overlay0">
             <div class="text-2xl mb-2">Worth</div>
             <div class="text-sm">Type a message or /help for commands</div>

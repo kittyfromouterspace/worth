@@ -45,7 +45,7 @@ defmodule Worth.CLI do
     mode = parse_mode(opts[:mode] || "code")
     workspace_path = Path.expand("workspaces/#{workspace}", Worth.Config.Store.home_directory())
 
-    unless File.dir?(workspace_path) do
+    if !File.dir?(workspace_path) do
       IO.puts("Workspace '#{workspace}' not found. Creating in #{Worth.Config.Store.home_directory()}...")
       File.mkdir_p!(workspace_path)
     end
@@ -98,7 +98,7 @@ defmodule Worth.CLI do
     home = Worth.Config.Store.home_directory()
     expanded = Path.expand(home)
 
-    unless File.dir?(expanded) do
+    if !File.dir?(expanded) do
       IO.puts("Creating home directory: #{expanded}")
       File.mkdir_p!(expanded)
     end

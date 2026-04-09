@@ -90,7 +90,7 @@ defmodule Worth.Kits do
   def publish(kit_dir, opts \\ []) do
     kit_md = Path.join(kit_dir, "kit.md")
 
-    unless File.exists?(kit_md) do
+    if !File.exists?(kit_md) do
       {:error, "No kit.md found in #{kit_dir}"}
     else
       case build_publish_payload(kit_dir) do

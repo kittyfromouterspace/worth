@@ -134,11 +134,14 @@ defmodule WorthWeb.ChatComponents do
     assigns = assign(assigns, :workspaces, workspaces)
 
     ~H"""
-    <div :for={ws <- @workspaces} class={[
-      "text-xs py-px",
-      ws == @workspace && "text-ctp-blue font-semibold",
-      ws != @workspace && "text-ctp-subtext0"
-    ]}>
+    <div
+      :for={ws <- @workspaces}
+      class={[
+        "text-xs py-px",
+        ws == @workspace && "text-ctp-blue font-semibold",
+        ws != @workspace && "text-ctp-subtext0"
+      ]}
+    >
       {if ws == @workspace, do: "● ", else: "○ "}{ws}
     </div>
     """
@@ -253,7 +256,17 @@ defmodule WorthWeb.ChatComponents do
       try do
         Worth.Metrics.session()
       rescue
-        _ -> %{cost: 0.0, calls: 0, input_tokens: 0, output_tokens: 0, cache_read: 0, cache_write: 0, embed_calls: 0, by_provider: %{}}
+        _ ->
+          %{
+            cost: 0.0,
+            calls: 0,
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read: 0,
+            cache_write: 0,
+            embed_calls: 0,
+            by_provider: %{}
+          }
       end
 
     assigns = assign(assigns, :metrics, metrics)
@@ -263,7 +276,9 @@ defmodule WorthWeb.ChatComponents do
     <div class="text-xs text-ctp-subtext0 space-y-0.5">
       <div>Cost: ${Float.round(@metrics.cost, 4)} ({@metrics.calls} calls)</div>
       <div>Tokens: {format_int(@metrics.input_tokens)} in / {format_int(@metrics.output_tokens)} out</div>
-      <div class="text-ctp-overlay0">Cache: {format_int(@metrics.cache_read)} read / {format_int(@metrics.cache_write)} write</div>
+      <div class="text-ctp-overlay0">
+        Cache: {format_int(@metrics.cache_read)} read / {format_int(@metrics.cache_write)} write
+      </div>
       <div class="text-ctp-overlay0">Embed: {@metrics.embed_calls} calls</div>
     </div>
 
@@ -279,7 +294,10 @@ defmodule WorthWeb.ChatComponents do
   defp tab_content(%{tab: :tools} = assigns) do
     ~H"""
     <div class="text-ctp-lavender font-semibold text-xs uppercase tracking-wider mb-1">Built-in Tools</div>
-    <div :for={tool <- ~w(read_file write_file edit_file bash list_files memory_query skill_list)} class="text-xs text-ctp-subtext0 py-px">
+    <div
+      :for={tool <- ~w(read_file write_file edit_file bash list_files memory_query skill_list)}
+      class="text-xs text-ctp-subtext0 py-px"
+    >
       {tool}
     </div>
     """
