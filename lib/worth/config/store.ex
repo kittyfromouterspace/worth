@@ -1,7 +1,7 @@
 defmodule Worth.Config.Store do
   @moduledoc """
   On-disk persistence for Worth's user-level config at
-  `~/.worth/config.exs`.
+  `<home_directory>/config.exs`.
 
   The file is a single Elixir map literal evaluated with `Code.eval_file/1`.
   No `Mix.Config` DSL — just plain data, written by Worth and read back at
@@ -12,11 +12,17 @@ defmodule Worth.Config.Store do
   go through `Worth.Config` (in-memory) and `Worth.Config.Setup` (mutations).
   """
 
-  @default_path "~/.worth/config.exs"
-
   @doc "Absolute path to the config file."
   def path do
-    Path.expand(@default_path)
+    Path.expand(Path.join(home_directory(), "config.exs"))
+  end
+
+  @doc "The Worth home directory (configurable, defaults to ~/work)."
+  def home_directory do
+    case Application.get_env(:worth, :home_directory) do
+      nil -> Path.expand("~/.worth")
+      path -> Path.expand(path)
+    end
   end
 
   @doc "True if the config file exists on disk."

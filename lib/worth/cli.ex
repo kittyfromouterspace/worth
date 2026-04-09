@@ -37,17 +37,17 @@ defmodule Worth.CLI do
   end
 
   defp start_worth(opts) do
-    # Must run before install_tui_logger/0 — that handler removes the
-    # default console and the wizard would have nowhere to print.
     Worth.Config.Setup.maybe_run_first_run!()
+
+    ensure_home_directory!()
 
     workspace = opts[:workspace] || "personal"
     mode = parse_mode(opts[:mode] || "code")
-    workspace_path = Path.expand("~/.worth/workspaces/#{workspace}")
+    workspace_path = Path.expand("workspaces/#{workspace}", Worth.Config.Store.home_directory())
 
     unless File.dir?(workspace_path) do
-      IO.puts("Workspace '#{workspace}' not found. Creating...")
-      Worth.Workspace.Service.create(workspace, type: mode_to_type(mode))
+      IO.puts("Workspace '#{workspace}' not found. Creating in #{Worth.Config.Store.home_directory()}...")
+      File.mkdir_p!(workspace_path)
     end
 
     Application.put_env(:worth, :current_workspace, workspace)
@@ -57,28 +57,25 @@ defmodule Worth.CLI do
     Worth.Brain.switch_workspace(workspace)
     Worth.Brain.switch_mode(mode)
 
-    install_tui_logger()
+    port = Application.get_env(:worth, WorthWeb.Endpoint)[:http][:port] || 4000
+    url = "http://localhost:#{port}"
 
-    TermUI.Runtime.run(root: Worth.UI.Root, workspace: workspace, mode: mode)
+    IO.puts("Worth is running at #{url}")
+    open_browser(url)
+    IO.puts("Press Ctrl+C to stop.")
+
+    Process.sleep(:infinity)
   end
 
-  # Redirect every log event into Worth.UI.LogBuffer and remove the
-  # default console handler so nothing else writes to stdout while the
-  # TUI owns the screen. Without this, debug/info chatter (Ecto queries,
-  # MCP client traces, free-model detection, etc.) is splattered into
-  # the rendered buffer and corrupts the display.
-  defp install_tui_logger do
-    _ = :logger.remove_handler(:default)
-    _ = :logger.remove_handler(Logger)
-
-    case :logger.add_handler(:worth_tui, Worth.UI.LogHandler, %{}) do
-      :ok -> :ok
-      {:error, {:already_exists, _}} -> :ok
-      _other -> :ok
+  defp open_browser(url) do
+    case :os.type() do
+      {:unix, :linux} -> System.cmd("xdg-open", [url], stderr_to_stdout: true)
+      {:unix, :darwin} -> System.cmd("open", [url], stderr_to_stdout: true)
+      {:win32, _} -> System.cmd("cmd", ["/c", "start", url], stderr_to_stdout: true)
+      _ -> IO.puts("Open #{url} in your browser")
     end
-
-    require Logger
-    Logger.info("Worth TUI logger active. File log: #{Worth.UI.LogHandler.file_path()}")
+  rescue
+    _ -> IO.puts("Open #{url} in your browser")
   end
 
   defp init_workspace(name) do
@@ -97,12 +94,19 @@ defmodule Worth.CLI do
   defp parse_mode("turn_by_turn"), do: :turn_by_turn
   defp parse_mode(_), do: :code
 
-  defp mode_to_type(:research), do: :research
-  defp mode_to_type(_), do: :code
+  defp ensure_home_directory! do
+    home = Worth.Config.Store.home_directory()
+    expanded = Path.expand(home)
+
+    unless File.dir?(expanded) do
+      IO.puts("Creating home directory: #{expanded}")
+      File.mkdir_p!(expanded)
+    end
+  end
 
   defp print_help do
     IO.puts("""
-    worth v0.1.0 - A terminal-based AI assistant
+    worth v0.1.0 - An AI assistant
 
     Usage:
       worth [options]
@@ -115,20 +119,7 @@ defmodule Worth.CLI do
       -h, --help               Show this help message
       -v, --version            Show version
 
-    Commands (inside worth):
-      /help              Show available commands
-      /quit              Exit worth
-      /clear             Clear chat history
-      /cost              Show session cost
-      /status            Show current status
-      /mode <mode>       Switch execution mode
-      /workspace list    List workspaces
-      /workspace new <n> Create workspace
-      /workspace switch  Switch workspace
-
-    Keyboard:
-      Tab                Toggle sidebar
-      Up/Down            Command history
+    The web UI starts at http://localhost:4000 by default.
     """)
   end
 end

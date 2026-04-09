@@ -16,6 +16,7 @@ defmodule Worth.Config.Setup do
 
   Required keys for a usable Worth install:
 
+    * `:home_directory` — root directory for Worth's work (e.g., "~/work")
     * `[:secrets, "OPENROUTER_API_KEY"]` — chat + embeddings provider
     * `[:memory, :embedding_model]` — model id passed to the embeddings
       adapter (e.g. `"openai/text-embedding-3-small"` via OpenRouter)
@@ -25,11 +26,20 @@ defmodule Worth.Config.Setup do
 
   @openrouter_env "OPENROUTER_API_KEY"
   @default_embedding_model "openai/text-embedding-3-small"
+  @default_home_directory "~/work"
 
   @doc "True if Worth is missing any required configuration."
   def needs_setup? do
-    is_nil(openrouter_key()) or is_nil(embedding_model())
+    is_nil(home_directory()) or is_nil(openrouter_key()) or is_nil(embedding_model())
   end
+
+  @doc "Currently configured home directory, or nil."
+  def home_directory do
+    Config.get(:home_directory)
+  end
+
+  @doc "Default home directory suggested in the wizard."
+  def default_home_directory, do: @default_home_directory
 
   @doc "Currently configured OpenRouter API key, or nil."
   def openrouter_key do
@@ -72,6 +82,18 @@ defmodule Worth.Config.Setup do
     end
   end
 
+  @doc "Persist the home directory path."
+  def set_home_directory(path) when is_binary(path) do
+    case String.trim(path) do
+      "" ->
+        {:error, :empty_path}
+
+      trimmed ->
+        expanded = Path.expand(trimmed)
+        Config.put_setting([:home_directory], expanded)
+    end
+  end
+
   @doc """
   Run the first-run wizard if anything is missing. Safe to call before
   the TUI takes over stdout/stdin. No-op when fully configured.
@@ -94,6 +116,7 @@ defmodule Worth.Config.Setup do
     IO.puts("Config will be saved to #{Worth.Config.Store.path()} (plain text, 0600).")
     IO.puts("")
 
+    prompt_home_directory()
     prompt_openrouter_key()
     prompt_embedding_model()
 
@@ -101,6 +124,26 @@ defmodule Worth.Config.Setup do
     IO.puts("Setup complete.")
     IO.puts("")
     :ok
+  end
+
+  defp prompt_home_directory do
+    current = home_directory() || @default_home_directory
+    has_current = not is_nil(home_directory())
+    label = if has_current, do: " [keep current]", else: ""
+
+    case ask("Worth home directory (root for all work)#{label}: ") do
+      "" ->
+        if has_current do
+          :ok
+        else
+          :ok = set_home_directory(current)
+          IO.puts("  Using #{current}.")
+        end
+
+      value ->
+        :ok = set_home_directory(value)
+        IO.puts("  Saved.")
+    end
   end
 
   defp prompt_openrouter_key do
@@ -123,6 +166,7 @@ defmodule Worth.Config.Setup do
 
   defp prompt_embedding_model do
     current = embedding_model() || @default_embedding_model
+
     case ask("Embedding model [#{current}]: ") do
       "" ->
         :ok = set_embedding_model(current)

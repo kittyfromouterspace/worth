@@ -1,5 +1,7 @@
 defmodule Worth.Skill.Service do
-  @skills_dir "~/.worth/skills"
+  alias Worth.Config.Store
+
+  @skills_dir "skills"
   @core_skills_dir Path.join(:code.priv_dir(:worth), "core_skills")
 
   def list(opts \\ []) do
@@ -35,7 +37,7 @@ defmodule Worth.Skill.Service do
 
   def install(%{type: :local, path: path}, _opts) do
     name = Path.basename(path)
-    dest = Path.join([Path.expand(@skills_dir), name])
+    dest = Path.join([Path.expand(@skills_dir, Store.home_directory()), name])
 
     if File.dir?(dest) do
       {:error, "Skill '#{name}' already installed"}
@@ -55,7 +57,7 @@ defmodule Worth.Skill.Service do
     trust_level = Keyword.get(opts, :trust_level, :learned)
     provenance = Keyword.get(opts, :provenance, :agent)
 
-    dest = Path.join([Path.expand(@skills_dir), name])
+    dest = Path.join([Path.expand(@skills_dir, Store.home_directory()), name])
     File.mkdir_p!(dest)
 
     skill_md =
@@ -164,7 +166,7 @@ defmodule Worth.Skill.Service do
   end
 
   defp list_user_skills do
-    dir = Path.expand(@skills_dir)
+    dir = Path.expand(@skills_dir, Store.home_directory())
     learned_dir = Path.join(dir, "learned")
 
     skills =
@@ -229,8 +231,8 @@ defmodule Worth.Skill.Service do
 
   defp resolve_skill_path(name) do
     core_path = Path.join(@core_skills_dir, name)
-    user_path = Path.join(Path.expand(@skills_dir), name)
-    learned_path = Path.join([Path.expand(@skills_dir), "learned", name])
+    user_path = Path.join(Path.expand(@skills_dir, Store.home_directory()), name)
+    learned_path = Path.join([Path.expand(@skills_dir, Store.home_directory()), "learned", name])
 
     cond do
       File.dir?(core_path) -> core_path

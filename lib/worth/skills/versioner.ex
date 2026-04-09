@@ -1,4 +1,6 @@
 defmodule Worth.Skill.Versioner do
+  alias Worth.Config.Store
+
   @history_dir ".worth/history"
 
   def save_version(skill_name) do
@@ -86,8 +88,8 @@ defmodule Worth.Skill.Versioner do
 
   defp resolve_skill_dir(name) do
     core = Path.join(:code.priv_dir(:worth), "core_skills")
-    user = Path.join(Path.expand("~/.worth/skills"), name)
-    learned = Path.join(Path.expand("~/.worth/skills/learned"), name)
+    user = Path.join(Path.expand("skills", Store.home_directory()), name)
+    learned = Path.join(Path.expand("skills/learned", Store.home_directory()), name)
 
     cond do
       File.dir?(Path.join(core, name)) -> Path.join(core, name)

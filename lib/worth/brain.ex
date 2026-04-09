@@ -103,6 +103,14 @@ defmodule Worth.Brain do
     Worth.Mcp.ToolIndex.tools_for_server(server_name)
   end
 
+  def list_coding_agents do
+    Worth.CodingAgents.discover()
+  end
+
+  def switch_to_coding_agent(protocol) do
+    GenServer.call(__MODULE__, {:switch_to_coding_agent, protocol})
+  end
+
   @impl true
   def init(opts) do
     workspace = Keyword.get(opts, :workspace, "personal")
@@ -113,7 +121,10 @@ defmodule Worth.Brain do
       current_workspace: workspace,
       workspace_path:
         Keyword.get(opts, :workspace_path) ||
-          Path.expand("~/.worth/workspaces/#{workspace}"),
+          Path.expand(
+            "workspaces/#{workspace}",
+            Worth.Config.Store.home_directory()
+          ),
       session_id: generate_session_id(),
       history: [],
       config: Worth.Config.get_all(),
@@ -169,6 +180,22 @@ defmodule Worth.Brain do
 
   def handle_call({:switch_mode, mode}, _from, state) do
     {:reply, :ok, %{state | mode: mode, profile: mode_to_profile(mode)}}
+  end
+
+  def handle_call({:switch_to_coding_agent, protocol}, _from, state) do
+    profile = Worth.CodingAgents.profile_for(protocol)
+
+    cond do
+      profile == nil ->
+        {:reply, {:error, :unknown_protocol}, state}
+
+      not Worth.CodingAgents.available?(protocol) ->
+        {:reply, {:error, :not_available}, state}
+
+      true ->
+        new_state = %{state | profile: profile, mode: :coding_agent}
+        {:reply, :ok, new_state}
+    end
   end
 
   def handle_call({:switch_workspace, name}, _from, state) do
@@ -256,7 +283,10 @@ defmodule Worth.Brain do
 
     workspace_path =
       state.workspace_path ||
-        Path.expand("~/.worth/workspaces/#{state.current_workspace}")
+        Path.expand(
+          "workspaces/#{state.current_workspace}",
+          Worth.Config.Store.home_directory()
+        )
 
     try do
       context_opts = [workspace: state.current_workspace, user_message: text]
@@ -473,6 +503,7 @@ defmodule Worth.Brain do
 
   defp mode_to_profile(:code), do: :agentic
   defp mode_to_profile(:research), do: :conversational
+  defp mode_to_profile(:coding_agent), do: :claude_code
   defp mode_to_profile(_), do: :agentic
 
   defp mode_to_agent_mode(:code), do: :agentic

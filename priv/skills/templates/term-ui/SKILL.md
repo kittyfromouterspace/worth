@@ -512,47 +512,236 @@ def update(:check_events, state) do
 end
 ```
 
+## Viewport (Scrollable Regions)
+
+TermUI has a native Viewport render node for clipped/scrollable content.
+The renderer rasterizes the full content into a temporary buffer, then copies
+only the visible region based on scroll offsets.
+
+```elixir
+# Viewport render node — use this for chat scroll, log panels, etc.
+%{
+  type: :viewport,
+  content: stack(:vertical, all_message_blocks),
+  scroll_x: 0,
+  scroll_y: state.chat_scroll,   # offset into content
+  width: panel_width,
+  height: panel_height
+}
+```
+
+### Scroll state management
+
+```elixir
+# In state
+%{chat_scroll: 0, chat_content_height: 0}
+
+# In event_to_msg
+def event_to_msg(%Event.Key{key: :page_up}, _state), do: {:msg, :scroll_up}
+def event_to_msg(%Event.Key{key: :page_down}, _state), do: {:msg, :scroll_down}
+
+# In update
+def update(:scroll_up, state) do
+  new_scroll = max(0, state.chat_scroll - div(state.height, 2))
+  {%{state | chat_scroll: new_scroll}, []}
+end
+
+def update(:scroll_down, state) do
+  max_scroll = max(0, state.chat_content_height - state.height + 4)
+  new_scroll = min(state.chat_scroll + div(state.height, 2), max_scroll)
+  {%{state | chat_scroll: new_scroll}, []}
+end
+```
+
+### Auto-scroll to bottom on new messages
+
+```elixir
+# After appending a message, snap scroll to bottom unless user scrolled up
+defp auto_scroll(state) do
+  if state.chat_scroll >= state.chat_content_height - state.height do
+    %{state | chat_scroll: max(0, length(state.messages) * 2 - state.height + 4)}
+  else
+    state  # user scrolled up — don't override
+  end
+end
+```
+
+## Background Fills
+
+**IMPORTANT**: `box` with `style: Style.new(bg: color)` does NOT fill empty
+space — it only passes the bg to child text nodes. Only the `:overlay` node
+type calls `fill_background` (and it requires absolute positioning).
+
+### Correct approach: pad text lines
+
+```elixir
+# Pad each text node to the panel width with bg-coloured spaces
+defp pad_line(%{type: :text, content: content, style: style}, width, bg) do
+  padding = max(0, width - String.length(content))
+  padded = content <> String.duplicate(" ", padding)
+  merged = Style.merge(style || Style.new(), Style.new(bg: bg))
+  text(padded, merged)
+end
+```
+
+### Overlay nodes (for floating panels/dialogs only)
+
+```elixir
+# Raw map — NOT a RenderNode helper, construct directly
+%{
+  type: :overlay,
+  content: dialog_content,
+  x: col,        # 0-indexed absolute screen position
+  y: row,
+  width: w,
+  height: h,
+  bg: Style.new(bg: {40, 40, 60})   # fills entire region
+}
+```
+
+## Vertical Dividers in Horizontal Stacks
+
+**PITFALL**: `text("│\n│\n│", style)` renders as a single text node.
+In a horizontal stack, TermUI treats the entire multiline string as one
+line — only the first character appears.
+
+```elixir
+# WRONG — only first │ shows
+text(Enum.join(for _ <- 1..height, do: "│"), "\n"), style)
+
+# CORRECT — each │ is a separate text node in a vertical stack
+def vertical_divider(height) do
+  lines = for _ <- 1..height, do: text("│", Style.new(fg: palette(:surface2)))
+  stack(:vertical, lines)
+end
+```
+
+## Render Node Types Reference
+
+| Constructor | Type atom | Purpose |
+|-------------|-----------|---------|
+| `text(content, style)` | `:text` | Styled text |
+| `stack(direction, children)` | `:stack` | Layout (`:vertical` / `:horizontal`) |
+| `box(children, opts)` | `:box` | Container with width/height constraints |
+| `styled(style, child)` | `:styled` | Style wrapper |
+| `fragment(children)` | `:fragment` | Multiple nodes without layout |
+| `cells([...])` | `:cells` | Raw positioned cells |
+| `%{type: :viewport, ...}` | `:viewport` | Scrollable clipped region |
+| `%{type: :overlay, ...}` | `:overlay` | Absolute-positioned floating panel |
+
+## Rendering Pipeline (5 stages)
+
+```
+view(state) → Render Tree → NodeRenderer → Buffer (ETS) → Diff → ANSI → Terminal
+```
+
+1. **View**: component returns render tree (pure function)
+2. **Rasterize**: NodeRenderer walks tree, writes cells to ETS buffer
+3. **Diff**: compare current vs previous buffer, find changed spans
+4. **Serialize**: convert diff ops to ANSI escape sequences (style delta encoding)
+5. **Output**: write iodata to terminal
+
+Budget: 16ms per frame (60 FPS). Typical render: 1.4–6.5ms.
+
+## Buffer & Cell Internals
+
+```elixir
+# Double-buffered ETS tables for flicker-free updates
+# Access via persistent_term (O(1), no GenServer)
+:persistent_term.get({BufferManager, :current})
+
+# Cell structure
+%Cell{
+  char: "A",
+  fg: :cyan,                    # atom, 256-int, or {r,g,b} tuple
+  bg: :default,
+  attrs: MapSet.new([:bold]),
+  width: 1                      # 2 for CJK/emoji
+}
+```
+
+Wide characters (CJK/emoji) occupy 2 cells — primary + placeholder.
+
+## Testing Framework
+
+TermUI ships a full test harness. Use it for UI component tests.
+
+```elixir
+defmodule MyComponentTest do
+  use ExUnit.Case, async: true
+  use TermUI.Test.Assertions
+
+  alias TermUI.Test.{ComponentHarness, EventSimulator, TestRenderer}
+
+  test "renders initial state" do
+    {:ok, harness} = ComponentHarness.mount_test(MyComponent, [])
+    harness = ComponentHarness.render(harness)
+    renderer = ComponentHarness.get_renderer(harness)
+
+    assert_text_exists(renderer, "expected text")
+    ComponentHarness.unmount(harness)
+  end
+
+  test "handles key events" do
+    {:ok, harness} = ComponentHarness.mount_test(MyComponent, [])
+    harness = ComponentHarness.event_cycle(harness, EventSimulator.simulate_key(:enter))
+
+    assert ComponentHarness.get_state(harness).submitted == true
+    ComponentHarness.unmount(harness)
+  end
+end
+```
+
+### Key test APIs
+
+| Module | Function | Purpose |
+|--------|----------|---------|
+| `ComponentHarness` | `mount_test/2` | Mount component for testing |
+| `ComponentHarness` | `render/1` | Trigger render cycle |
+| `ComponentHarness` | `send_event/2` | Send single event |
+| `ComponentHarness` | `event_cycle/2` | Send event + render |
+| `ComponentHarness` | `get_state/1` | Read component state |
+| `EventSimulator` | `simulate_key/1,2` | Create key event |
+| `EventSimulator` | `simulate_type/1` | Type string → key events |
+| `EventSimulator` | `simulate_click/3` | Mouse click event |
+| `EventSimulator` | `simulate_scroll_up/2` | Scroll event |
+| `TestRenderer` | `find_text/2` | Find text → `[{row, col}]` |
+| Assertions | `assert_text_exists/2` | Text appears somewhere |
+| Assertions | `assert_style/3` | Style at position |
+
+## Mouse Events
+
+TermUI supports mouse tracking (click, drag, scroll).
+
+```elixir
+%Event.Mouse{
+  action: :press | :release | :click | :drag | :scroll_up | :scroll_down,
+  button: :left | :middle | :right | nil,
+  x: integer,    # 0-indexed
+  y: integer,
+  modifiers: [:ctrl, :alt, :shift]
+}
+```
+
+Enable mouse in runtime opts or handle in `event_to_msg`:
+
+```elixir
+@impl true
+def event_to_msg(%Event.Mouse{action: :scroll_up}, _state), do: {:msg, :scroll_up}
+def event_to_msg(%Event.Mouse{action: :scroll_down}, _state), do: {:msg, :scroll_down}
+def event_to_msg(%Event.Mouse{action: :click, x: x, y: y}, _state) do
+  {:msg, {:click, x, y}}
+end
+```
+
 ## Performance Considerations
 
 1. **Minimize Redraws**: Only update when state actually changes
 2. **Efficient Widgets**: Use built-in widgets optimized for diffing
 3. **Non-blocking I/O**: Use Commands for async operations
 4. **Memoization**: Cache expensive computations
-5. **Virtual Scrolling**: For large datasets, only render visible items
-
-## Installation
-
-```elixir
-# mix.exs
-def deps do
-  [
-    {:term_ui, "~> 0.2.0"}
-  ]
-end
-```
-
-## Requirements
-
-- Elixir 1.15+
-- OTP 28+ (required for native raw terminal mode)
-- Terminal with Unicode support
-- Recommended terminals: Alacritty, Kitty, WezTerm, iTerm2, Windows Terminal
-
-## Running Applications
-
-```bash
-# Standard execution
-mix run --no-halt
-
-# With workspace and mode
-mix run --no-halt -- -w my_workspace -m code
-
-# Direct execution
-elixir -S mix run lib/my_app.ex
-
-# In IEx (for development)
-iex> TermUI.Runtime.run(root: MyApp.Application)
-```
+5. **Viewport for Scrolling**: Use native viewport nodes — content outside the visible area is never diffed or serialized
+6. **Style Delta Encoding**: Renderer only emits changed SGR attributes between cells
 
 ## Common Pitfalls
 
@@ -561,5 +750,7 @@ iex> TermUI.Runtime.run(root: MyApp.Application)
 3. **Using `elem/1` on RenderNode**: Access `render_node.content` instead
 4. **Matching both key and char**: They're mutually exclusive in Event.Key
 5. **Forgetting state fields**: Always initialize all required fields in `init/1`
-
-This unified skill provides comprehensive guidance for building terminal applications with TermUI, combining framework-specific patterns with general TUI best practices for creating robust, maintainable, and feature-rich terminal user interfaces.
+6. **Box bg doesn't fill**: Use line-padding or overlay nodes, not box style bg
+7. **Multiline text in horizontal stacks**: Use `stack(:vertical, ...)` with individual text nodes
+8. **Doing I/O in update/2**: Use `{:async, fun, msg}` command instead
+9. **Not cleaning up tests**: Always call `ComponentHarness.unmount/1`

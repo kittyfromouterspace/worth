@@ -6,3 +6,7 @@
 *.iml
 .DS_Store
 /debug/
+
+# Phoenix/assets build output
+/priv/static/assets/
+/priv/static/cache_manifest.json

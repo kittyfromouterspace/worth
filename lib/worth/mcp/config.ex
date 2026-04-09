@@ -1,11 +1,13 @@
 defmodule Worth.Mcp.Config do
-  @global_config_path Path.expand("~/.worth/config.exs")
+  alias Worth.Config.Store
 
   def load(workspace_path \\ nil) do
     global = load_global()
     workspace = load_workspace(workspace_path)
     Map.merge(global, workspace)
   end
+
+  defp global_config_path, do: Path.expand("config.exs", Store.home_directory())
 
   def server_names(workspace_path \\ nil) do
     load(workspace_path) |> Map.keys()
@@ -70,9 +72,11 @@ defmodule Worth.Mcp.Config do
   end
 
   defp load_global do
-    if File.exists?(@global_config_path) do
+    path = global_config_path()
+
+    if File.exists?(path) do
       try do
-        {result, _binding} = Code.eval_file(@global_config_path)
+        {result, _binding} = Code.eval_file(path)
 
         case result do
           %{mcp: %{servers: servers}} when is_map(servers) ->
@@ -116,7 +120,7 @@ defmodule Worth.Mcp.Config do
   end
 
   defp save_global(_servers) do
-    dir = Path.dirname(@global_config_path)
+    dir = Path.dirname(global_config_path())
     File.mkdir_p!(dir)
 
     _config_content =
@@ -124,8 +128,8 @@ defmodule Worth.Mcp.Config do
         "%{}"
 
     existing =
-      if File.exists?(@global_config_path) do
-        File.read!(@global_config_path)
+      if File.exists?(global_config_path()) do
+        File.read!(global_config_path())
       else
         "%{}"
       end
@@ -137,7 +141,7 @@ defmodule Worth.Mcp.Config do
         existing <> "\n\nconfig :worth, mcp: %{servers: %{}}\n"
       end
 
-    File.write!(@global_config_path, new_config)
+    File.write!(global_config_path(), new_config)
     :ok
   end
 

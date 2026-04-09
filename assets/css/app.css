@@ -1,0 +1,195 @@
+@import "tailwindcss" source(none);
+@source "../css";
+@source "../js";
+@source "../../lib/worth_web";
+
+/* Heroicons plugin */
+@plugin "../vendor/heroicons";
+
+/* LiveView custom variants */
+@custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
+@custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
+@custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
+
+/* Make LiveView wrapper divs transparent for layout */
+[data-phx-session], [data-phx-teleported-src] { display: contents }
+
+/* ── Catppuccin Mocha palette ── */
+@theme {
+  --color-ctp-base: #1e1e2e;
+  --color-ctp-mantle: #181825;
+  --color-ctp-crust: #11111b;
+  --color-ctp-surface0: #313244;
+  --color-ctp-surface1: #45475a;
+  --color-ctp-surface2: #585b70;
+  --color-ctp-overlay0: #6c7086;
+  --color-ctp-overlay1: #7f849c;
+  --color-ctp-overlay2: #9399b2;
+  --color-ctp-text: #cdd6f4;
+  --color-ctp-subtext0: #a6adc8;
+  --color-ctp-subtext1: #bac2de;
+  --color-ctp-blue: #89b4fa;
+  --color-ctp-lavender: #b4befe;
+  --color-ctp-green: #a6e3a1;
+  --color-ctp-yellow: #f9e2af;
+  --color-ctp-red: #f38ba8;
+  --color-ctp-teal: #94e2d5;
+  --color-ctp-mauve: #cba6f7;
+  --color-ctp-peach: #fab387;
+  --color-ctp-pink: #f5c2e7;
+  --color-ctp-sky: #89dcfe;
+  --color-ctp-flamingo: #f2cdcd;
+  --color-ctp-rosewater: #f5e0dc;
+  --color-ctp-sapphire: #74c7ec;
+
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+/* ── Base styles ── */
+body {
+  background-color: var(--color-ctp-base);
+  color: var(--color-ctp-text);
+  font-family: var(--font-mono);
+}
+
+/* ── Scrollbar styling ── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-ctp-mantle);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-ctp-surface2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ctp-overlay0);
+}
+
+/* ── Code blocks ── */
+pre {
+  background-color: var(--color-ctp-mantle);
+  border: 1px solid var(--color-ctp-surface0);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+}
+
+:not(pre) > code {
+  background-color: var(--color-ctp-surface0);
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+}
+
+/* ── Markdown content styles ── */
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  color: var(--color-ctp-lavender);
+  font-weight: 600;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-content h1 { font-size: 1.25rem; }
+.markdown-content h2 { font-size: 1.125rem; }
+.markdown-content h3 { font-size: 1rem; }
+
+.markdown-content p {
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-content ul { list-style-type: disc; }
+.markdown-content ol { list-style-type: decimal; }
+
+.markdown-content li {
+  margin-bottom: 0.25rem;
+}
+
+.markdown-content a {
+  color: var(--color-ctp-blue);
+  text-decoration: underline;
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid var(--color-ctp-surface2);
+  padding-left: 1rem;
+  color: var(--color-ctp-subtext0);
+  margin: 0.5rem 0;
+}
+
+.markdown-content hr {
+  border-color: var(--color-ctp-surface1);
+  margin: 1rem 0;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+}
+
+.markdown-content th,
+.markdown-content td {
+  border: 1px solid var(--color-ctp-surface1);
+  padding: 0.375rem 0.75rem;
+}
+
+.markdown-content th {
+  background-color: var(--color-ctp-surface0);
+  font-weight: 600;
+}
+
+/* ── Spinner animation ── */
+@keyframes spin-dots {
+  0%, 100% { content: "⠋"; }
+  8%  { content: "⠙"; }
+  16% { content: "⠹"; }
+  24% { content: "⠸"; }
+  32% { content: "⠼"; }
+  40% { content: "⠴"; }
+  48% { content: "⠦"; }
+  56% { content: "⠧"; }
+  64% { content: "⠇"; }
+  72% { content: "⠏"; }
+}
+
+.spinner::before {
+  animation: spin-dots 0.8s steps(1) infinite;
+  content: "⠋";
+}
+
+/* ── Flash messages ── */
+.flash-info {
+  background-color: var(--color-ctp-surface0);
+  border: 1px solid var(--color-ctp-blue);
+  color: var(--color-ctp-text);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}
+
+.flash-error {
+  background-color: var(--color-ctp-surface0);
+  border: 1px solid var(--color-ctp-red);
+  color: var(--color-ctp-text);
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+}

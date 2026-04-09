@@ -1,4 +1,6 @@
 defmodule Worth.Kits do
+  alias Worth.Config.Store
+
   @base_url "https://journeykits.ai/api"
 
   def search(query, opts \\ []) do
@@ -67,7 +69,7 @@ defmodule Worth.Kits do
   end
 
   def list_installed do
-    config_file = Path.expand("~/.worth/installed_kits.json")
+    config_file = Path.expand("installed_kits.json", Store.home_directory())
 
     case File.read(config_file) do
       {:ok, json} ->
@@ -155,7 +157,7 @@ defmodule Worth.Kits do
   defp maybe_write_sources(_, _), do: :ok
 
   defp track_installation(owner, slug, payload) do
-    config_file = Path.expand("~/.worth/installed_kits.json")
+    config_file = Path.expand("installed_kits.json", Store.home_directory())
     File.mkdir_p!(Path.dirname(config_file))
 
     existing =

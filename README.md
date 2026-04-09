@@ -1,6 +1,6 @@
 # Worth
 
-A terminal-based AI assistant built on Elixir/BEAM. Worth provides a modular, embeddable agent system with persistent memory, self-learning skills, and MCP integration.
+An AI assistant built on Elixir/BEAM with a Phoenix LiveView web interface. Worth provides a modular, embeddable agent system with persistent memory, self-learning skills, and MCP integration.
 
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 [![Elixir](https://img.shields.io/badge/Elixir-1.19+-grey.svg)](https://elixir-lang.org)
@@ -15,23 +15,7 @@ Worth runs on the BEAM virtual machine—the same platform powering WhatsApp, Di
 - **Hot code upgrades** — Reload modules without restarting. Worth can evolve while running.
 - **Real-time concurrency** — Streaming LLM responses, tool execution, and UI updates happen concurrently without callback hell.
 
-Worth is a single BEAM node. No containers, no VMs, no web server required.
-
 ## Quick Start
-
-### As a Library
-
-Add Worth to your `mix.exs`:
-
-```elixir
-def deps do
-  [
-    {:worth, "~> 0.1.0"},
-    {:agent_ex, path: "../agent_ex"},  # Local dependency
-    {:mneme, path: "../mneme"}          # Local dependency
-  ]
-end
-```
 
 ### As a Standalone Application
 
@@ -44,8 +28,31 @@ mix setup
 # Configure API keys
 export ANTHROPIC_API_KEY="sk-ant-..."
 
-# Run the TUI
-mix run --no-halt
+# Start the web UI
+mix phx.server
+```
+
+Open http://localhost:4000 in your browser.
+
+Or use the CLI launcher (auto-opens browser):
+
+```bash
+mix worth
+mix worth --workspace my-project --mode research
+```
+
+### As a Library
+
+Add Worth to your `mix.exs`:
+
+```elixir
+def deps do
+  [
+    {:worth, "~> 0.1.0"},
+    {:agent_ex, path: "../agent_ex"},
+    {:mneme, path: "../mneme"}
+  ]
+end
 ```
 
 ## Core Concepts
@@ -55,22 +62,15 @@ mix run --no-halt
 `Worth.Brain` is a GenServer that orchestrates the agent loop. It owns the session state and delegates to specialized subsystems:
 
 ```elixir
-# Start a session with custom callbacks
-{:ok, brain} = Worth.Brain.start_link(
-  workspace: "my-project",
-  mode: :code,
-  callbacks: custom_callbacks
-)
-
 # Send a message
-{:ok, response} = Worth.Brain.send_message(brain, "Write a test for auth.ex")
+{:ok, response} = Worth.Brain.send_message("Write a test for auth.ex")
 ```
 
 The brain exposes these integration points:
-- `send_message/2` — Send user input, get agent response
-- `approve_tool/2` — Approve a pending tool call
-- `switch_workspace/2` — Change context
-- `switch_mode/2` — Change agent autonomy (`:code`, `:research`, `:planned`, `:turn_by_turn`)
+- `send_message/1` — Send user input, get agent response
+- `approve_tool/1` — Approve a pending tool call
+- `switch_workspace/1` — Change context
+- `switch_mode/1` — Change agent autonomy (`:code`, `:research`, `:planned`, `:turn_by_turn`)
 
 ### Memory System
 
@@ -100,13 +100,6 @@ skills = Worth.Skill.Service.list()
 
 # Read skill content
 {:ok, skill} = Worth.Skill.Service.read("git-workflow")
-
-# Create a new skill
-Worth.Skill.Service.create(%{
-  name: "my-skill",
-  description: "Custom skill instructions",
-  body: "# Instructions..."
-})
 ```
 
 Skills have trust levels: `core` (shipped), `installed` (user-added), `learned` (agent-created). The system tracks success rates and auto-refines underperforming skills.
@@ -137,179 +130,44 @@ Worth can connect to external MCP servers and expose its own capabilities as an 
 **As an MCP Server:**
 
 ```bash
-# Run worth as an MCP server
 mix worth serve
 ```
 
 Exposed tools: `worth_chat`, `worth_memory_query`, `worth_skill_list`, `worth_workspace_status`
 
-## Integration APIs
-
-### Embedding the Agent
-
-```elixir
-# Start with custom configuration
-config = %{
-  llm: %{
-    provider: :anthropic,
-    model: "claude-sonnet-4-20250514",
-    api_key: {:env, "ANTHROPIC_API_KEY"}
-  },
-  cost_limit: 10.0,
-  workspace: "my-project"
-}
-
-{:ok, brain} = Worth.Brain.start_link(config: config)
-
-# Stream responses
-Worth.Brain.send_message(brain, "Refactor user.ex", fn event ->
-  case event do
-    {:text_chunk, text} -> IO.puts(text)
-    {:tool_call, tool} -> IO.inspect(tool, label: "Tool call")
-    {:done, _} -> IO.puts("\n--- Done ---")
-  end
-end)
-```
-
-### Custom Tools
-
-Register tools that the agent can call:
-
-```elixir
-defmodule MyApp.Tools.Custom do
-  @behaviour AgentEx.Tools
-
-  def name, do: "my_custom_tool"
-  def description, do: "Does something useful"
-
-  def schema do
-    %{
-      name: "my_custom_tool",
-      description: "Does something useful",
-      inputSchema: %{
-        type: "object",
-        properties: %{
-          input: %{type: "string", description: "Input value"}
-        },
-        required: ["input"]
-      }
-    }
-  end
-
-  def execute(args, _ctx) do
-    {:ok, %{result: "processed: #{args.input}"}}
-  end
-end
-
-# Register it
-AgentEx.Tools.register_extension(MyApp.Tools.Custom)
-```
-
-### Custom LLM Adapter
-
-Worth supports Anthropic, OpenAI, and OpenRouter. To add a new provider:
-
-```elixir
-defmodule MyApp.LLM.MyProvider do
-  @behaviour Worth.LLM.Adapter
-
-  @impl true
-  def chat(messages, config) do
-    # Call your LLM API
-    # Return normalized response:
-    %{
-      "content" => [...],
-      "stop_reason" => "end_turn",
-      "usage" => %{input_tokens: 100, output_tokens: 50},
-      "cost" => 0.003
-    }
-  end
-end
-
-# Configure in ~/.worth/config.exs
-%{
-  llm: %{
-    default_provider: :my_provider,
-    providers: %{
-      my_provider: %{
-        adapter: MyApp.LLM.MyProvider,
-        api_key: {:env, "MY_PROVIDER_KEY"},
-        default_model: "my-model"
-      }
-    }
-  }
-}
-```
-
-### Extending the Brain
-
-Provide custom callbacks to modify agent behavior:
-
-```elixir
-callbacks = %{
-  # Custom LLM call
-  llm_chat: fn params ->
-    MyApp.LLM.call(params)
-  end,
-
-  # Custom memory lookup
-  knowledge_search: fn query, opts ->
-    MyApp.Memory.search(query, opts)
-  end,
-
-  # Custom tool resolution
-  get_tool_schema: fn name ->
-    MyApp.Tools.resolve(name)
-  end,
-
-  # Before/after each turn
-  on_turn_start: fn ctx ->
-    Logger.info("Starting turn in #{ctx.workspace}")
-    ctx
-  end,
-
-  on_turn_end: fn ctx, result ->
-    Logger.info("Turn complete, cost: #{result.cost}")
-    :ok
-  end
-}
-
-Worth.Brain.start_link(callbacks: callbacks)
-```
-
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────┐
 │                    Worth (BEAM Node)                      │
 │                                                          │
 │  ┌──────────────┐    ┌──────────────┐                   │
-│  │  TermUI       │    │  Brain       │                   │
-│  │  (Elm Arch)   │◄──►│  (GenServer) │                   │
-│  │              │    │              │                     │
-│  │  - Input     │    │  - AgentEx   │                    │
-│  │  - Render    │    │  - Mneme     │                    │
-│  │  - Events    │    │  - Skills    │                    │
-│  └──────────────┘    │  - MCP       │                    │
-│                      └──────┬───────┘                    │
-│                             │                            │
-│                      ┌──────▼───────┐                    │
-│                      │  AgentEx     │                    │
-│                      │  Loop Engine │                    │
-│                      └──────┬───────┘                    │
-│                             │                            │
-│        ┌─────────────┬──────┼──────┬─────────────┐      │
-│        │             │      │      │             │      │
-│ ┌──────▼──┐  ┌──────▼──┐  ┌──▼──┐  ┌──────▼──┐  ┌─▼────┐│
-│ │ Mneme   │  │ File    │  │Tool │  │ Skills  │  │ MCP  ││
-│ │ Memory  │  │ Tools   │  │Index│  │ System  │  │Servers│
-│ └──────┬──┘  └─────────┘  └─────┘  └─────────┘  └───────┘│
-│        │                                              │
-│ ┌──────▼──┐                                          │
-│ │PostgreSQL│                                         │
-│ │+ pgvector│                                         │
-│ └─────────┘                                         │
-└─────────────────────────────────────────────────────────┘
+│  │  Phoenix     │    │  Brain       │                   │
+│  │  LiveView    │◄──►│  (GenServer) │                   │
+│  │              │    │              │                    │
+│  │  - Chat UI   │    │  - AgentEx   │                   │
+│  │  - Sidebar   │    │  - Mneme     │                   │
+│  │  - Commands  │    │  - Skills    │                   │
+│  └──────────────┘    │  - MCP       │                   │
+│                      └──────┬───────┘                   │
+│                             │                           │
+│                      ┌──────▼───────┐                   │
+│                      │  AgentEx     │                   │
+│                      │  Loop Engine │                   │
+│                      └──────┬───────┘                   │
+│                             │                           │
+│        ┌─────────────┬──────┼──────┬─────────────┐     │
+│        │             │      │      │             │     │
+│ ┌──────▼──┐  ┌──────▼──┐  ┌──▼──┐  ┌──────▼──┐  ┌─▼───┐│
+│ │ Mneme   │  │ File    │  │Tool │  │ Skills  │  │ MCP ││
+│ │ Memory  │  │ Tools   │  │Index│  │ System  │  │Srvrs││
+│ └──────┬──┘  └─────────┘  └─────┘  └─────────┘  └─────┘│
+│        │                                               │
+│ ┌──────▼──┐                                            │
+│ │PostgreSQL│                                           │
+│ │+ pgvector│                                           │
+│ └─────────┘                                            │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### Key Modules
@@ -317,13 +175,12 @@ Worth.Brain.start_link(callbacks: callbacks)
 | Module | Responsibility |
 |--------|----------------|
 | `Worth.Brain` | Central GenServer, coordinates agent loop |
-| `Worth.LLM` | Provider abstraction (Anthropic, OpenAI, OpenRouter) |
+| `WorthWeb.ChatLive` | Phoenix LiveView chat interface |
 | `Worth.Memory.Manager` | Global memory orchestration |
 | `Worth.Skill.Service` | Skill CRUD, lifecycle management |
 | `Worth.Mcp.Broker` | DynamicSupervisor for MCP connections |
 | `Worth.Mcp.Gateway` | Lazy tool discovery and execution |
 | `Worth.Tools` | Builtin tool implementations |
-| `Worth.UI.Root` | TermUI Elm Architecture root |
 
 ### Supervision Tree
 
@@ -331,14 +188,17 @@ Worth.Brain.start_link(callbacks: callbacks)
 Worth.Application
 ├── Worth.Repo (Ecto/Postgres + pgvector)
 ├── Worth.Config (Agent)
+├── Worth.LogBuffer
 ├── Phoenix.PubSub + Worth.Registry
 ├── Worth.TaskSupervisor
-├── Worth.Telemetry
+├── Worth.Telemetry + Worth.Metrics
+├── Worth.Agent.Tracker
 ├── Worth.Mcp.Broker (DynamicSupervisor)
 ├── Worth.Mcp.ConnectionMonitor
 ├── Worth.Brain.Supervisor
 │   └── Worth.Brain (GenServer)
-└── Worth.UI (separate process tree)
+├── WorthWeb.Telemetry
+└── WorthWeb.Endpoint (Phoenix)
 ```
 
 ## Prerequisites
@@ -350,10 +210,7 @@ Worth.Application
 ### Database Setup
 
 ```bash
-# Create database
 mix ecto.create
-
-# Run migrations
 mix ecto.migrate
 ```
 
@@ -375,18 +232,13 @@ Worth reads from `~/.worth/config.exs` (auto-created on first run):
 
 ```elixir
 %{
-  # LLM Configuration
   llm: %{
     default_provider: :anthropic,
-    cost_limit: 5.0,  # Max dollars per session
+    cost_limit: 5.0,
     providers: %{
       anthropic: %{
         api_key: {:env, "ANTHROPIC_API_KEY"},
         default_model: "claude-sonnet-4-20250514"
-      },
-      openai: %{
-        api_key: {:env, "OPENAI_API_KEY"},
-        default_model: "gpt-4o"
       },
       openrouter: %{
         api_key: {:env, "OPENROUTER_API_KEY"},
@@ -394,13 +246,6 @@ Worth reads from `~/.worth/config.exs` (auto-created on first run):
       }
     }
   },
-
-  # UI Theme
-  ui: %{
-    theme: :dark  # :dark | :light | :minimal
-  },
-
-  # MCP Servers
   mcp: %{
     servers: %{
       filesystem: %{
@@ -417,41 +262,25 @@ Worth reads from `~/.worth/config.exs` (auto-created on first run):
 ## Development
 
 ```bash
-# Install dependencies
-mix deps.get
-
-# Setup database
-mix setup
-
-# Run tests
-mix test
-
-# Linting
-mix credo
-
-# Type checking
-mix dialyzer
-
-# Run the TUI
-mix run --no-halt
+mix deps.get        # Install dependencies
+mix setup           # Full setup (deps + DB + assets)
+mix phx.server      # Start dev server with hot reload
+mix test            # Run tests
+mix credo           # Linting
+mix dialyzer        # Type checking
 ```
 
 ### Running Tests
 
 ```bash
-# Full test suite (creates test DB automatically)
-mix test
-
-# Single file
-mix test test/worth/brain_test.exs
-
-# Single test
-mix test test/worth/brain_test.exs:42
+mix test                              # Full suite
+mix test test/worth/brain_test.exs    # Single file
+mix test test/worth/brain_test.exs:42 # Single test
 ```
 
 ## Slash Commands
 
-When running the TUI, these commands are available:
+These commands are available in the chat input:
 
 | Command | Description |
 |---------|-------------|
@@ -462,6 +291,8 @@ When running the TUI, these commands are available:
 | `/skill list` | List all skills |
 | `/session resume <id>` | Resume a past session |
 | `/mcp list` | List connected MCP servers |
+| `/usage` | Show provider quota and session cost |
+| `/setup` | Show setup status |
 
 ## Workspaces
 
@@ -501,11 +332,12 @@ Other key dependencies:
 
 | Library | Purpose |
 |---------|---------|
-| `term_ui` | Elm Architecture TUI framework |
+| `phoenix` + `phoenix_live_view` | Web UI framework |
 | `hermes_mcp` | MCP client/server (JSON-RPC 2.0) |
 | `ash` + `ash_postgres` | Domain modeling and persistence |
 | `phoenix_pubsub` | Event broadcasting |
 | `req` | HTTP client for LLM APIs |
+| `earmark` | Markdown rendering |
 
 ## License
 

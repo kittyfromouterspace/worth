@@ -1,4 +1,6 @@
 defmodule Worth.Skill.Refiner do
+  alias Worth.Config.Store
+
   @refinement_prompt """
   The following skill has been producing poor results. Analyze the failures and suggest improved instructions.
 
@@ -165,8 +167,8 @@ defmodule Worth.Skill.Refiner do
 
   defp resolve_skill_dir(name) do
     core = Path.join(:code.priv_dir(:worth), "core_skills")
-    user = Path.join(Path.expand("~/.worth/skills"), name)
-    learned = Path.join(Path.expand("~/.worth/skills/learned"), name)
+    user = Path.join(Path.expand("skills", Store.home_directory()), name)
+    learned = Path.join(Path.expand("skills/learned", Store.home_directory()), name)
 
     cond do
       File.dir?(Path.join(core, name)) -> Path.join(core, name)

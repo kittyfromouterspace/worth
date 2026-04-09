@@ -1,51 +1,60 @@
-defmodule Worth.UI.LogHandler do
+defmodule Worth.LogHandler do
   @moduledoc """
-  Erlang `:logger` handler that forwards events into `Worth.UI.LogBuffer`
-  AND tees them to a plain-text file for external inspection.
-
-  Installed by `Worth.CLI` before `TermUI.Runtime.run/1` and paired with
-  removing the default handler so nothing writes log output to stdout
-  while the TUI owns the screen.
-
-      :logger.add_handler(:worth_tui, Worth.UI.LogHandler, %{})
-
-  ## File log
-
-  Every event is also appended to `~/.worth/logs/worth.log` (path can be
-  overridden by setting `WORTH_LOG_FILE`). This is the place to look when
-  something goes wrong inside the TUI — you can `tail -f` it from another
-  terminal, or `grep` it after the fact, since the in-TUI Logs panel
-  isn't mouse-selectable while the alternate screen is active.
-
-  The path of the file log is logged at info level on every boot so it's
-  visible in the Logs panel as well.
+  Erlang `:logger` handler that forwards events into `Worth.LogBuffer`
+  and tees them to a plain-text file for external inspection.
   """
 
-  @default_relpath "~/.worth/logs/worth.log"
+  alias Worth.Config.Store
 
-  @doc false
+  @default_relpath "logs/worth.log"
+
   def log(%{level: level, msg: msg, meta: meta}, _config) do
     text = format_msg(msg, meta)
     ts = System.system_time(:millisecond)
 
-    Worth.UI.LogBuffer.push(%{level: level, text: text, ts: ts})
+    Worth.LogBuffer.push(%{level: level, text: text, ts: ts})
     write_to_file(level, text, ts)
   catch
-    # A log handler must never crash the emitter. Swallow anything that
-    # goes wrong while formatting (e.g. LogBuffer not yet started during
-    # boot).
     _kind, _reason -> :ok
   end
 
-  @doc """
-  Returns the absolute path of the file log. Honors `WORTH_LOG_FILE`
-  if set, otherwise expands `~/.worth/logs/worth.log`.
-  """
   def file_path do
+    base =
+      case System.get_env("WORTH_LOG_FILE") do
+        nil -> Path.expand(@default_relpath, Store.home_directory())
+        "" -> Path.expand(@default_relpath, Store.home_directory())
+        explicit -> Path.expand(explicit)
+      end
+
+    with_rotation(base)
+  end
+
+  def base_path do
     case System.get_env("WORTH_LOG_FILE") do
-      nil -> Path.expand(@default_relpath)
-      "" -> Path.expand(@default_relpath)
+      nil -> Path.expand(@default_relpath, Store.home_directory())
+      "" -> Path.expand(@default_relpath, Store.home_directory())
       explicit -> Path.expand(explicit)
+    end
+  end
+
+  defp with_rotation(base_path) do
+    case rotation_mode() do
+      :daily ->
+        date_str = DateTime.utc_now() |> Date.to_iso8601()
+        ext = Path.extname(base_path)
+        basename = Path.rootname(base_path)
+        "#{basename}-#{date_str}#{ext}"
+
+      _ ->
+        base_path
+    end
+  end
+
+  defp rotation_mode do
+    case Application.get_env(:worth, :log) do
+      nil -> nil
+      opts when is_list(opts) -> Keyword.get(opts, :rotation, nil)
+      _ -> nil
     end
   end
 
@@ -69,8 +78,6 @@ defmodule Worth.UI.LogHandler do
     |> Atom.to_string()
     |> String.pad_trailing(8)
   end
-
-  # ----- formatting -----
 
   defp format_msg({:string, chardata}, _meta) do
     chardata |> IO.chardata_to_string() |> String.trim_trailing()

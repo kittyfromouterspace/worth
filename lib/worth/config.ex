@@ -119,6 +119,8 @@ defmodule Worth.Config do
 
   defp deep_merge(_a, b), do: b
 
+  defp resolve_env_values(%_{} = struct), do: struct
+
   defp resolve_env_values(map) when is_map(map) do
     Map.new(map, fn {k, v} -> {k, resolve_env_values(v)} end)
   end

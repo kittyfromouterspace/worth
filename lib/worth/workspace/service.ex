@@ -1,8 +1,8 @@
 defmodule Worth.Workspace.Service do
-  @default_dir "~/.worth/workspaces"
+  alias Worth.Config.Store
 
   def list do
-    dir = Path.expand(@default_dir)
+    dir = Path.expand("workspaces", Store.home_directory())
 
     if File.dir?(dir) do
       File.ls!(dir)
@@ -16,7 +16,7 @@ defmodule Worth.Workspace.Service do
   end
 
   def create(name, opts \\ []) do
-    dir = Path.expand(@default_dir)
+    dir = Path.expand("workspaces", Store.home_directory())
     workspace_path = Path.join(dir, name)
     workspace_type = Keyword.get(opts, :type, :code)
 
@@ -35,7 +35,7 @@ defmodule Worth.Workspace.Service do
   end
 
   def resolve_path(name) do
-    Path.expand(Path.join(@default_dir, name))
+    Path.expand(Path.join("workspaces", name), Store.home_directory())
   end
 
   defp write_identity(path, name, :code) do

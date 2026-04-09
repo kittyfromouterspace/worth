@@ -1,11 +1,6 @@
-defmodule Worth.UI.LogBuffer do
+defmodule Worth.LogBuffer do
   @moduledoc """
-  Bounded ring buffer of recent log events for display inside the TUI.
-
-  When the TUI is running, the default `:logger` console handler is
-  removed and `Worth.UI.LogHandler` forwards events here instead. The
-  sidebar's `:logs` tab reads `recent/1` to render the buffer contents.
-
+  Bounded ring buffer of recent log events.
   Entries are simple maps: `%{level: atom, text: binary, ts: integer}`.
   """
 
@@ -13,23 +8,18 @@ defmodule Worth.UI.LogBuffer do
 
   @max_entries 500
 
-  # ----- API -----
-
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  @doc "Append one entry. Drops the oldest entry if the buffer is full."
   def push(entry) do
     GenServer.cast(__MODULE__, {:push, entry})
   end
 
-  @doc "Returns the most recent `n` entries (oldest first)."
   def recent(n \\ 100) do
     GenServer.call(__MODULE__, {:recent, n})
   end
 
-  @doc "Number of entries currently buffered."
   def count do
     GenServer.call(__MODULE__, :count)
   end
@@ -37,8 +27,6 @@ defmodule Worth.UI.LogBuffer do
   def clear do
     GenServer.cast(__MODULE__, :clear)
   end
-
-  # ----- callbacks -----
 
   @impl true
   def init(_opts) do
