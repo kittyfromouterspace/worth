@@ -132,7 +132,10 @@ defmodule Worth.Workspace.Identity do
         _ -> nil
       end
     rescue
-      _ -> nil
+      e ->
+        require Logger
+        Logger.warning("Failed to parse YAML frontmatter: #{Exception.message(e)}")
+        nil
     end
   end
 
@@ -168,7 +171,10 @@ defmodule Worth.Workspace.Identity do
         {:error, _} -> config
       end
     rescue
-      _ -> config
+      e ->
+        require Logger
+        Logger.warning("Failed to validate LLM config: #{Exception.message(e)}")
+        config
     end
   end
 
