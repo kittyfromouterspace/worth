@@ -1,9 +1,15 @@
 defmodule Worth.Brain do
+  @moduledoc """
+  Per-workspace GenServer that owns one agent session at a time.
+
+  Each workspace gets its own Brain process, registered via
+  `{:via, Registry, {Worth.Registry, {:brain, workspace}}}`.
+  Processes are started on demand by `Worth.Brain.Supervisor.ensure_started/2`.
+  """
   use GenServer
   require Logger
 
   defstruct [
-    :ui_pid,
     :current_workspace,
     :workspace_path,
     :session_id,
@@ -37,81 +43,110 @@ defmodule Worth.Brain do
     "deactivate_tool" => :auto
   }
 
+  # ── Registry helpers ──────────────────────────────────────────
+
+  @doc "Returns the via-tuple for a workspace Brain process."
+  def via(workspace), do: {:via, Registry, {Worth.Registry, {:brain, workspace}}}
+
+  @doc "Look up the PID of the Brain for `workspace`, or nil."
+  def whereis(workspace) do
+    case Registry.lookup(Worth.Registry, {:brain, workspace}) do
+      [{pid, _}] -> pid
+      [] -> nil
+    end
+  end
+
+  @doc """
+  Returns the PID of the Brain for `workspace`, starting one if needed.
+  """
+  def ensure(workspace) do
+    Worth.Brain.Supervisor.ensure_started(workspace)
+  end
+
+  # ── Public API ────────────────────────────────────────────────
+
+  def child_spec(opts) do
+    workspace = Keyword.get(opts, :workspace, "personal")
+
+    %{
+      id: {:brain, workspace},
+      start: {__MODULE__, :start_link, [opts]},
+      restart: :transient
+    }
+  end
+
   def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+    workspace = Keyword.get(opts, :workspace, "personal")
+    GenServer.start_link(__MODULE__, opts, name: via(workspace))
   end
 
-  def send_message(text) do
-    GenServer.call(__MODULE__, {:send_message, text}, :infinity)
+  def send_message(text, workspace) do
+    Logger.info(
+      "[Brain.External] send_message called: text=#{String.slice(text, 0, 30)}, workspace=#{inspect(workspace)}"
+    )
+
+    {:ok, pid} = ensure(workspace)
+    GenServer.call(pid, {:send_message, text}, :infinity)
   end
 
-  def set_ui_pid(pid) do
-    GenServer.call(__MODULE__, {:set_ui_pid, pid})
+  def stop(workspace) do
+    {:ok, pid} = ensure(workspace)
+    GenServer.call(pid, :stop)
   end
 
-  def stop do
-    GenServer.call(__MODULE__, :stop)
+  def get_status(workspace) do
+    {:ok, pid} = ensure(workspace)
+    GenServer.call(pid, :get_status)
   end
 
-  def get_status do
-    GenServer.call(__MODULE__, :get_status)
+  def switch_mode(workspace, mode) do
+    {:ok, pid} = ensure(workspace)
+    GenServer.call(pid, {:switch_mode, mode})
   end
 
-  def switch_mode(mode) do
-    GenServer.call(__MODULE__, {:switch_mode, mode})
+  def resume_session(workspace, session_id) do
+    {:ok, pid} = ensure(workspace)
+    GenServer.call(pid, {:resume_session, session_id})
   end
 
-  def switch_workspace(name) do
-    GenServer.call(__MODULE__, {:switch_workspace, name})
+  def list_sessions(workspace) do
+    {:ok, pid} = ensure(workspace)
+    GenServer.call(pid, :list_sessions)
   end
 
-  def resume_session(session_id) do
-    GenServer.call(__MODULE__, {:resume_session, session_id})
+  def skill_history(workspace, name) do
+    {:ok, pid} = ensure(workspace)
+    GenServer.call(pid, {:skill_history, name})
   end
 
-  def list_sessions do
-    GenServer.call(__MODULE__, :list_sessions)
+  def skill_rollback(workspace, name, version) do
+    {:ok, pid} = ensure(workspace)
+    GenServer.call(pid, {:skill_rollback, name, version})
   end
 
-  def skill_history(name) do
-    GenServer.call(__MODULE__, {:skill_history, name})
+  def skill_refine(workspace, name) do
+    {:ok, pid} = ensure(workspace)
+    GenServer.call(pid, {:skill_refine, name})
   end
 
-  def skill_rollback(name, version) do
-    GenServer.call(__MODULE__, {:skill_rollback, name, version})
+  def skill_promote(workspace, name) do
+    {:ok, pid} = ensure(workspace)
+    GenServer.call(pid, {:skill_promote, name})
   end
 
-  def skill_refine(name) do
-    GenServer.call(__MODULE__, {:skill_refine, name})
+  def switch_to_coding_agent(workspace, protocol) do
+    {:ok, pid} = ensure(workspace)
+    GenServer.call(pid, {:switch_to_coding_agent, protocol})
   end
 
-  def skill_promote(name) do
-    GenServer.call(__MODULE__, {:skill_promote, name})
-  end
+  # These don't need a workspace — they're global services
+  def mcp_connect(name, config), do: Worth.Mcp.Broker.connect(name, config)
+  def mcp_disconnect(name), do: Worth.Mcp.Broker.disconnect(name)
+  def mcp_list, do: Worth.Mcp.Broker.list_connections()
+  def mcp_tools(server_name), do: Worth.Mcp.ToolIndex.tools_for_server(server_name)
+  def list_coding_agents, do: Worth.CodingAgents.discover()
 
-  def mcp_connect(name, config) do
-    Worth.Mcp.Broker.connect(name, config)
-  end
-
-  def mcp_disconnect(name) do
-    Worth.Mcp.Broker.disconnect(name)
-  end
-
-  def mcp_list do
-    Worth.Mcp.Broker.list_connections()
-  end
-
-  def mcp_tools(server_name) do
-    Worth.Mcp.ToolIndex.tools_for_server(server_name)
-  end
-
-  def list_coding_agents do
-    Worth.CodingAgents.discover()
-  end
-
-  def switch_to_coding_agent(protocol) do
-    GenServer.call(__MODULE__, {:switch_to_coding_agent, protocol})
-  end
+  # ── GenServer callbacks ───────────────────────────────────────
 
   @impl true
   def init(opts) do
@@ -119,7 +154,6 @@ defmodule Worth.Brain do
     mode = Keyword.get(opts, :mode, :code)
 
     state = %__MODULE__{
-      ui_pid: Keyword.get(opts, :ui_pid),
       current_workspace: workspace,
       workspace_path:
         Keyword.get(opts, :workspace_path) ||
@@ -137,14 +171,11 @@ defmodule Worth.Brain do
     tiers = Worth.Workspace.Identity.tier_overrides(state.workspace_path)
     AgentEx.ModelRouter.set_tier_overrides(tiers)
 
+    Logger.info("[Brain] Started for workspace=#{workspace}, pid=#{inspect(self())}")
     {:ok, state}
   end
 
   @impl true
-  def handle_call({:set_ui_pid, pid}, _from, state) do
-    {:reply, :ok, %{state | ui_pid: pid}}
-  end
-
   def handle_call(:get_status, _from, state) do
     status = %{
       status: state.status,
@@ -160,23 +191,43 @@ defmodule Worth.Brain do
   end
 
   def handle_call({:send_message, text}, from, state) do
+    workspace = state.current_workspace
+    _workspace_path = state.workspace_path
+    brain_pid = self()
+
+    Worth.Agent.Tracker.register(state.session_id,
+      workspace: workspace,
+      mode: state.profile,
+      label: "main agent"
+    )
+
     {:ok, pid} =
       Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-        result = execute_agent_loop(text, state)
+        result = execute_agent_loop(text, state, brain_pid)
+
+        # Broadcast the result to UI subscribers so ChatLive can display it
+        done_event =
+          case result do
+            {:ok, response} -> {:done, response}
+            {:error, reason} -> {:error, reason}
+          end
+
+        broadcast_workspace(workspace, {:agent_event, done_event})
+        send(brain_pid, {:agent_event_internal, done_event})
         GenServer.reply(from, result)
       end)
 
+    Process.monitor(pid)
     {:noreply, %{state | status: :running, task_pid: pid, task_from: from}}
   end
 
   def handle_call(:stop, _from, %{status: :running, task_pid: pid} = state) when is_pid(pid) do
-    # Kill the agent loop task
     if Process.alive?(pid) do
       Process.unlink(pid)
       Process.exit(pid, :kill)
     end
 
-    # Reply to the pending send_message caller so it doesn't hang
+    Worth.Agent.Tracker.unregister(state.session_id)
     if state.task_from, do: GenServer.reply(state.task_from, {:error, :stopped})
 
     Logger.info("[Brain] Agent execution stopped by user")
@@ -207,25 +258,12 @@ defmodule Worth.Brain do
     end
   end
 
-  def handle_call({:switch_workspace, name}, _from, state) do
-    if state.current_workspace != name do
-      flush_working_memory(state.current_workspace)
-    end
-
-    path = Worth.Workspace.Service.resolve_path(name)
-    new_state = %{state | current_workspace: name, workspace_path: path, history: [], session_id: generate_session_id()}
-
-    tiers = Worth.Workspace.Identity.tier_overrides(path)
-    AgentEx.ModelRouter.set_tier_overrides(tiers)
-    Worth.Metrics.reset()
-
-    {:reply, :ok, new_state}
-  end
-
   def handle_call({:resume_session, session_id}, _from, state) do
+    workspace = state.current_workspace
+
     Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-      result = Worth.Brain.Session.resume(session_id, state.workspace_path, state.current_workspace, state.config)
-      send(self(), {:agent_event, {:session_resumed, result}})
+      result = Worth.Brain.Session.resume(session_id, state.workspace_path, workspace, state.config)
+      broadcast_workspace(workspace, {:agent_event, {:session_resumed, result}})
     end)
 
     {:reply, :ok, %{state | status: :running}}
@@ -271,11 +309,25 @@ defmodule Worth.Brain do
   end
 
   @impl true
-  def handle_info({:agent_event, event}, state) do
-    if state.ui_pid do
-      send(state.ui_pid, {:agent_event, event})
+  def handle_info({:DOWN, _ref, :process, pid, reason}, %{task_pid: pid} = state) do
+    Logger.warning("[Brain] Agent task #{inspect(pid)} exited: #{inspect(reason)}")
+
+    if reason != :normal do
+      broadcast_workspace(
+        state.current_workspace,
+        {:agent_event, {:error, "Agent task crashed: #{inspect(reason)}"}}
+      )
     end
 
+    {:noreply, %{state | status: :idle, task_pid: nil, task_from: nil}}
+  end
+
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state) do
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:agent_event_internal, event}, state) do
     state =
       case event do
         {:status, status} ->
@@ -300,14 +352,15 @@ defmodule Worth.Brain do
     {:noreply, state}
   end
 
-  defp execute_agent_loop(text, state) do
-    callbacks = build_callbacks(state)
+  # ── Agent loop ────────────────────────────────────────────────
+
+  defp execute_agent_loop(text, state, brain_pid) do
+    callbacks = build_callbacks(state, brain_pid)
 
     workspace_path =
       state.workspace_path || Worth.Workspace.Service.resolve_path(state.current_workspace)
 
     try do
-      # Persist user message to transcript
       Worth.Persistence.Transcript.append(
         state.session_id,
         %{role: "user", text: text},
@@ -335,7 +388,7 @@ defmodule Worth.Brain do
         profile: state.profile,
         mode: mode_to_agent_mode(state.mode),
         session_id: state.session_id,
-        caller: self(),
+        caller: brain_pid,
         cost_limit: state.config[:cost_limit] || 5.0,
         history: state.history,
         tool_permissions: state.tool_permissions
@@ -343,6 +396,12 @@ defmodule Worth.Brain do
 
       run_opts = if system_prompt, do: Keyword.put(run_opts, :system_prompt, system_prompt), else: run_opts
       run_opts = apply_model_routing(run_opts)
+
+      Worth.Agent.Tracker.register(state.session_id,
+        mode: state.mode,
+        workspace: state.current_workspace,
+        label: "main agent"
+      )
 
       result = AgentEx.run(run_opts)
 
@@ -366,26 +425,26 @@ defmodule Worth.Brain do
 
   defp store_outcome_feedback(_), do: :ok
 
-  defp build_callbacks(state) do
-    ui_pid = state.ui_pid
+  defp build_callbacks(state, brain_pid) do
     workspace = state.current_workspace
     workspace_path = state.workspace_path
     memory_opts = [workspace: workspace]
 
     %{
       llm_chat: fn params ->
-        Worth.LLM.chat(params, state.config)
+        on_chunk = fn text_delta ->
+          broadcast_workspace(workspace, {:agent_event, {:text_chunk, text_delta}})
+        end
+
+        Worth.LLM.stream_chat(params, state.config, on_chunk)
       end,
       on_event: fn event, _ctx ->
-        send(self(), {:agent_event, event})
-        if ui_pid, do: send(ui_pid, {:agent_event, event})
+        broadcast_workspace(workspace, {:agent_event, event})
+        send(brain_pid, {:agent_event_internal, event})
         :ok
       end,
       on_tool_approval: fn name, input, _ctx ->
-        if ui_pid do
-          send(ui_pid, {:agent_event, {:tool_approval_request, name, input}})
-        end
-
+        broadcast_workspace(workspace, {:agent_event, {:tool_approval_request, name, input}})
         :approved
       end,
       knowledge_search: fn query, opts ->
@@ -484,6 +543,8 @@ defmodule Worth.Brain do
     }
   end
 
+  # ── Helpers ───────────────────────────────────────────────────
+
   defp mode_to_profile(:code), do: :agentic
   defp mode_to_profile(:research), do: :conversational
   defp mode_to_profile(:coding_agent), do: :claude_code
@@ -520,16 +581,6 @@ defmodule Worth.Brain do
     "worth-#{:rand.uniform(1_000_000) |> Integer.to_string() |> String.pad_leading(6, "0")}"
   end
 
-  defp flush_working_memory(workspace) do
-    try do
-      Worth.Memory.Manager.working_flush(workspace: workspace)
-    rescue
-      e ->
-        Logger.warning("Failed to flush working memory: #{Exception.message(e)}")
-        :ok
-    end
-  end
-
   defp track_skill_tool_usage("skill_read", %{"name" => skill_name}, result) do
     success? = match?({:ok, _}, result)
 
@@ -546,13 +597,18 @@ defmodule Worth.Brain do
       {:promote, target} ->
         Phoenix.PubSub.broadcast(
           Worth.PubSub,
-          "brain:events",
-          {:skill_promotion_available, skill_name, target}
+          "worth:global",
+          {:global_event, {:skill_promotion_available, skill_name, target}}
         )
 
       _ ->
         :ok
     end
+  end
+
+  defp broadcast_workspace(workspace, message) do
+    Logger.debug("[Brain] broadcasting to workspace:#{workspace}: #{inspect(elem(message, 0))}")
+    Phoenix.PubSub.broadcast(Worth.PubSub, "workspace:#{workspace}", message)
   end
 
   defp maybe_trigger_refinement(tool_name, state) do
@@ -570,20 +626,20 @@ defmodule Worth.Brain do
   end
 
   defp maybe_trigger_proactive_review(state) do
+    workspace = state.current_workspace
+
     Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
       Worth.Skill.Registry.all()
       |> Enum.filter(&(&1.trust_level == :learned))
       |> Enum.each(fn skill ->
         case Worth.Skill.Refiner.proactive_review(skill.name) do
           {:ok, :review_needed, info} ->
-            if state.ui_pid do
-              send(
-                state.ui_pid,
-                {:agent_event,
-                 {:system,
-                  "Skill '#{skill.name}' may need review (#{info.success_rate}% success, #{info.usage_count} uses)"}}
-              )
-            end
+            broadcast_workspace(
+              workspace,
+              {:agent_event,
+               {:system,
+                "Skill '#{skill.name}' may need review (#{info.success_rate}% success, #{info.usage_count} uses)"}}
+            )
 
           _ ->
             :ok

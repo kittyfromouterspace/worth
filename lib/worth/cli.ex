@@ -54,8 +54,9 @@ defmodule Worth.CLI do
     Application.put_env(:worth, :current_workspace_path, workspace_path)
     Application.put_env(:worth, :current_mode, mode)
 
-    Worth.Brain.switch_workspace(workspace)
-    Worth.Brain.switch_mode(mode)
+    # Ensure the Brain for this workspace is started with the right mode
+    Worth.Brain.ensure(workspace)
+    Worth.Brain.switch_mode(workspace, mode)
 
     port = Application.get_env(:worth, WorthWeb.Endpoint)[:http][:port] || 4000
     url = "http://localhost:#{port}"

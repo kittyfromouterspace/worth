@@ -20,10 +20,12 @@ Worth runs on the BEAM virtual machine—the same platform powering WhatsApp, Di
 ### As a Standalone Application
 
 ```bash
-# Clone and setup
+# Clone and setup (uses libSQL by default - no PostgreSQL needed!)
 git clone https://github.com/kittyfromouterspace/worth.git
 cd worth
-mix setup
+mix deps.get
+mix ecto.create    # Creates ~/.worth/worth.db automatically
+mix ecto.migrate   # Runs migrations
 
 # Configure API keys
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -37,8 +39,14 @@ Open http://localhost:4000 in your browser.
 Or use the CLI launcher (auto-opens browser):
 
 ```bash
+# Start with default settings (libSQL backend)
 mix worth
+
+# Start with specific workspace and mode
 mix worth --workspace my-project --mode research
+
+# Use PostgreSQL instead (if needed)
+WORTH_DATABASE_BACKEND=postgres mix worth
 ```
 
 ### As a Library
@@ -186,7 +194,7 @@ Exposed tools: `worth_chat`, `worth_memory_query`, `worth_skill_list`, `worth_wo
 
 ```
 Worth.Application
-├── Worth.Repo (Ecto/Postgres + pgvector)
+├── Worth.Repo (Ecto + libSQL/SQLite or Postgres)
 ├── Worth.Config (Agent)
 ├── Worth.LogBuffer
 ├── Phoenix.PubSub + Worth.Registry
@@ -201,15 +209,42 @@ Worth.Application
 └── WorthWeb.Endpoint (Phoenix)
 ```
 
+**Note:** Worth now defaults to libSQL (SQLite with native vectors) instead of PostgreSQL. PostgreSQL remains supported for existing installations.
+
 ## Prerequisites
 
 - **Elixir** 1.19+
-- **PostgreSQL** 14+ with pgvector extension
 - **LLM API key** (Anthropic, OpenAI, or OpenRouter)
+- **Database** (choose one):
+  - **libSQL** (recommended) — Zero configuration, single file
+  - **PostgreSQL** 14+ with pgvector — For advanced/multi-user setups
 
-### Database Setup
+### Database Options
+
+#### Option A: libSQL (Recommended for Most Users)
+
+libSQL is a SQLite fork with native vector support. No server setup required—just a single file.
 
 ```bash
+# No setup needed! Database is created automatically at ~/.worth/worth.db
+mix ecto.create
+mix ecto.migrate
+```
+
+**Benefits:**
+- ✨ Zero configuration
+- 📁 Single file database (easy backup)
+- 🚀 No PostgreSQL installation needed
+- 💾 Lower resource usage
+- 🔧 Cross-platform support
+
+#### Option B: PostgreSQL (For Existing Users or Multi-User Setups)
+
+```bash
+# Set PostgreSQL as your backend
+export WORTH_DATABASE_BACKEND=postgres
+
+# Create database
 mix ecto.create
 mix ecto.migrate
 ```
@@ -224,6 +259,38 @@ docker run -d \
   -v pgdata:/var/lib/postgresql/data \
   -p 5432:5432 \
   pgvector/pgvector:pg16
+```
+
+**When to use PostgreSQL:**
+- Existing Worth installation with PostgreSQL
+- Multi-user server deployments
+- Need for advanced PostgreSQL features
+
+## Migrating from PostgreSQL to libSQL
+
+If you have an existing Worth installation using PostgreSQL and want to migrate to libSQL:
+
+```bash
+# Export your PostgreSQL data
+mix worth.export --output ~/worth_backup.jsonl
+
+# Configure libSQL (edit config or set env var)
+export WORTH_DATABASE_BACKEND=libsql
+
+# Create new libSQL database
+mix ecto.create
+mix ecto.migrate
+
+# Import your data
+mix worth.import --input ~/worth_backup.jsonl
+```
+
+Or use the automated migration task:
+
+```bash
+mix worth.migrate_to_libsql \
+  --pg-database worth_dev \
+  --libsql-db ~/.worth/worth.db
 ```
 
 ## Configuration
@@ -270,12 +337,29 @@ mix credo           # Linting
 mix dialyzer        # Type checking
 ```
 
+### Database Development
+
+```bash
+# Reset libSQL database (single file at ~/.worth/worth.db)
+rm ~/.worth/worth.db
+mix ecto.create
+mix ecto.migrate
+
+# Or with PostgreSQL
+export WORTH_DATABASE_BACKEND=postgres
+mix ecto.reset
+```
+
 ### Running Tests
 
 ```bash
 mix test                              # Full suite
 mix test test/worth/brain_test.exs    # Single file
 mix test test/worth/brain_test.exs:42 # Single test
+
+# Test with specific database backend
+WORTH_DATABASE_BACKEND=libsql mix test    # Default
+WORTH_DATABASE_BACKEND=postgres mix test  # PostgreSQL
 ```
 
 ## Slash Commands

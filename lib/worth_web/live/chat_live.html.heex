@@ -1,5 +1,7 @@
 <%!-- Theme CSS (dynamically updated on theme switch) --%>
-<style id="theme-css">{raw(@theme_module.css())}</style>
+<style id="theme-css">
+  {raw(@theme_module.css())}
+</style>
 <div id="theme-manager" phx-hook="ThemeManager" class="hidden"></div>
 
 <div class="flex flex-col h-screen font-mono" phx-window-keydown="keydown">
@@ -20,8 +22,10 @@
     <.left_panel
       :if={@sidebar_visible}
       workspace={@workspace}
+      workspaces={@workspaces}
       files={@workspace_files}
       agents={@active_agents}
+      memory_stats={@memory_stats}
     />
 
     <%!-- Center pane: chat or settings --%>

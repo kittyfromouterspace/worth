@@ -57,11 +57,15 @@ defmodule Worth.MixProject do
       {:heroicons,
        github: "tailwindlabs/heroicons", tag: "v2.2.0", sparse: "optimized", app: false, compile: false, depth: 1},
 
-      # Database
+      # Database (choose one backend)
+      # Default: libSQL for zero-configuration setup
+      {:ecto_libsql, "~> 0.9"},
+      {:postgrex, "~> 0.19"},
+      {:pgvector, "~> 0.3"},
+      # Core database dependencies
       {:ash, "~> 3.23"},
       {:ash_postgres, "~> 2.8"},
       {:ecto_sql, "~> 3.12"},
-      {:postgrex, "~> 0.19"},
 
       # MCP
       {:hermes_mcp, "~> 0.14.1"},

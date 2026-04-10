@@ -1,12 +1,14 @@
 import Config
 
+# Development uses libSQL (SQLite) by default for zero-configuration setup
+# To use PostgreSQL instead: export WORTH_DATABASE_BACKEND=postgres
 config :worth, Worth.Repo,
-  username: "postgres",
-  password: "postgres",
-  database: "worth_dev",
-  hostname: "localhost",
-  pool_size: 10,
-  types: Worth.PostgrexTypes
+  adapter: Ecto.Adapters.LibSQL,
+  database: Path.expand("~/.worth/worth_dev.db"),
+  pool_size: 5
+
+config :mneme,
+  database_adapter: Mneme.DatabaseAdapter.LibSQL
 
 config :worth, WorthWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}],

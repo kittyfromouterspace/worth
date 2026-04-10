@@ -48,12 +48,55 @@ Hooks.ChatScroll = {
 }
 
 // Auto-focus and clear input after submit
+// Command tree for Tab completion
+const COMMANDS = [
+  "/help", "/quit", "/clear", "/cost", "/status", "/settings",
+  "/mode code", "/mode research", "/mode planned", "/mode turn_by_turn",
+  "/workspace list", "/workspace new ", "/workspace switch ",
+  "/memory query ", "/memory note ", "/memory recent", "/memory reembed",
+  "/skill list", "/skill read ", "/skill remove ", "/skill history ", "/skill rollback ", "/skill refine ",
+  "/session list", "/session resume ",
+  "/mcp list", "/mcp connect ", "/mcp disconnect ", "/mcp tools ",
+  "/kit search ", "/kit install ", "/kit list", "/kit info ",
+  "/provider list", "/provider enable ", "/provider disable ",
+  "/catalog refresh",
+  "/usage", "/usage refresh",
+  "/setup", "/setup openrouter ", "/setup embedding "
+]
+
 Hooks.InputFocus = {
   mounted() {
     this.el.focus()
     this.handleEvent("clear_input", () => {
       this.el.value = ""
       this.el.focus()
+    })
+
+    this.el.addEventListener("keydown", (e) => {
+      if (e.key === "Tab") {
+        e.preventDefault()
+        const val = this.el.value
+        if (!val.startsWith("/")) return
+
+        const matches = COMMANDS.filter(c => c.startsWith(val) && c !== val)
+        if (matches.length === 0) return
+
+        if (matches.length === 1) {
+          this.el.value = matches[0]
+        } else {
+          // Complete to longest common prefix
+          let prefix = matches[0]
+          for (const m of matches) {
+            while (!m.startsWith(prefix)) {
+              prefix = prefix.slice(0, -1)
+            }
+          }
+          if (prefix.length > val.length) {
+            this.el.value = prefix
+          }
+        }
+        this.el.dispatchEvent(new Event("input", { bubbles: true }))
+      }
     })
   },
   updated() {

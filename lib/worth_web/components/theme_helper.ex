@@ -53,19 +53,12 @@ defmodule WorthWeb.ThemeHelper do
     theme = current_theme()
 
     if theme.has_template?(template) do
-      do_render(template, assigns)
+      case apply(theme, :render, [template, assigns]) do
+        {:ok, rendered} -> rendered
+        _ -> nil
+      end
     else
       nil
-    end
-  end
-
-  defp do_render(template, assigns) do
-    theme = current_theme()
-    result = theme.render(template, assigns)
-
-    case result do
-      {:ok, rendered} -> rendered
-      {:error, _} -> nil
     end
   end
 

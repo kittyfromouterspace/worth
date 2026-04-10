@@ -8,7 +8,9 @@ defmodule Worth.Mcp.Server.Tools.Chat do
 
   @impl true
   def execute(%{"message" => message}, frame) do
-    case Worth.Brain.send_message(message) do
+    workspace = Application.get_env(:worth, :current_workspace, "personal")
+
+    case Worth.Brain.send_message(message, workspace) do
       {:ok, response} ->
         text = response[:text] || response.text || inspect(response)
         {:reply, text, frame}

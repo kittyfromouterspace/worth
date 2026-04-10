@@ -18,9 +18,6 @@ defmodule Worth.Memory.Embeddings.Adapter do
 
   @behaviour Mneme.EmbeddingProvider
 
-  alias AgentEx.LLM
-
-  @default_tier :embeddings
   @default_dimensions 1536
   @default_model "text-embedding-3-small"
 
@@ -31,24 +28,130 @@ defmodule Worth.Memory.Embeddings.Adapter do
 
   @impl true
   def generate(texts, opts) when is_list(texts) do
-    tier = Keyword.get(opts, :tier, @default_tier)
+    model_id = model_id(opts)
+    provider = resolve_provider(opts)
 
-    case LLM.embed_tier(texts, tier, embed_opts(opts)) do
-      {:ok, vectors, _model_id} -> {:ok, vectors}
-      {:error, %{message: message}} -> {:error, message}
-      {:error, reason} -> {:error, reason}
+    transport = provider.transport()
+
+    case AgentEx.LLM.Credentials.resolve(provider) do
+      {:ok, creds} ->
+        base_url = creds.base_url_override || provider.default_base_url()
+
+        opts = [
+          base_url: base_url,
+          api_key: creds.api_key,
+          model: model_id,
+          extra_headers: creds.headers
+        ]
+
+        request = transport.build_embedding_request(texts, opts)
+
+        case Req.post(request.url,
+               json: request.body,
+               headers: request.headers,
+               receive_timeout: 60_000
+             ) do
+          {:ok, %{status: 200, body: body}} ->
+            case transport.parse_embedding_response(200, body, []) do
+              {:ok, vectors} -> {:ok, vectors}
+              {:error, reason} -> {:error, reason}
+            end
+
+          {:ok, %{status: status, body: _body}} ->
+            {:error, "embedding request failed: #{status}"}
+
+          {:error, reason} ->
+            {:error, Exception.message(reason)}
+        end
+
+      :not_configured ->
+        {:error, "#{provider.id()} not configured"}
     end
   end
 
   @impl true
   def embed(text, opts) when is_binary(text) do
-    tier = Keyword.get(opts, :tier, @default_tier)
+    model_id = model_id(opts)
+    provider = resolve_provider(opts)
 
-    case LLM.embed_tier(text, tier, embed_opts(opts)) do
-      {:ok, [vector | _], _model_id} -> {:ok, vector}
-      {:ok, [], _model_id} -> {:error, :no_embedding_returned}
-      {:error, %{message: message}} -> {:error, message}
+    case embed_direct(text, provider, model_id) do
+      {:ok, vector} -> {:ok, vector}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp embed_direct(text, provider, model_id) do
+    transport = provider.transport()
+
+    case AgentEx.LLM.Credentials.resolve(provider) do
+      {:ok, creds} ->
+        base_url = creds.base_url_override || provider.default_base_url()
+
+        opts = [
+          base_url: base_url,
+          api_key: creds.api_key,
+          model: model_id,
+          extra_headers: creds.headers
+        ]
+
+        request = transport.build_embedding_request(text, opts)
+        execute_embed(request, transport)
+
+      :not_configured ->
+        {:error, "#{provider.id()} not configured"}
+    end
+  end
+
+  defp execute_embed(request, transport) do
+    case Req.post(request.url,
+           json: request.body,
+           headers: request.headers,
+           receive_timeout: 60_000
+         ) do
+      {:ok, %{status: 200, body: body}} ->
+        case transport.parse_embedding_response(200, body, []) do
+          {:ok, [vector | _]} -> {:ok, vector}
+          {:ok, []} -> {:error, :no_embedding_returned}
+          {:error, reason} -> {:error, reason}
+        end
+
+      {:ok, %{status: status, body: _body}} ->
+        {:error, "embedding request failed: #{status}"}
+
+      {:error, reason} ->
+        {:error, Exception.message(reason)}
+    end
+  end
+
+  defp resolve_provider(opts) do
+    case Keyword.get(opts, :provider) do
+      nil ->
+        model = Keyword.get(opts, :model) || configured_model()
+
+        if model do
+          case catalog_model_provider(model) do
+            nil -> default_provider()
+            provider -> AgentEx.LLM.ProviderRegistry.get(provider)
+          end
+        else
+          default_provider()
+        end
+
+      provider_id ->
+        AgentEx.LLM.ProviderRegistry.get(provider_id)
+    end
+  end
+
+  defp default_provider do
+    AgentEx.LLM.ProviderRegistry.get(:openrouter)
+  end
+
+  defp catalog_model_provider(model_id) do
+    models = AgentEx.LLM.Catalog.find(has: :embeddings)
+
+    case Enum.find(models, fn m -> m.id == model_id end) do
+      nil -> nil
+      model -> model.provider
     end
   end
 
@@ -63,21 +166,6 @@ defmodule Worth.Memory.Embeddings.Adapter do
 
       model when is_binary(model) ->
         model
-    end
-  end
-
-  defp embed_opts(opts) do
-    opts = Keyword.take(opts, [:provider, :model])
-
-    case Keyword.get(opts, :model) do
-      nil ->
-        case configured_model() do
-          nil -> opts
-          model -> Keyword.put(opts, :model, model)
-        end
-
-      _ ->
-        opts
     end
   end
 

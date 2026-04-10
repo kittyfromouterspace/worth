@@ -26,7 +26,7 @@ defmodule Worth.Brain.Session do
         Worth.LLM.chat(params, config)
       end,
       on_event: fn event, _ctx ->
-        send(self(), {:agent_event, event})
+        Phoenix.PubSub.broadcast(Worth.PubSub, "workspace:#{workspace}", {:agent_event, event})
         :ok
       end,
       on_tool_approval: fn _name, _input, _ctx -> :approved end,

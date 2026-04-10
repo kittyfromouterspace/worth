@@ -38,7 +38,7 @@ defmodule WorthWeb.Commands.SkillCommands do
   end
 
   def handle({:skill, {:history, name}}, socket) do
-    case Worth.Brain.skill_history(name) do
+    case Worth.Brain.skill_history(socket.assigns.workspace, name) do
       {:ok, versions} when is_list(versions) and versions != [] ->
         lines =
           versions
@@ -53,7 +53,7 @@ defmodule WorthWeb.Commands.SkillCommands do
   end
 
   def handle({:skill, {:rollback, name, version}}, socket) do
-    case Worth.Brain.skill_rollback(name, version) do
+    case Worth.Brain.skill_rollback(socket.assigns.workspace, name, version) do
       {:ok, info} ->
         append_system(socket, "Skill '#{name}' rolled back to v#{info.rolled_back_to}.")
 
@@ -63,7 +63,7 @@ defmodule WorthWeb.Commands.SkillCommands do
   end
 
   def handle({:skill, {:refine, name}}, socket) do
-    case Worth.Brain.skill_refine(name) do
+    case Worth.Brain.skill_refine(socket.assigns.workspace, name) do
       {:ok, :no_refinement_needed} ->
         append_system(socket, "Skill '#{name}' does not need refinement.")
 

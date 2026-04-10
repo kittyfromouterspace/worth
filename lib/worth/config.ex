@@ -22,7 +22,22 @@ defmodule Worth.Config do
     {compile_time, disk} = load_layers()
     state = %{compile_time: compile_time, disk: disk, merged: deep_merge(compile_time, disk)}
     export_secrets(state.merged)
+
+    # Sync disk values to Application env so runtime code using
+    # Application.get_env can see user settings
+    sync_disk_to_application_env(disk)
+
     Agent.start_link(fn -> state end, name: __MODULE__)
+  end
+
+  # On startup, sync any user settings from disk to Application env
+  # so that code using Application.get_env(:worth, :key) sees them
+  defp sync_disk_to_application_env(disk) do
+    # home_directory - this affects where skills, workspaces, etc. are stored
+    case disk[:home_directory] do
+      nil -> :ok
+      path when is_binary(path) -> Application.put_env(:worth, :home_directory, path)
+    end
   end
 
   @doc """
@@ -49,17 +64,34 @@ defmodule Worth.Config do
   end
 
   @doc """
-  Persist a setting at `path` (list of atoms) to both the in-memory state
-  and the on-disk config file. Only the user-overrides layer is written;
-  compile-time defaults are not round-tripped.
+  Persist a setting at `path` (list of atoms) to:
+  1. The in-memory merged state
+  2. The on-disk config file
+  3. Application env (for keys that need runtime access via Application.get_env)
+
+  Only the user-overrides layer is written to disk; compile-time defaults
+  are not round-tripped.
   """
   def put_setting(path, value) when is_list(path) do
     Agent.update(__MODULE__, fn state ->
       new_disk = put_in_path(state.disk, path, value)
       Store.save!(new_disk)
-      %{state | disk: new_disk, merged: deep_merge(state.compile_time, new_disk)}
+      new_merged = deep_merge(state.compile_time, new_disk)
+
+      # Sync certain critical keys to Application env for runtime access
+      sync_to_application_env(path, value)
+
+      %{state | disk: new_disk, merged: new_merged}
     end)
   end
+
+  # Sync critical config values to Application env so other parts of the
+  # system can access them via Application.get_env(:worth, :key)
+  defp sync_to_application_env([:home_directory], value) when is_binary(value) do
+    Application.put_env(:worth, :home_directory, value)
+  end
+
+  defp sync_to_application_env(_path, _value), do: :ok
 
   @doc """
   Store a secret keyed by its env-var name. If the encrypted vault is

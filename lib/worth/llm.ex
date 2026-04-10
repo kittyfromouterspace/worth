@@ -25,6 +25,50 @@ defmodule Worth.LLM do
     "groq" => AgentEx.LLM.Provider.Groq
   }
 
+  # ----- stream_chat/3: streaming dispatch -----
+
+  @doc """
+  Streaming variant of `chat/2`. Calls `on_chunk.(text_delta)` for each
+  text token received. Returns the full response at the end.
+  """
+  def stream_chat(params, config \\ %{}, on_chunk) do
+    case route_from_params(params) do
+      nil ->
+        stream_chat_with_configured(params, config, on_chunk)
+
+      route ->
+        stream_chat_with_route(params, route, on_chunk)
+    end
+  end
+
+  defp stream_chat_with_route(params, %{provider_name: name} = route, on_chunk) do
+    case provider_for_route(name) do
+      {:ok, provider_module} ->
+        opts = [model: route.model_id, on_chunk: on_chunk]
+        result = AgentEx.LLM.Provider.stream_chat(provider_module, strip_route(params), opts)
+        project_result(result)
+
+      :error ->
+        {:error,
+         %AgentEx.LLM.Error{
+           message: "Unknown route provider: #{name}",
+           classification: :permanent
+         }}
+    end
+  end
+
+  defp stream_chat_with_configured(params, config, on_chunk) do
+    provider = get_in(config, [:llm, :default_provider]) || :anthropic
+    provider_module = provider_module_for(provider)
+
+    model =
+      get_in(config, [:llm, :providers, provider, :default_model]) ||
+        default_model_for(provider_module)
+
+    result = AgentEx.LLM.Provider.stream_chat(provider_module, params, model: model, on_chunk: on_chunk)
+    project_result(result)
+  end
+
   # ----- chat/2: single dispatch -----
 
   def chat(params, config \\ %{}) do

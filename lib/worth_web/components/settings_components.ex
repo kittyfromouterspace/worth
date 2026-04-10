@@ -36,6 +36,9 @@ defmodule WorthWeb.SettingsComponents do
 
         <%!-- These don't need the vault --%>
         <.routing_section routing={@settings_form.routing} />
+        <.agent_limits_section limits={@settings_form.agent_limits} />
+        <.memory_section memory={@settings_form.memory} />
+        <.base_directory_section base_dir={@settings_form.base_dir} />
         <.coding_agents_section agents={@settings_form.coding_agents} />
         <.theme_section
           themes={@settings_form.themes}
@@ -348,6 +351,138 @@ defmodule WorthWeb.SettingsComponents do
           Free models only
         </button>
       </div>
+    </div>
+    """
+  end
+
+  # ── Agent Limits ──────────────────────────────────────────────
+
+  defp agent_limits_section(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
+      <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-3">
+        Agent Limits
+      </h2>
+      <form phx-submit="settings_save_limits" class="space-y-3">
+        <div class="space-y-1">
+          <label class="text-xs text-ctp-subtext0 font-medium">Cost Limit ($ per session)</label>
+          <input
+            type="number"
+            name="cost_limit"
+            value={@limits.cost_limit}
+            step="0.5"
+            min="0.5"
+            class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
+          />
+          <div class="text-xs text-ctp-overlay0">Agent stops when session cost reaches this limit</div>
+        </div>
+        <div class="space-y-1">
+          <label class="text-xs text-ctp-subtext0 font-medium">Max Turns</label>
+          <input
+            type="number"
+            name="max_turns"
+            value={@limits.max_turns}
+            step="1"
+            min="1"
+            max="500"
+            class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
+          />
+          <div class="text-xs text-ctp-overlay0">Maximum LLM turns per agent run (safety limit)</div>
+        </div>
+        <button
+          type="submit"
+          class="px-4 py-2 rounded text-xs font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer"
+        >
+          Save Limits
+        </button>
+      </form>
+    </div>
+    """
+  end
+
+  # ── Memory ──────────────────────────────────────────────────
+
+  defp memory_section(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
+      <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-3">
+        Memory
+      </h2>
+      <form phx-submit="settings_save_memory" class="space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-sm font-medium text-ctp-text">Enabled</div>
+            <div class="text-xs text-ctp-overlay0">Store and recall facts across sessions</div>
+          </div>
+          <button
+            type="button"
+            phx-click="settings_toggle_memory"
+            class={[
+              "relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors",
+              @memory.enabled && "bg-ctp-blue",
+              not @memory.enabled && "bg-ctp-surface2"
+            ]}
+          >
+            <span class={[
+              "inline-block h-4 w-4 rounded-full bg-white transition-transform",
+              @memory.enabled && "translate-x-6",
+              not @memory.enabled && "translate-x-1"
+            ]} />
+          </button>
+        </div>
+        <div class="space-y-1">
+          <label class="text-xs text-ctp-subtext0 font-medium">Memory Decay (days)</label>
+          <input
+            type="number"
+            name="decay_days"
+            value={@memory.decay_days}
+            step="1"
+            min="7"
+            max="365"
+            class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
+          />
+          <div class="text-xs text-ctp-overlay0">Facts older than this lose confidence over time</div>
+        </div>
+        <button
+          type="submit"
+          class="px-4 py-2 rounded text-xs font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer"
+        >
+          Save Memory Settings
+        </button>
+      </form>
+    </div>
+    """
+  end
+
+  # ── Base Directory ──────────────────────────────────────────
+
+  defp base_directory_section(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
+      <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-3">
+        Base Directory
+      </h2>
+      <form phx-submit="settings_save_base_dir" class="space-y-3">
+        <div class="space-y-1">
+          <label class="text-xs text-ctp-subtext0 font-medium">Home Directory</label>
+          <input
+            type="text"
+            name="home_directory"
+            value={@base_dir}
+            placeholder="~/.worth"
+            class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
+          />
+          <div class="text-xs text-ctp-overlay0">
+            Root directory for config, workspaces, skills, and logs. Requires restart.
+          </div>
+        </div>
+        <button
+          type="submit"
+          class="px-4 py-2 rounded text-xs font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer"
+        >
+          Save
+        </button>
+      </form>
     </div>
     """
   end

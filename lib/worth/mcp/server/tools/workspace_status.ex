@@ -7,7 +7,8 @@ defmodule Worth.Mcp.Server.Tools.WorkspaceStatus do
 
   @impl true
   def execute(_params, frame) do
-    status = Worth.Brain.get_status()
+    workspace = Application.get_env(:worth, :current_workspace, "personal")
+    status = Worth.Brain.get_status(workspace)
 
     text =
       "Mode: #{status.mode}\n" <>

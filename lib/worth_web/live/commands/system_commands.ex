@@ -24,12 +24,12 @@ defmodule WorthWeb.Commands.SystemCommands do
   end
 
   def handle({:mode, mode}, socket) do
-    Worth.Brain.switch_mode(mode)
+    Worth.Brain.switch_mode(socket.assigns.workspace, mode)
     append_system(assign(socket, mode: mode), "Switched to #{mode} mode")
   end
 
   def handle({:status, _}, socket) do
-    status = Worth.Brain.get_status()
+    status = Worth.Brain.get_status(socket.assigns.workspace)
 
     msg =
       "Mode: #{status.mode} | Profile: #{status.profile} | Workspace: #{status.workspace} | Cost: $#{Float.round(status.cost, 3)}"

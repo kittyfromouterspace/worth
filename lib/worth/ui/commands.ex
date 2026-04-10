@@ -5,48 +5,59 @@ defmodule Worth.UI.Commands do
   """
 
   def parse(text) do
-    case String.split(text, " ", parts: 2) do
+    parts = String.split(String.trim(text))
+
+    case parts do
       ["/quit"] -> {:command, :quit}
       ["/clear"] -> {:command, :clear}
       ["/cost"] -> {:command, :cost}
       ["/help"] -> {:command, :help}
       ["/status"] -> {:command, {:status, nil}}
+      ["/settings"] -> {:command, :settings}
+      ["/usage"] -> {:command, :usage}
+      ["/usage", "refresh"] -> {:command, {:usage, :refresh}}
+      ["/setup"] -> {:command, {:setup, :show}}
+      ["/setup" | rest] -> parse_setup(Enum.join(rest, " "))
       ["/mode", mode] -> parse_mode(mode)
-      ["/agent", "list"] -> {:command, {:agent, :list}}
-      ["/agent", "switch", name] -> {:command, {:agent, {:switch, String.to_atom(name)}}}
+      # Workspace
       ["/workspace", "list"] -> {:command, {:workspace, :list}}
       ["/workspace", "switch", name] -> {:command, {:workspace, {:switch, name}}}
       ["/workspace", "new", name] -> {:command, {:workspace, {:new, name}}}
-      ["/memory", "query", query] -> {:command, {:memory, {:query, query}}}
+      # Agent
+      ["/agent", "list"] -> {:command, {:agent, :list}}
+      ["/agent", "switch", name] -> {:command, {:agent, {:switch, String.to_atom(name)}}}
+      # Memory (note can have multiple words)
+      ["/memory", "query" | query_parts] -> {:command, {:memory, {:query, Enum.join(query_parts, " ")}}}
       ["/memory", "note" | note_parts] -> {:command, {:memory, {:note, Enum.join(note_parts, " ")}}}
       ["/memory", "recent"] -> {:command, {:memory, :recent}}
       ["/memory", "reembed"] -> {:command, {:memory, :reembed}}
+      # Skill
       ["/skill", "list"] -> {:command, {:skill, :list}}
       ["/skill", "read", name] -> {:command, {:skill, {:read, name}}}
       ["/skill", "remove", name] -> {:command, {:skill, {:remove, name}}}
       ["/skill", "history", name] -> {:command, {:skill, {:history, name}}}
       ["/skill", "rollback", name, version] -> parse_rollback(name, version)
       ["/skill", "refine", name] -> {:command, {:skill, {:refine, name}}}
+      ["/skill" | _] -> {:command, {:skill, :help}}
+      # Session
       ["/session", "list"] -> {:command, {:session, :list}}
       ["/session", "resume", session_id] -> {:command, {:session, {:resume, session_id}}}
+      # MCP
       ["/mcp", "list"] -> {:command, {:mcp, :list}}
       ["/mcp", "connect", name] -> {:command, {:mcp, {:connect, name}}}
       ["/mcp", "disconnect", name] -> {:command, {:mcp, {:disconnect, name}}}
       ["/mcp", "tools", name] -> {:command, {:mcp, {:tools, name}}}
-      ["/kit", "search", query] -> {:command, {:kit, {:search, query}}}
+      # Kit (search query can have multiple words)
+      ["/kit", "search" | query_parts] -> {:command, {:kit, {:search, Enum.join(query_parts, " ")}}}
       ["/kit", "install", owner_slash_slug] -> parse_owner_slug(:install, owner_slash_slug)
       ["/kit", "list"] -> {:command, {:kit, :list}}
       ["/kit", "info", owner_slash_slug] -> parse_owner_slug(:info, owner_slash_slug)
+      # Provider
       ["/provider", "list"] -> {:command, {:provider, :list}}
       ["/provider", "enable", id] -> {:command, {:provider, {:enable, String.to_atom(id)}}}
       ["/provider", "disable", id] -> {:command, {:provider, {:disable, String.to_atom(id)}}}
       ["/catalog", "refresh"] -> {:command, {:catalog, :refresh}}
-      ["/usage"] -> {:command, :usage}
-      ["/usage", "refresh"] -> {:command, {:usage, :refresh}}
-      ["/settings"] -> {:command, :settings}
-      ["/setup"] -> {:command, {:setup, :show}}
-      ["/setup", rest] -> parse_setup(rest)
-      ["/skill" | _] -> {:command, {:skill, :help}}
+      # Unknown slash command
       ["/" <> _ = cmd | _] -> {:command, {:unknown, cmd}}
       _ -> :message
     end

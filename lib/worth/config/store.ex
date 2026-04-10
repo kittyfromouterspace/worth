@@ -1,7 +1,10 @@
 defmodule Worth.Config.Store do
   @moduledoc """
-  On-disk persistence for Worth's user-level config at
-  `<home_directory>/config.exs`.
+  On-disk persistence for Worth's user-level config.
+
+  The config file is ALWAYS stored at ~/.worth/config.exs, regardless of
+  the configured home_directory. This ensures the config can be found at
+  boot time before the home_directory setting is loaded.
 
   The file is a single Elixir map literal evaluated with `Code.eval_file/1`.
   No `Mix.Config` DSL — just plain data, written by Worth and read back at
@@ -12,16 +15,44 @@ defmodule Worth.Config.Store do
   go through `Worth.Config` (in-memory) and `Worth.Config.Setup` (mutations).
   """
 
-  @doc "Absolute path to the config file."
-  def path do
-    Path.expand(Path.join(home_directory(), "config.exs"))
+  # Fixed location for config file - this is the source of truth
+  @config_path Path.expand("~/.worth/config.exs")
+
+  @doc "Absolute path to the config file. Always ~/.worth/config.exs"
+  def path, do: @config_path
+
+  @doc """
+  The Worth home directory (configurable via settings, defaults to ~/.worth).
+
+  This is read from:
+  1. The config file if set there
+  2. Application env (config/*.exs) as fallback
+  3. Defaults to ~/.worth
+  """
+  def home_directory do
+    # First try to read from the already-loaded runtime config
+    case Process.whereis(Worth.Config) do
+      nil ->
+        # Config not loaded yet, check the file directly or use default
+        load_home_directory_from_file_or_env()
+
+      _pid ->
+        # Config is loaded, use the runtime value
+        Worth.Config.get(:home_directory) || load_home_directory_from_file_or_env()
+    end
   end
 
-  @doc "The Worth home directory (configurable, defaults to ~/work)."
-  def home_directory do
-    case Application.get_env(:worth, :home_directory) do
-      nil -> Path.expand("~/.worth")
-      path -> Path.expand(path)
+  defp load_home_directory_from_file_or_env do
+    # Check if home_directory is set in the config file
+    disk_config = load()
+
+    case disk_config[:home_directory] do
+      nil ->
+        # Fall back to Application env, then default
+        Application.get_env(:worth, :home_directory, "~/.worth") |> Path.expand()
+
+      path when is_binary(path) ->
+        Path.expand(path)
     end
   end
 
@@ -31,14 +62,17 @@ defmodule Worth.Config.Store do
   end
 
   @doc """
-  Loads the on-disk config map. Returns an empty map if the file does not
-  exist or fails to parse.
+  Loads the on-disk config map. Creates the file with defaults if it doesn't
+  exist. Returns an empty map if the file fails to parse.
   """
   def load do
     file = path()
 
     cond do
       not File.exists?(file) ->
+        # Initialize with empty config - defaults come from Application env
+        ensure_config_dir!()
+        save!(%{})
         %{}
 
       true ->
@@ -52,6 +86,10 @@ defmodule Worth.Config.Store do
             %{}
         end
     end
+  end
+
+  defp ensure_config_dir! do
+    path() |> Path.dirname() |> File.mkdir_p!()
   end
 
   @doc """

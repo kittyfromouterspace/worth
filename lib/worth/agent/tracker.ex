@@ -62,28 +62,48 @@ defmodule Worth.Agent.Tracker do
 
   @impl true
   def handle_cast({:register, session_id, opts}, state) do
-    agent = %{
-      session_id: session_id,
-      parent_session_id: Keyword.get(opts, :parent_session_id),
-      depth: Keyword.get(opts, :depth, 0),
-      status: :running,
-      mode: Keyword.get(opts, :mode),
-      workspace: Keyword.get(opts, :workspace),
-      started_at: System.monotonic_time(:millisecond),
-      cost: 0.0,
-      turns: 0,
-      current_tool: nil,
-      label: Keyword.get(opts, :label)
+    workspace = Keyword.get(opts, :workspace)
+    mode = Keyword.get(opts, :mode)
+    label = Keyword.get(opts, :label)
+
+    # Preserve existing values if not explicitly provided
+    {existing_agent, do_broadcast} =
+      case :ets.lookup(@table, session_id) do
+        [{^session_id, existing}] ->
+          {existing, false}
+
+        [] ->
+          {%{
+             session_id: session_id,
+             parent_session_id: nil,
+             depth: 0,
+             status: :running,
+             mode: nil,
+             workspace: nil,
+             started_at: System.monotonic_time(:millisecond),
+             cost: 0.0,
+             turns: 0,
+             current_tool: nil,
+             label: "main agent"
+           }, true}
+      end
+
+    updated = %{
+      existing_agent
+      | mode: mode || existing_agent.mode,
+        workspace: workspace || existing_agent.workspace,
+        label: label || existing_agent.label
     }
 
-    :ets.insert(@table, {session_id, agent})
-    broadcast()
+    :ets.insert(@table, {session_id, updated})
+    if do_broadcast, do: broadcast(updated.workspace)
     {:noreply, state}
   end
 
   def handle_cast({:unregister, session_id}, state) do
+    workspace = lookup_workspace(session_id)
     :ets.delete(@table, session_id)
-    broadcast()
+    broadcast(workspace)
     {:noreply, state}
   end
 
@@ -91,7 +111,7 @@ defmodule Worth.Agent.Tracker do
     case :ets.lookup(@table, session_id) do
       [{^session_id, agent}] ->
         :ets.insert(@table, {session_id, Map.put(agent, field, value)})
-        broadcast()
+        broadcast(agent.workspace)
 
       [] ->
         :ok
@@ -188,17 +208,33 @@ defmodule Worth.Agent.Tracker do
   # Delayed cleanup of completed subagents
   @impl true
   def handle_info({:cleanup, session_id}, state) do
+    workspace = lookup_workspace(session_id)
     :ets.delete(@table, session_id)
-    broadcast()
+    broadcast(workspace)
     {:noreply, state}
   end
 
   def handle_info(_, state), do: {:noreply, state}
 
+  # ── Helpers ─────────────────────────────────────────────────────────
+
+  defp lookup_workspace(session_id) do
+    case :ets.lookup(@table, session_id) do
+      [{_, agent}] -> agent.workspace
+      [] -> nil
+    end
+  end
+
   # ── PubSub broadcast ───────────────────────────────────────────────
 
-  defp broadcast do
-    Phoenix.PubSub.broadcast(Worth.PubSub, "agents:updates", :agents_updated)
+  defp broadcast(workspace) when is_binary(workspace) do
+    Phoenix.PubSub.broadcast(Worth.PubSub, "workspace:#{workspace}", :agents_updated)
+  rescue
+    _ -> :ok
+  end
+
+  defp broadcast(_) do
+    Phoenix.PubSub.broadcast(Worth.PubSub, "worth:global", {:global_event, :agents_updated})
   rescue
     _ -> :ok
   end

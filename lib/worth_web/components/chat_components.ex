@@ -87,8 +87,10 @@ defmodule WorthWeb.ChatComponents do
   # ── Left Panel ──────────────────────────────────────────────────
 
   attr :workspace, :string, required: true
+  attr :workspaces, :list, default: []
   attr :files, :list, default: []
   attr :agents, :list, default: []
+  attr :memory_stats, :map, default: %{}
 
   def left_panel(assigns) do
     ~H"""
@@ -100,8 +102,18 @@ defmodule WorthWeb.ChatComponents do
       <%!-- Workspaces --%>
       <div class="px-3 py-2">
         <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Workspaces</div>
-        <.workspace_list workspace={@workspace} />
+        <div
+          :for={ws <- @workspaces}
+          phx-click="switch_workspace"
+          phx-value-name={ws}
+          class={"text-xs py-px cursor-pointer #{ws == @workspace && "#{color(:primary)} font-semibold" || "#{color(:text_muted)} hover:#{color(:text)}"}"}
+        >
+          {if ws == @workspace, do: "● ", else: "○ "}{ws}
+        </div>
       </div>
+
+      <%!-- Memory Inspector --%>
+      <.memory_inspector workspace={@workspace} stats={@memory_stats} />
 
       <%!-- Files --%>
       <div class="px-3 py-2">
@@ -124,35 +136,76 @@ defmodule WorthWeb.ChatComponents do
     """
   end
 
-  defp workspace_list(assigns) do
-    workspaces =
-      try do
-        Worth.Workspace.Service.list()
-      rescue
-        _ -> [assigns.workspace]
-      end
+  # ── Memory Inspector ────────────────────────────────────────────
 
-    assigns = assign(assigns, :workspaces, workspaces)
+  attr :workspace, :string, required: true
+  attr :stats, :map, default: %{}
+
+  def memory_inspector(assigns) do
+    working_count = Map.get(assigns.stats, :working_count, 0)
+    recent_count = Map.get(assigns.stats, :recent_count, 0)
+    memory_enabled = Map.get(assigns.stats, :enabled, true)
+
+    assigns = assign(assigns, working_count: working_count, recent_count: recent_count, memory_enabled: memory_enabled)
 
     ~H"""
-    <div
-      :for={ws <- @workspaces}
-      class={"text-xs py-px #{ws == @workspace && "#{color(:primary)} font-semibold" || color(:text_muted)}"}
-    >
-      {if ws == @workspace, do: "● ", else: "○ "}{ws}
+    <div class="px-3 py-2 border-t #{color(:border)}">
+      <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)} flex items-center justify-between"}>
+        <span>Memory</span>
+        <span :if={!@memory_enabled} class={"#{color(:warning)} text-[10px]"}>disabled</span>
+      </div>
+
+      <div class={"text-xs space-y-1 #{@memory_enabled && color(:text_muted) || color(:text_dim)}"}>
+        <div class="flex justify-between">
+          <span>Working:</span>
+          <span class={color(:primary)}>{@working_count}</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Stored:</span>
+          <span class={color(:primary)}>{@recent_count}</span>
+        </div>
+      </div>
+
+      <%!-- Quick Actions --%>
+      <div class="mt-2 flex gap-1">
+        <button
+          phx-click="memory_query"
+          phx-value-workspace={@workspace}
+          class={"px-2 py-0.5 text-[10px] rounded #{color(:button_secondary)} opacity-80 hover:opacity-100 cursor-pointer transition-opacity"}
+          title="Query recent memories"
+        >
+          query
+        </button>
+        <button
+          phx-click="memory_flush"
+          phx-value-workspace={@workspace}
+          class={"px-2 py-0.5 text-[10px] rounded #{color(:button_secondary)} opacity-80 hover:opacity-100 cursor-pointer transition-opacity"}
+          title="Flush working memory to storage"
+        >
+          flush
+        </button>
+      </div>
     </div>
     """
   end
 
   defp agent_row(assigns) do
     ~H"""
-    <div class={agent_status_class(@agent.status)}>
+    <div class={"flex items-center gap-1 #{agent_status_class(@agent.status)}"}>
       <span :if={@agent.status == :running} class="spinner"></span>
       <span :if={@agent.status == :done} class={color(:success)}>✓</span>
       <span :if={@agent.status == :error} class={color(:error)}>×</span>
       <span :if={@agent.status not in [:running, :done, :error]} class={color(:text_dim)}>○</span>
-      {agent_label(@agent)}
-      <span :if={@agent.current_tool} class={"#{color(:text_dim)} ml-1"}>({@agent.current_tool})</span>
+      <span class="truncate">{agent_label(@agent)}</span>
+      <span :if={@agent.current_tool} class={"#{color(:text_dim)} shrink-0"}>({@agent.current_tool})</span>
+      <button
+        :if={@agent.status == :running}
+        phx-click="stop"
+        class={"ml-auto shrink-0 #{color(:error)} hover:opacity-80 cursor-pointer"}
+        title="Stop agent"
+      >
+        ■
+      </button>
     </div>
     """
   end
@@ -249,27 +302,90 @@ defmodule WorthWeb.ChatComponents do
             cache_read: 0,
             cache_write: 0,
             embed_calls: 0,
-            by_provider: %{}
+            embed_cost: 0.0,
+            by_provider: %{},
+            started_at: System.system_time(:millisecond)
           }
       end
 
-    assigns = assign(assigns, :metrics, metrics)
+    duration_min =
+      div(System.system_time(:millisecond) - (metrics.started_at || System.system_time(:millisecond)), 60_000)
+
+    avg_cost_per_call = if metrics.calls > 0, do: metrics.cost / metrics.calls, else: 0.0
+
+    assigns =
+      assign(assigns, :metrics, metrics)
+      |> assign(:duration_min, duration_min)
+      |> assign(:avg_cost, avg_cost_per_call)
 
     ~H"""
     <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Session</div>
     <div class="text-xs color(:text_muted) space-y-0.5">
-      <div>Cost: ${Float.round(@metrics.cost, 4)} ({@metrics.calls} calls)</div>
-      <div>Tokens: {format_int(@metrics.input_tokens)} in / {format_int(@metrics.output_tokens)} out</div>
-      <div class="color(:text_dim)">
-        Cache: {format_int(@metrics.cache_read)} read / {format_int(@metrics.cache_write)} write
+      <div class="flex justify-between">
+        <span>Duration:</span>
+        <span>{@duration_min}m</span>
       </div>
-      <div class="color(:text_dim)">Embed: {@metrics.embed_calls} calls</div>
+      <div class="flex justify-between">
+        <span>Cost:</span>
+        <span class={color(:accent)}>${Float.round(@metrics.cost, 4)}</span>
+      </div>
+      <div class="flex justify-between">
+        <span>Calls:</span>
+        <span>{@metrics.calls}</span>
+      </div>
+      <div class="flex justify-between color(:text_dim)">
+        <span>Avg/call:</span>
+        <span>${Float.round(@avg_cost, 4)}</span>
+      </div>
+    </div>
+
+    <div class="mt-3">
+      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Tokens</div>
+      <div class="text-xs color(:text_muted) space-y-0.5">
+        <div class="flex justify-between">
+          <span>Input:</span>
+          <span>{format_int(@metrics.input_tokens)}</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Output:</span>
+          <span>{format_int(@metrics.output_tokens)}</span>
+        </div>
+        <div class="flex justify-between color(:text_dim)">
+          <span>Total:</span>
+          <span>{format_int(@metrics.input_tokens + @metrics.output_tokens)}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-3">
+      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Cache & Embeddings</div>
+      <div class="text-xs color(:text_muted) space-y-0.5">
+        <div class="flex justify-between">
+          <span>Cache read:</span>
+          <span class={color(:success)}>{format_int(@metrics.cache_read)}</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Cache write:</span>
+          <span class={color(:warning)}>{format_int(@metrics.cache_write)}</span>
+        </div>
+        <div class="flex justify-between">
+          <span>Embeddings:</span>
+          <span>{@metrics.embed_calls} calls</span>
+        </div>
+        <div class="flex justify-between color(:text_dim)">
+          <span>Embed cost:</span>
+          <span>${Float.round(@metrics.embed_cost, 4)}</span>
+        </div>
+      </div>
     </div>
 
     <div :if={@metrics.by_provider != %{}} class="mt-3">
       <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">By Provider</div>
       <div :for={{provider, p} <- @metrics.by_provider} class="text-xs color(:text_dim)">
-        {provider} ${Float.round(p.cost, 4)} ({p.calls})
+        <div class="flex justify-between">
+          <span>{provider}:</span>
+          <span>${Float.round(p.cost, 4)} ({p.calls})</span>
+        </div>
       </div>
     </div>
     """
@@ -362,10 +478,22 @@ defmodule WorthWeb.ChatComponents do
   end
 
   defp message_content(%{msg: %{type: :system}} = assigns) do
+    has_learning = Map.has_key?(assigns.msg, :learning_report)
+    has_permission = Map.has_key?(assigns.msg, :permission_agents)
+    has_mapping = Map.has_key?(assigns.msg, :project_mapping)
+    assigns = assign(assigns, :has_learning, has_learning)
+    assigns = assign(assigns, :has_permission, has_permission)
+    assigns = assign(assigns, :has_mapping, has_mapping)
+
     ~H"""
     <div class="flex gap-2">
       <span class="text-ctp-mauve font-bold shrink-0">sys</span>
-      <pre class="color(:text_muted) whitespace-pre-wrap text-xs flex-1 min-w-0">{@msg.content}</pre>
+      <div class="flex-1 min-w-0">
+        <pre class="color(:text_muted) whitespace-pre-wrap text-xs">{@msg.content}</pre>
+        <.permission_actions :if={@has_permission} agents={@msg.permission_agents} />
+        <.project_mapping_actions :if={@has_mapping} projects={@msg.project_mapping} workspace={@msg.mapping_workspace} />
+        <.learning_actions :if={@has_learning} report={@msg.learning_report} />
+      </div>
     </div>
     """
   end
@@ -426,6 +554,112 @@ defmodule WorthWeb.ChatComponents do
     """
   end
 
+  # ── Learning Actions ────────────────────────────────────────────
+
+  attr :agents, :list, required: true
+
+  defp permission_actions(assigns) do
+    ~H"""
+    <div class="mt-2 space-y-2">
+      <div class="flex gap-2">
+        <button
+          phx-click="grant_all_agents"
+          class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_primary)} cursor-pointer"}
+        >
+          Grant access to all
+        </button>
+      </div>
+      <div class="space-y-1">
+        <%= for agent <- @agents do %>
+          <div class="flex items-center gap-2">
+            <span class="color(:text_muted) text-xs">{format_agent_name(agent.agent)} — {hd(agent.data_paths)}</span>
+            <button
+              phx-click="grant_agent_permission"
+              phx-value-agent={agent.agent}
+              class={"px-2 py-0.5 rounded text-xs transition-colors #{color(:button_primary)} cursor-pointer"}
+            >
+              Allow
+            </button>
+            <button
+              phx-click="deny_agent_permission"
+              phx-value-agent={agent.agent}
+              class={"px-2 py-0.5 rounded text-xs transition-colors #{color(:button_secondary)} cursor-pointer"}
+            >
+              Deny
+            </button>
+          </div>
+        <% end %>
+      </div>
+    </div>
+    """
+  end
+
+  defp format_agent_name(:claude_code), do: "Claude Code"
+  defp format_agent_name(:codex), do: "Codex"
+  defp format_agent_name(:gemini), do: "Gemini"
+  defp format_agent_name(:opencode), do: "OpenCode"
+  defp format_agent_name(name), do: Phoenix.HTML.Safe.to_iodata(name) |> to_string()
+
+  attr :projects, :map, required: true
+  attr :workspace, :string, required: true
+
+  defp project_mapping_actions(assigns) do
+    ~H"""
+    <div class="mt-2 space-y-2">
+      <div class="flex gap-2">
+        <button
+          phx-click="map_all_projects"
+          phx-value-workspace={@workspace}
+          class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_primary)} cursor-pointer"}
+        >
+          Select all projects
+        </button>
+      </div>
+      <%= for {agent, projects} <- @projects do %>
+        <div class="space-y-1">
+          <div class="color(:text) text-xs font-semibold">{format_agent_name(agent)}</div>
+          <div class="ml-2 flex flex-wrap gap-1">
+            <%= for project <- projects do %>
+              <button
+                phx-click="map_projects"
+                phx-value-workspace={@workspace}
+                phx-value-agent={agent}
+                phx-value-projects={Jason.encode!(projects)}
+                class={"px-2 py-0.5 rounded text-xs transition-colors #{color(:button_secondary)} cursor-pointer"}
+              >
+                {project}
+              </button>
+            <% end %>
+          </div>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  attr :report, :map, required: true
+
+  defp learning_actions(assigns) do
+    ~H"""
+    <div class="flex gap-2 mt-2">
+      <button
+        phx-click="approve_learning"
+        phx-value-workspace={@report.workspace}
+        class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_primary)} cursor-pointer"}
+      >
+        Yes, learn from this workspace
+      </button>
+      <button
+        phx-click="decline_learning"
+        phx-value-workspace={@report.workspace}
+        class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_secondary)} cursor-pointer"}
+      >
+        No, skip for now
+      </button>
+    </div>
+    """
+  end
+
   defp message_wrapper_class(:user), do: "py-2 px-3 rounded-md #{color(:message_user_bg)}"
   defp message_wrapper_class(:assistant), do: "py-2 px-3"
   defp message_wrapper_class(:error), do: "py-2 px-3 rounded-md #{color(:message_error_bg)}"
@@ -456,15 +690,19 @@ defmodule WorthWeb.ChatComponents do
           class={"flex-1 bg-transparent border-none outline-none #{color(:text)} #{color(:input_placeholder)} text-sm font-mono"}
         />
         <button
+          :if={@status != :running}
           type="submit"
-          disabled={@status == :running}
-          class={[
-            "px-3 py-1 rounded text-xs font-semibold transition-colors",
-            @status == :running && "#{color(:input_disabled_bg)} #{color(:input_disabled_text)} cursor-not-allowed",
-            @status != :running && "#{color(:button_primary)} cursor-pointer"
-          ]}
+          class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_primary)} cursor-pointer"}
         >
           Send
+        </button>
+        <button
+          :if={@status == :running}
+          type="button"
+          phx-click="stop"
+          class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:error)} bg-ctp-red/10 border border-ctp-red/30 hover:bg-ctp-red/20 cursor-pointer"}
+        >
+          Stop
         </button>
       </form>
     </div>

@@ -8,15 +8,23 @@ defmodule WorthWeb.Commands.WorkspaceCommands do
   end
 
   def handle({:workspace, {:switch, name}}, socket) do
-    Worth.Brain.switch_workspace(name)
-    append_system(assign(socket, workspace: name), "Switched to workspace: #{name}")
+    old_workspace = socket.assigns.workspace
+    Phoenix.PubSub.unsubscribe(Worth.PubSub, "workspace:#{old_workspace}")
+    Phoenix.PubSub.subscribe(Worth.PubSub, "workspace:#{name}")
+
+    socket = assign(socket, workspace: name, workspaces: Worth.Workspace.Service.list())
+    append_system(socket, "Switched to workspace: #{name}")
   end
 
   def handle({:workspace, {:new, name}}, socket) do
     case Worth.Workspace.Service.create(name) do
       {:ok, _path} ->
-        Worth.Brain.switch_workspace(name)
-        append_system(assign(socket, workspace: name), "Created and switched to workspace: #{name}")
+        old_workspace = socket.assigns.workspace
+        Phoenix.PubSub.unsubscribe(Worth.PubSub, "workspace:#{old_workspace}")
+        Phoenix.PubSub.subscribe(Worth.PubSub, "workspace:#{name}")
+
+        socket = assign(socket, workspace: name, workspaces: Worth.Workspace.Service.list())
+        append_system(socket, "Created and switched to workspace: #{name}")
 
       {:error, reason} ->
         append_error(socket, reason)
@@ -42,7 +50,9 @@ defmodule WorthWeb.Commands.WorkspaceCommands do
   end
 
   def handle({:agent, {:switch, protocol}}, socket) do
-    case Worth.Brain.switch_to_coding_agent(protocol) do
+    workspace = socket.assigns.workspace
+
+    case Worth.Brain.switch_to_coding_agent(workspace, protocol) do
       :ok ->
         agent_name = Worth.CodingAgents.display_name(protocol)
         append_system(assign(socket, mode: :coding_agent), "Switched to coding agent: #{agent_name}")
@@ -56,7 +66,9 @@ defmodule WorthWeb.Commands.WorkspaceCommands do
   end
 
   def handle({:session, :list}, socket) do
-    case Worth.Brain.list_sessions() do
+    workspace = socket.assigns.workspace
+
+    case Worth.Brain.list_sessions(workspace) do
       {:ok, sessions} when is_list(sessions) and sessions != [] ->
         lines = sessions |> Enum.map(&"  #{&1}") |> Enum.join("\n")
         append_system(socket, "Sessions:\n#{lines}")
@@ -67,7 +79,8 @@ defmodule WorthWeb.Commands.WorkspaceCommands do
   end
 
   def handle({:session, {:resume, session_id}}, socket) do
-    Worth.Brain.resume_session(session_id)
+    workspace = socket.assigns.workspace
+    Worth.Brain.resume_session(workspace, session_id)
     socket = append_system(socket, "Resuming session: #{session_id}")
     assign(socket, status: :running)
   end
