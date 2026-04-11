@@ -48,47 +48,17 @@ config :worth,
 config :worth, Worth.Vault, ciphers: []
 
 # --- Database Configuration ---
-# Worth supports two database backends:
-# 1. libSQL (default) - Single file SQLite with native vector support
-# 2. PostgreSQL - Traditional server-based database with pgvector
-#
-# Use the WORTH_DATABASE_BACKEND environment variable to choose:
-#   export WORTH_DATABASE_BACKEND=libsql  # default
-#   export WORTH_DATABASE_BACKEND=postgres
-
+# Worth uses libSQL (SQLite) for zero-configuration local storage
 worth_home = System.get_env("WORTH_HOME", Path.expand("~/.worth"))
-database_backend = System.get_env("WORTH_DATABASE_BACKEND", "libsql")
 
-# Configure database based on backend choice
-if database_backend == "postgres" do
-  # PostgreSQL configuration
-  config :worth, Worth.Repo,
-    adapter: Ecto.Adapters.Postgres,
-    username: System.get_env("WORTH_DB_USER", "postgres"),
-    password: System.get_env("WORTH_DB_PASSWORD", "postgres"),
-    database: System.get_env("WORTH_DB_NAME", "worth_dev"),
-    hostname: System.get_env("WORTH_DB_HOST", "localhost"),
-    port: String.to_integer(System.get_env("WORTH_DB_PORT", "5432")),
-    stacktrace: true,
-    show_sensitive_data_on_connection_error: true,
-    pool_size: 10,
-    types: Worth.PostgrexTypes
+config :worth, Worth.Repo,
+  adapter: Ecto.Adapters.LibSql,
+  database: Path.join(worth_home, "worth.db"),
+  pool_size: 5
 
-  config :mneme,
-    database_adapter: Mneme.DatabaseAdapter.Postgres,
-    repo: Worth.Repo
-else
-  # libSQL configuration (default)
-  # Single file database stored in ~/.worth/worth.db
-  config :worth, Worth.Repo,
-    adapter: Ecto.Adapters.LibSql,
-    database: Path.join(worth_home, "worth.db"),
-    pool_size: 5
-
-  config :mneme,
-    database_adapter: Mneme.DatabaseAdapter.LibSQL,
-    repo: Worth.Repo
-end
+config :mneme,
+  database_adapter: Mneme.DatabaseAdapter.LibSQL,
+  repo: Worth.Repo
 
 # --- Mneme Core Configuration ---
 config :mneme,
