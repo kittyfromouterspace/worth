@@ -1,9 +1,0 @@
-{application,pbkdf2_elixir,
-             [{modules,['Elixir.Pbkdf2','Elixir.Pbkdf2.Base',
-                        'Elixir.Pbkdf2.Base64','Elixir.Pbkdf2.Stats',
-                        'Elixir.Pbkdf2.Tools']},
-              {optional_applications,[]},
-              {applications,[kernel,stdlib,elixir,logger,crypto,comeonin]},
-              {description,"pbkdf2_elixir"},
-              {registered,[]},
-              {vsn,"2.3.1"}]}.

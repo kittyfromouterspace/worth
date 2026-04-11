@@ -1,9 +1,0 @@
-#!/bin/sh
-export RELEASE_DISTRIBUTION=none
-export RELEASE_MODE=interactive
-export RELEASE_COOKIE=$(head -c 32 /dev/urandom | base64 2>/dev/null || openssl rand -base64 32)
-export WORTH_HOME="${WORTH_HOME:-${HOME}/.worth}"
-
-if [ -f "${HOME}/.worthdesktop.sh" ]; then
-  . "${HOME}/.worthdesktop.sh"
-fi

@@ -1,5 +1,0 @@
-## Customize flags given to the VM: https://www.erlang.org/doc/man/erl.html
-## RELEASE_MODE is set in env.sh.eex — do not set -mode here.
-
-+A128
-+Ww
