@@ -40,6 +40,7 @@ defmodule WorthWeb.ChatLive do
        workspace: workspace,
        mode: mode,
        models: %{primary: %{label: nil, source: nil}, lightweight: %{label: nil, source: nil}},
+       model_routing: current_routing(),
        turn: 0,
        streaming_text: "",
        sidebar_visible: true,
@@ -824,7 +825,9 @@ defmodule WorthWeb.ChatLive do
         lightweight: format_model_slot(lightweight)
       }
 
-      assign(socket, models: models)
+      routing = current_routing()
+
+      assign(socket, models: models, model_routing: routing)
     rescue
       _ -> socket
     end

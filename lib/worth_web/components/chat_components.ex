@@ -240,6 +240,7 @@ defmodule WorthWeb.ChatComponents do
 
   attr :tab, :atom, required: true
   attr :models, :map, required: true
+  attr :model_routing, :map, default: %{mode: "auto"}
   attr :cost, :float, required: true
   attr :turn, :integer, required: true
   attr :mode, :atom, required: true
@@ -251,11 +252,11 @@ defmodule WorthWeb.ChatComponents do
     ~H"""
     <aside class="w-72 color(:background) border-l color(:border) overflow-y-auto shrink-0 text-sm">
       <div class="p-3 space-y-4">
-        <.tab_content tab={:status} models={@models} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
-        <.tab_content tab={:usage} models={@models} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
-        <.tab_content tab={:tools} models={@models} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
-        <.tab_content tab={:skills} models={@models} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
-        <.tab_content tab={:logs} models={@models} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
+        <.tab_content tab={:status} models={@models} model_routing={@model_routing} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
+        <.tab_content tab={:usage} models={@models} model_routing={@model_routing} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
+        <.tab_content tab={:tools} models={@models} model_routing={@model_routing} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
+        <.tab_content tab={:skills} models={@models} model_routing={@model_routing} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
+        <.tab_content tab={:logs} models={@models} model_routing={@model_routing} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
       </div>
     </aside>
     """
@@ -291,14 +292,21 @@ defmodule WorthWeb.ChatComponents do
     </div>
 
     <div class="mt-3">
-      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">
-        Models ({@catalog_info.model_count})
+      <div class="color(:secondary) font-semibold text-xs uppercase tracking-wider mb-1">Model</div>
+      <div :if={@model_routing[:mode] == "manual" and @model_routing[:manual_model]} class="text-xs space-y-0.5">
+        <div class="color(:primary) font-medium">{manual_model_label(@model_routing.manual_model)}</div>
+        <div class="color(:text_dim)">manual · /model auto to switch</div>
       </div>
-      <div class="text-xs space-y-1">
-        <div class="color(:text_muted)">{model_line(@models, :primary)}</div>
-        <div class="color(:text_dim)">via {source_line(@models, :primary)}</div>
-        <div class="color(:text_muted)">{model_line(@models, :lightweight)}</div>
-        <div class="color(:text_dim)">via {source_line(@models, :lightweight)}</div>
+      <div :if={@model_routing[:mode] != "manual" or !@model_routing[:manual_model]} class="text-xs space-y-0.5">
+        <div class="flex justify-between">
+          <span class="color(:text_dim)">primary</span>
+          <span class="color(:text_muted)">{model_short(@models, :primary)}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="color(:text_dim)">light</span>
+          <span class="color(:text_muted)">{model_short(@models, :lightweight)}</span>
+        </div>
+        <div class="color(:text_dim) mt-0.5">{routing_mode_label(@model_routing)}</div>
       </div>
     </div>
 
@@ -757,16 +765,29 @@ defmodule WorthWeb.ChatComponents do
 
   # ── Sidebar helpers ─────────────────────────────────────────────
 
-  defp model_line(models, tier) do
+  defp routing_mode_label(%{mode: "auto", preference: "optimize_price", filter: "free_only"}), do: "auto · price · free only"
+  defp routing_mode_label(%{mode: "auto", preference: pref, filter: "free_only"}), do: "auto · #{pref} · free only"
+  defp routing_mode_label(%{mode: "auto", preference: pref}), do: "auto · #{pref}"
+  defp routing_mode_label(_), do: "auto"
+
+  defp model_short(models, tier) do
     model = Map.get(models, tier, %{})
     label = Map.get(model, :label)
-    if label && label != "", do: label, else: "(detecting...)"
+
+    if label && label != "" do
+      # Strip provider prefix like "Anthropic: " for brevity
+      label
+      |> String.replace(~r/^[A-Za-z]+:\s*/, "")
+    else
+      "..."
+    end
   end
 
-  defp source_line(models, tier) do
-    model = Map.get(models, tier, %{})
-    source = Map.get(model, :source)
-    if source && source != "", do: source, else: "no route yet"
+  defp manual_model_label(%{model_id: model_id}) do
+    # Show just the model id part, strip provider prefix if nested (e.g. "anthropic/claude-opus-4.6")
+    model_id
+    |> String.split("/")
+    |> List.last()
   end
 
   defp provider_detail(%{status: :ok, count: count}), do: "#{count} models"

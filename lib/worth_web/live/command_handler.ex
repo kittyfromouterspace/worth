@@ -5,6 +5,7 @@ defmodule WorthWeb.CommandHandler do
 
   alias WorthWeb.Commands.{
     MemoryCommands,
+    ModelCommands,
     SettingsCommands,
     SkillCommands,
     McpCommands,
@@ -30,6 +31,7 @@ defmodule WorthWeb.CommandHandler do
   defp dispatch({:status, _} = cmd, socket), do: SystemCommands.handle(cmd, socket)
   defp dispatch({:unknown, _} = cmd, socket), do: SystemCommands.handle(cmd, socket)
 
+  defp dispatch({:model, _} = cmd, socket), do: ModelCommands.handle(cmd, socket)
   defp dispatch({:memory, _} = cmd, socket), do: MemoryCommands.handle(cmd, socket)
   defp dispatch({:skill, _} = cmd, socket), do: SkillCommands.handle(cmd, socket)
   defp dispatch({:mcp, _} = cmd, socket), do: McpCommands.handle(cmd, socket)

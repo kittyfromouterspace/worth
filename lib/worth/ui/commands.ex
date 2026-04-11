@@ -52,6 +52,12 @@ defmodule Worth.UI.Commands do
       ["/kit", "install", owner_slash_slug] -> parse_owner_slug(:install, owner_slash_slug)
       ["/kit", "list"] -> {:command, {:kit, :list}}
       ["/kit", "info", owner_slash_slug] -> parse_owner_slug(:info, owner_slash_slug)
+      # Model
+      ["/model"] -> {:command, {:model, :status}}
+      ["/model", "auto"] -> {:command, {:model, :auto}}
+      ["/model", "list"] -> {:command, {:model, :list}}
+      ["/model", "set" | rest] -> {:command, {:model, {:set, Enum.join(rest, " ")}}}
+      ["/model" | query_parts] -> {:command, {:model, {:search, Enum.join(query_parts, " ")}}}
       # Provider
       ["/provider", "list"] -> {:command, {:provider, :list}}
       ["/provider", "enable", id] -> {:command, {:provider, {:enable, String.to_atom(id)}}}
@@ -124,6 +130,11 @@ defmodule Worth.UI.Commands do
       /kit install <o/s>   Install a kit
       /kit list            List installed kits
       /kit info <o/s>      Show kit details
+      /model               Show current model setting
+      /model auto          Switch to automatic model selection
+      /model list          List all available models
+      /model <query>       Search models by name
+      /model set <p/m>     Set model manually (provider/model_id)
       /provider list       List registered providers
       /provider enable <id> Enable a provider
       /provider disable <id> Disable a provider

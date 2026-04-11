@@ -352,6 +352,15 @@ defmodule Worth.Brain do
     {:noreply, state}
   end
 
+  def handle_info({:model_selected, _model_info}, state) do
+    # AgentEx ModelRouter broadcasts model selection events; ignore in Brain
+    {:noreply, state}
+  end
+
+  def handle_info(_msg, state) do
+    {:noreply, state}
+  end
+
   # ── Agent loop ────────────────────────────────────────────────
 
   defp execute_agent_loop(text, state, brain_pid) do
@@ -436,6 +445,7 @@ defmodule Worth.Brain do
           broadcast_workspace(workspace, {:agent_event, {:text_chunk, text_delta}})
         end
 
+        params = maybe_inject_manual_model(params)
         Worth.LLM.stream_chat(params, state.config, on_chunk)
       end,
       on_event: fn event, _ctx ->
@@ -570,6 +580,18 @@ defmodule Worth.Brain do
 
   defp maybe_put_filter(opts, "free_only"), do: Keyword.put(opts, :model_filter, :free_only)
   defp maybe_put_filter(opts, _), do: opts
+
+  defp maybe_inject_manual_model(params) when is_map(params) do
+    case Application.get_env(:worth, :model_routing) do
+      %{mode: "manual", manual_model: %{provider: p, model_id: m}} ->
+        Map.put(params, "_route", %{provider_name: p, model_id: m})
+
+      _ ->
+        params
+    end
+  end
+
+  defp maybe_inject_manual_model(params), do: params
 
   defp mode_to_agent_mode(:code), do: :agentic
   defp mode_to_agent_mode(:research), do: :conversational
