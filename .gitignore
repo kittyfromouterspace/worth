@@ -12,5 +12,4 @@
 /priv/static/assets/
 /priv/static/cache_manifest.json
 
-/rel/desktop/src-tauri/target/
-rel/desktop/src-tauri/src-tauri/
+/rel/desktop/src-tauri/

@@ -1,8 +1,0 @@
-## Customize flags given to the VM: https://www.erlang.org/doc/man/erl.html
-## -mode/A/conf/ -name or -sname
-## -setcookie
-
-## Use distributed Erlang for desktop single-node app
--mode interactive
-+A128
-+Ww
