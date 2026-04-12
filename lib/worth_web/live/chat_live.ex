@@ -49,8 +49,9 @@ defmodule WorthWeb.ChatLive do
        workspace_files: [],
        input_history: [],
        history_index: -1,
-       view: if(Worth.Config.Setup.needs_setup?(), do: :onboarding, else: :chat),
+       view: initial_view(),
        onboarding_step: 1,
+       unlock_error: nil,
        has_history: prior_messages != [],
        settings_form: default_settings_form(),
        theme_module: Worth.Theme.Registry.resolve(),
@@ -336,8 +337,8 @@ defmodule WorthWeb.ChatLive do
 
   # ── Onboarding events ──────────────────────────────────────────
 
-  def handle_event("onboarding_save_dir", %{"home_directory" => path}, socket) do
-    case Worth.Config.Setup.set_home_directory(path) do
+  def handle_event("onboarding_save_dir", %{"workspace_directory" => path}, socket) do
+    case Worth.Config.Setup.set_workspace_directory(path) do
       :ok ->
         {:noreply, assign(socket, onboarding_step: 2)}
 
@@ -346,44 +347,78 @@ defmodule WorthWeb.ChatLive do
     end
   end
 
-  def handle_event("onboarding_save_key", %{"api_key" => key}, socket) do
-    case Worth.Config.Setup.set_openrouter_key(key) do
-      :ok ->
-        # Also set default embedding model
-        Worth.Config.Setup.set_embedding_model(Worth.Config.Setup.default_embedding_model())
+  def handle_event("onboarding_save_password", params, socket) do
+    password = params["password"] || ""
+    confirmation = params["password_confirmation"] || ""
 
-        # Set default routing to auto/optimize_cost/free_only
-        routing = %{mode: "auto", preference: "optimize_price", filter: "free_only"}
-        Application.put_env(:worth, :model_routing, routing)
+    cond do
+      String.length(password) < 4 ->
+        {:noreply, socket}
 
-        {:noreply,
-         socket
-         |> assign(view: :chat, onboarding_step: 1)
-         |> load_settings_form()
-         |> append_system_message("Welcome to Worth! Setup complete. Type a message to get started.")}
+      password != confirmation ->
+        {:noreply, socket}
 
-      {:error, _} ->
-        {:noreply, assign(socket, onboarding_step: 2)}
+      true ->
+        case Worth.Settings.setup_password(password) do
+          :ok ->
+            # Migrate any secrets stored on disk during earlier onboarding steps
+            Worth.Settings.import_from_config_store()
+            {:noreply, assign(socket, onboarding_step: 3)}
+
+          {:error, :already_set} ->
+            # Password exists (e.g. page was refreshed mid-onboarding) — unlock instead
+            case Worth.Settings.unlock(password) do
+              :ok -> {:noreply, assign(socket, onboarding_step: 3)}
+              {:error, _} -> {:noreply, socket}
+            end
+
+          {:error, _} ->
+            {:noreply, socket}
+        end
     end
   end
 
-  def handle_event("onboarding_skip_key", _params, socket) do
-    # Set embedding model even when skipping
-    Worth.Config.Setup.set_embedding_model(Worth.Config.Setup.default_embedding_model())
+  def handle_event("onboarding_save_key", %{"api_key" => key}, socket) do
+    case Worth.Config.Setup.set_openrouter_key(key) do
+      :ok ->
+        {:noreply, assign(socket, onboarding_step: 4)}
 
-    # Ensure home dir is set if not already
-    if is_nil(Worth.Config.Setup.home_directory()) do
-      Worth.Config.Setup.set_home_directory(Worth.Config.Setup.default_home_directory())
+      {:error, _} ->
+        {:noreply, assign(socket, onboarding_step: 3)}
     end
+  end
 
-    routing = %{mode: "auto", preference: "optimize_price", filter: "free_only"}
-    Application.put_env(:worth, :model_routing, routing)
+  def handle_event("onboarding_save_profile", params, socket) do
+    profile = %{
+      name: String.trim(params["user_name"] || ""),
+      role: String.trim(params["user_role"] || ""),
+      goals: String.trim(params["user_goals"] || "")
+    }
 
-    {:noreply,
-     socket
-     |> assign(view: :chat, onboarding_step: 1)
-     |> load_settings_form()
-     |> append_system_message("Welcome to Worth! You can add an API key later in Settings.")}
+    finish_onboarding(socket, profile)
+  end
+
+  def handle_event("onboarding_skip_profile", _params, socket) do
+    finish_onboarding(socket, %{name: "", role: "", goals: ""})
+  end
+
+  def handle_event("vault_unlock", %{"password" => password}, socket) do
+    case Worth.Settings.unlock(password) do
+      :ok ->
+        export_secrets_to_env()
+
+        {:noreply,
+         socket
+         |> assign(view: :chat, unlock_error: nil)
+         |> load_settings_form()
+         |> append_system_message("Vault unlocked. Welcome back!")}
+
+      {:error, :invalid_password} ->
+        {:noreply, assign(socket, unlock_error: "Invalid password. Please try again.")}
+
+      {:error, _} ->
+        {:noreply, assign(socket, unlock_error: "Failed to unlock vault.")}
+    end
   end
 
   # ── Settings events ────────────────────────────────────────────
@@ -572,23 +607,17 @@ defmodule WorthWeb.ChatLive do
     {:noreply, append_system_message(socket, "Memory decay: #{decay} days")}
   end
 
-  def handle_event("settings_save_base_dir", %{"home_directory" => path}, socket) do
+  def handle_event("settings_save_base_dir", %{"workspace_directory" => path}, socket) do
     expanded = Path.expand(path)
 
     if File.dir?(expanded) or File.mkdir_p(expanded) == :ok do
-      old_home = Worth.Config.Store.home_directory()
-
-      Worth.Config.put_setting([:home_directory], expanded)
-      persist_preference("home_directory", expanded)
-
-      if old_home != expanded do
-        migrate_skills_if_needed(old_home, expanded)
-      end
+      Worth.Config.put_setting([:workspace_directory], expanded)
+      persist_preference("workspace_directory", expanded)
 
       socket = load_settings_form(socket)
 
       {:noreply,
-       append_system_message(socket, "Base directory set to #{expanded}. Skills and workspaces will use this location.")}
+       append_system_message(socket, "Workspace directory set to #{expanded}.")}
     else
       {:noreply, append_system_message(socket, "Cannot create directory: #{expanded}")}
     end
@@ -604,30 +633,6 @@ defmodule WorthWeb.ChatLive do
   defp routing_label("manual", _, _), do: "Manual (tier-based)"
   defp routing_label(m, _, _), do: m
 
-  defp migrate_skills_if_needed(old_home, new_home) do
-    old_skills = Path.join(old_home, "skills")
-    new_skills = Path.join(new_home, "skills")
-
-    if File.dir?(old_skills) and old_skills != new_skills do
-      # Ensure new directory exists
-      File.mkdir_p!(new_home)
-
-      # Copy skills to new location
-      case File.cp_r(old_skills, new_skills) do
-        {:ok, _} ->
-          # Refresh registry to pick up new location
-          Worth.Skill.Registry.refresh()
-          :ok
-
-        {:error, reason, _} ->
-          require Logger
-          Logger.warning("Failed to migrate skills: #{inspect(reason)}")
-          :error
-      end
-    else
-      :ok
-    end
-  end
 
   defp persist_preference(key, value) do
     try do
@@ -875,8 +880,94 @@ defmodule WorthWeb.ChatLive do
       routing: current_routing(),
       agent_limits: current_agent_limits(),
       memory: current_memory_settings(),
-      base_dir: Worth.Config.Store.home_directory()
+      base_dir: Worth.Paths.workspace_dir()
     }
+  end
+
+  defp finish_onboarding(socket, profile) when is_map(profile) do
+    # Set routing defaults
+    routing = %{mode: "auto", preference: "optimize_price", filter: "free_only"}
+    Application.put_env(:worth, :model_routing, routing)
+
+    export_secrets_to_env()
+
+    # Create the personal workspace
+    {:ok, _path} = Worth.Workspace.Service.create_personal(profile)
+
+    # Set personal as the current workspace
+    workspace = "personal"
+    Application.put_env(:worth, :current_workspace, workspace)
+    Application.put_env(:worth, :current_mode, :code)
+
+    # Start the Brain for this workspace
+    Worth.Brain.ensure(workspace)
+
+    # Seed memory with user profile (async, non-blocking)
+    seed_user_memory(workspace, profile)
+
+    # Build personalized welcome
+    message = build_welcome_message(profile)
+
+    # Subscribe to the workspace PubSub topic
+    topic = "workspace:#{workspace}"
+    Phoenix.PubSub.subscribe(Worth.PubSub, topic)
+
+    {:noreply,
+     socket
+     |> assign(
+       view: :chat,
+       onboarding_step: 1,
+       workspace: workspace,
+       mode: :code,
+       workspaces: list_workspaces()
+     )
+     |> load_settings_form()
+     |> append_system_message(message)}
+  end
+
+  defp seed_user_memory(workspace, profile) do
+    name = Map.get(profile, :name, "")
+    role = Map.get(profile, :role, "")
+    goals = Map.get(profile, :goals, "")
+
+    if name != "" or role != "" or goals != "" do
+      parts = []
+      parts = if name != "", do: parts ++ ["User's name is #{name}."], else: parts
+      parts = if role != "", do: parts ++ ["Role: #{role}."], else: parts
+      parts = if goals != "", do: parts ++ ["Goals: #{goals}"], else: parts
+
+      text = Enum.join(parts, " ")
+      scope_id = Worth.Workspace.Learning.workspace_scope_id(workspace)
+
+      Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
+        try do
+          Mneme.remember(text,
+            scope_id: scope_id,
+            entry_type: "identity"
+          )
+        rescue
+          e -> Logger.warning("[Onboarding] Failed to seed memory: #{Exception.message(e)}")
+        end
+      end)
+    end
+  end
+
+  defp build_welcome_message(profile) do
+    name = Map.get(profile, :name, "")
+
+    if name != "" do
+      "Hey #{name}! Your personal workspace is ready. What would you like to work on?"
+    else
+      "Your personal workspace is ready. What would you like to work on?"
+    end
+  end
+
+  defp initial_view do
+    cond do
+      Worth.Config.Setup.needs_setup?() -> :onboarding
+      safe_vault_call(fn -> Worth.Settings.has_password?() and Worth.Settings.locked?() end, false) -> :unlock
+      true -> :chat
+    end
   end
 
   defp safe_vault_call(fun, default) do
@@ -915,7 +1006,7 @@ defmodule WorthWeb.ChatLive do
         routing: current_routing(),
         agent_limits: current_agent_limits(),
         memory: current_memory_settings(),
-        base_dir: Worth.Config.Store.home_directory()
+        base_dir: Worth.Paths.workspace_dir()
       }
     )
   end

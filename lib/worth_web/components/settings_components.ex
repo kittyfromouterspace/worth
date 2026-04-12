@@ -460,29 +460,40 @@ defmodule WorthWeb.SettingsComponents do
     ~H"""
     <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
       <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-3">
-        Base Directory
+        Directories
       </h2>
-      <form phx-submit="settings_save_base_dir" class="space-y-3">
+      <div class="space-y-3">
         <div class="space-y-1">
-          <label class="text-xs text-ctp-subtext0 font-medium">Home Directory</label>
-          <input
-            type="text"
-            name="home_directory"
-            value={@base_dir}
-            placeholder="~/.worth"
-            class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
-          />
+          <label class="text-xs text-ctp-subtext0 font-medium">Data Directory</label>
+          <div class="w-full bg-ctp-surface0/50 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-overlay1 font-mono">
+            {Worth.Paths.data_dir()}
+          </div>
           <div class="text-xs text-ctp-overlay0">
-            Root directory for config, workspaces, skills, and logs. Requires restart.
+            Internal files (database, config, logs). Auto-detected from OS conventions.
           </div>
         </div>
-        <button
-          type="submit"
-          class="px-4 py-2 rounded text-xs font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer"
-        >
-          Save
-        </button>
-      </form>
+        <form phx-submit="settings_save_base_dir" class="space-y-3">
+          <div class="space-y-1">
+            <label class="text-xs text-ctp-subtext0 font-medium">Workspace Directory</label>
+            <input
+              type="text"
+              name="workspace_directory"
+              value={@base_dir}
+              placeholder="~/work"
+              class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
+            />
+            <div class="text-xs text-ctp-overlay0">
+              Root directory for your workspaces. Each workspace is a subdirectory here.
+            </div>
+          </div>
+          <button
+            type="submit"
+            class="px-4 py-2 rounded text-xs font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer"
+          >
+            Save
+          </button>
+        </form>
+      </div>
     </div>
     """
   end
@@ -580,37 +591,35 @@ defmodule WorthWeb.SettingsComponents do
 
         <%!-- Step indicator --%>
         <div class="flex items-center justify-center gap-2 mb-6">
-          <div class={[
-            "w-2 h-2 rounded-full",
-            @step == 1 && "bg-ctp-blue",
-            @step != 1 && "bg-ctp-surface2"
-          ]} />
-          <div class={[
-            "w-2 h-2 rounded-full",
-            @step == 2 && "bg-ctp-blue",
-            @step != 2 && "bg-ctp-surface2"
-          ]} />
+          <%= for i <- 1..4 do %>
+            <div class={[
+              "w-2 h-2 rounded-full",
+              @step == i && "bg-ctp-blue",
+              @step != i && "bg-ctp-surface2"
+            ]} />
+          <% end %>
         </div>
 
-        <%!-- Step 1: Home directory --%>
+        <%!-- Step 1: Workspace directory --%>
         <div :if={@step == 1} class="space-y-4">
           <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-6">
             <h2 class="text-lg font-semibold text-ctp-text mb-2">Welcome to Worth</h2>
             <p class="text-sm text-ctp-subtext0 mb-4">
-              Let's set up a few things. First, choose where Worth should store its data — workspaces, skills, logs, and configuration.
+              Let's set up a few things. First, choose where Worth should store your workspaces — each workspace is a project folder with its own skills, agents, and files.
             </p>
             <form phx-submit="onboarding_save_dir" class="space-y-4">
               <div class="space-y-1">
-                <label class="text-xs text-ctp-subtext0 font-medium">Home Directory</label>
+                <label class="text-xs text-ctp-subtext0 font-medium">Workspace Directory</label>
                 <input
                   type="text"
-                  name="home_directory"
-                  value="~/.worth"
-                  placeholder="~/.worth"
+                  name="workspace_directory"
+                  value="~/work"
+                  placeholder="~/work"
                   class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
                 />
                 <div class="text-xs text-ctp-overlay0">
-                  This directory will contain your workspaces, database, and config files.
+                  Each workspace will be a subdirectory here (e.g. <span class="font-mono">~/work/personal</span>).
+                  Internal data (database, config) is stored separately in your OS data directory.
                 </div>
               </div>
               <button
@@ -623,20 +632,71 @@ defmodule WorthWeb.SettingsComponents do
           </div>
         </div>
 
-        <%!-- Step 2: OpenRouter API key --%>
+        <%!-- Step 2: Master password --%>
         <div :if={@step == 2} class="space-y-4">
+          <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-6">
+            <h2 class="text-lg font-semibold text-ctp-text mb-2">Secure Your Secrets</h2>
+            <p class="text-sm text-ctp-subtext0 mb-4">
+              Worth encrypts sensitive data like API keys on your machine.
+              Choose a password to lock and unlock this vault — you'll need it each time you start Worth.
+            </p>
+
+            <div class="rounded-lg border border-ctp-surface1 bg-ctp-surface0/50 p-4 mb-4 space-y-2">
+              <div class="text-xs font-semibold text-ctp-lavender uppercase tracking-wider">Why a password?</div>
+              <p class="text-sm text-ctp-subtext0">
+                Your API keys and other secrets are stored in an encrypted database on your machine.
+                The password derives the encryption key — without it, the secrets can't be read, even if someone accesses your files.
+              </p>
+            </div>
+
+            <form phx-submit="onboarding_save_password" class="space-y-4">
+              <div class="space-y-1">
+                <label class="text-xs text-ctp-subtext0 font-medium">Master Password</label>
+                <input
+                  type="password"
+                  name="password"
+                  placeholder="Choose a password"
+                  autocomplete="new-password"
+                  required
+                  class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
+                />
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs text-ctp-subtext0 font-medium">Confirm Password</label>
+                <input
+                  type="password"
+                  name="password_confirmation"
+                  placeholder="Re-enter your password"
+                  autocomplete="new-password"
+                  required
+                  class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
+                />
+              </div>
+              <button
+                type="submit"
+                class="w-full px-4 py-2.5 rounded text-sm font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer transition-colors"
+              >
+                Continue
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <%!-- Step 3: OpenRouter API key --%>
+        <div :if={@step == 3} class="space-y-4">
           <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-6">
             <h2 class="text-lg font-semibold text-ctp-text mb-2">Connect to OpenRouter</h2>
             <p class="text-sm text-ctp-subtext0 mb-4">
               Worth uses <span class="font-semibold text-ctp-text">OpenRouter</span> to access AI models.
-              OpenRouter gives you access to many models from different providers through a single API key — including free models.
+              A <span class="font-semibold text-ctp-green">free account</span> is all you need — no credit card required.
+              Worth defaults to free models, so you won't be charged.
             </p>
 
             <div class="rounded-lg border border-ctp-surface1 bg-ctp-surface0/50 p-4 mb-4 space-y-3">
-              <div class="text-xs font-semibold text-ctp-lavender uppercase tracking-wider">How to get your API key</div>
+              <div class="text-xs font-semibold text-ctp-lavender uppercase tracking-wider">How to get your free API key</div>
               <ol class="text-sm text-ctp-subtext0 space-y-2 list-decimal list-inside">
                 <li>
-                  Go to <span class="text-ctp-blue font-mono text-xs">openrouter.ai</span> and create an account
+                  Go to <span class="text-ctp-blue font-mono text-xs">openrouter.ai</span> and create a <span class="text-ctp-green font-semibold">free account</span>
                 </li>
                 <li>
                   Navigate to <span class="text-ctp-blue font-mono text-xs">openrouter.ai/keys</span>
@@ -644,9 +704,6 @@ defmodule WorthWeb.SettingsComponents do
                 <li>Click <span class="font-semibold text-ctp-text">"Create Key"</span></li>
                 <li>Copy the key (starts with <span class="font-mono text-ctp-text">sk-or-...</span>)</li>
               </ol>
-              <div class="text-xs text-ctp-overlay0 pt-1">
-                Worth defaults to free models, so you won't be charged unless you change the routing settings.
-              </div>
             </div>
 
             <form phx-submit="onboarding_save_key" class="space-y-4">
@@ -657,6 +714,7 @@ defmodule WorthWeb.SettingsComponents do
                   name="api_key"
                   placeholder="sk-or-..."
                   autocomplete="off"
+                  required
                   class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
                 />
               </div>
@@ -664,16 +722,112 @@ defmodule WorthWeb.SettingsComponents do
                 type="submit"
                 class="w-full px-4 py-2.5 rounded text-sm font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer transition-colors"
               >
-                Save & Get Started
+                Continue
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <%!-- Step 4: User profile --%>
+        <div :if={@step == 4} class="space-y-4">
+          <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-6">
+            <h2 class="text-lg font-semibold text-ctp-text mb-2">Make It Yours</h2>
+            <p class="text-sm text-ctp-subtext0 mb-4">
+              Tell Worth a bit about yourself so it can tailor its help to you.
+              This creates your <span class="font-semibold text-ctp-text">personal workspace</span> — your home base for everything.
+            </p>
+
+            <form phx-submit="onboarding_save_profile" class="space-y-4">
+              <div class="space-y-1">
+                <label class="text-xs text-ctp-subtext0 font-medium">Your Name</label>
+                <input
+                  type="text"
+                  name="user_name"
+                  placeholder="e.g. Alex"
+                  autocomplete="name"
+                  class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
+                />
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs text-ctp-subtext0 font-medium">What Do You Do?</label>
+                <input
+                  type="text"
+                  name="user_role"
+                  placeholder="e.g. senior engineer, student, indie hacker"
+                  class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
+                />
+              </div>
+              <div class="space-y-1">
+                <label class="text-xs text-ctp-subtext0 font-medium">What Should Worth Help You With?</label>
+                <textarea
+                  name="user_goals"
+                  placeholder="e.g. Help me prototype ideas, review code, plan architecture..."
+                  rows="3"
+                  class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue resize-none"
+                />
+              </div>
+              <button
+                type="submit"
+                class="w-full px-4 py-2.5 rounded text-sm font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer transition-colors"
+              >
+                Create My Workspace
               </button>
             </form>
             <button
-              phx-click="onboarding_skip_key"
+              phx-click="onboarding_skip_profile"
               class="w-full mt-2 px-4 py-2 rounded text-xs text-ctp-overlay0 hover:text-ctp-text cursor-pointer transition-colors"
             >
-              Skip for now — I'll add it later in Settings
+              Skip — I'll set this up later
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ── Vault unlock screen ──────────────────────────────────────
+
+  attr :error, :string, default: nil
+
+  def vault_unlock_screen(assigns) do
+    ~H"""
+    <div class="flex-1 flex items-center justify-center p-8">
+      <div class="max-w-lg w-full space-y-6">
+        <div class="text-center mb-8">
+          <div class="text-4xl font-bold text-ctp-blue mb-1">worth</div>
+          <div class="text-sm italic text-ctp-overlay0">Your ideas are WORTH more</div>
+        </div>
+
+        <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-6">
+          <h2 class="text-lg font-semibold text-ctp-text mb-2">Unlock Vault</h2>
+          <p class="text-sm text-ctp-subtext0 mb-4">
+            Enter your master password to decrypt your API keys and secrets.
+          </p>
+
+          <form phx-submit="vault_unlock" class="space-y-4">
+            <div class="space-y-1">
+              <label class="text-xs text-ctp-subtext0 font-medium">Master Password</label>
+              <input
+                type="password"
+                name="password"
+                placeholder="Enter your password"
+                autocomplete="current-password"
+                autofocus
+                required
+                class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
+              />
+            </div>
+            <div :if={@error} class="text-xs text-ctp-red">
+              {@error}
+            </div>
+            <button
+              type="submit"
+              class="w-full px-4 py-2.5 rounded text-sm font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer transition-colors"
+            >
+              Unlock
+            </button>
+          </form>
         </div>
       </div>
     </div>

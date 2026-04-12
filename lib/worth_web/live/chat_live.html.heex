@@ -9,8 +9,13 @@
   <.onboarding step={@onboarding_step} />
 </div>
 
+<%!-- Vault unlock view (full screen, shown on app start when vault is locked) --%>
+<div :if={@view == :unlock} class="flex flex-col h-screen font-mono bg-ctp-base">
+  <.vault_unlock_screen error={@unlock_error} />
+</div>
+
 <%!-- Main app view --%>
-<div :if={@view != :onboarding} class="flex flex-col h-screen font-mono" phx-window-keydown="keydown">
+<div :if={@view not in [:onboarding, :unlock]} class="flex flex-col h-screen font-mono" phx-window-keydown="keydown">
   <%!-- Header --%>
   <.chat_header
     status={@status}
