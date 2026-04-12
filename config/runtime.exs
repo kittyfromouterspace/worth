@@ -29,6 +29,7 @@ if config_env() == :prod do
         ip: {127, 0, 0, 1},
         port: port
       ],
+      check_origin: false,
       secret_key_base: secret_key_base,
       server: true
   else

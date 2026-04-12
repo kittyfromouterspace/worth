@@ -24,8 +24,12 @@ config :worth,
   # Default workspace directory - users can override via UI settings
   workspace_directory: "~/work",
   llm: [
-    default_provider: :anthropic,
+    default_provider: :openrouter,
     providers: %{
+      openrouter: [
+        api_key: {:env, "OPENROUTER_API_KEY"},
+        default_model: "google/gemini-2.5-flash"
+      ],
       anthropic: [
         api_key: {:env, "ANTHROPIC_API_KEY"},
         default_model: "claude-sonnet-4-20250514"

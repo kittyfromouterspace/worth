@@ -4,7 +4,7 @@ defmodule Worth.MixProject do
   def project do
     [
       app: :worth,
-      version: "0.1.0",
+      version: "0.2.1-alpha.1",
       elixir: "~> 1.19",
       description: "An AI assistant built on Elixir/BEAM",
       package: [
@@ -57,11 +57,11 @@ defmodule Worth.MixProject do
   defp deps do
     [
       {:tidewave, "~> 0.5", only: [:dev]},
-      {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", override: true},
+      {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.2.1"},
       # Local embedding support (optional - enables Mneme.Embedding.Local)
       {:bumblebee, "~> 0.6.0"},
       {:exla, ">= 0.0.0"},
-      {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git"},
+      {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.2"},
 
       # Phoenix
       {:phoenix, "~> 1.8.5"},

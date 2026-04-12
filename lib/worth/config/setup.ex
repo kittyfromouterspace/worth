@@ -17,7 +17,21 @@ defmodule Worth.Config.Setup do
 
   @doc "True if Worth is missing any required configuration."
   def needs_setup? do
-    is_nil(workspace_directory()) or is_nil(openrouter_key())
+    # If a master password exists, setup was completed — the user just
+    # needs to unlock the vault, not re-do onboarding.
+    if safe_has_password?() do
+      false
+    else
+      is_nil(workspace_directory()) or is_nil(openrouter_key())
+    end
+  end
+
+  defp safe_has_password? do
+    Worth.Settings.has_password?()
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
   end
 
   @doc "Currently configured workspace directory, or nil."

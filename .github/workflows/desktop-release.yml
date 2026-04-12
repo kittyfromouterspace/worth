@@ -28,19 +28,12 @@ jobs:
           - platform: macos-arm64
             os: macos-latest
             target: aarch64-apple-darwin
-            release_name: desktop
           - platform: macos-x86_64
             os: macos-13
             target: x86_64-apple-darwin
-            release_name: desktop
           - platform: linux-x86_64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            release_name: desktop
-          - platform: windows-x86_64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            release_name: desktop
 
     runs-on: ${{ matrix.os }}
     name: Build (${{ matrix.platform }})
@@ -62,15 +55,7 @@ jobs:
             libssl-dev
 
       # --- Elixir/OTP ---
-      - name: Set up Elixir (Unix)
-        if: runner.os != 'Windows'
-        uses: erlef/setup-beam@v1
-        with:
-          elixir-version: ${{ env.ELIXIR_VERSION }}
-          otp-version: ${{ env.OTP_VERSION }}
-
-      - name: Set up Elixir (Windows)
-        if: runner.os == 'Windows'
+      - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
           elixir-version: ${{ env.ELIXIR_VERSION }}
@@ -100,8 +85,7 @@ jobs:
             elixir-${{ matrix.os }}-
 
       # --- Build OTP Release ---
-      - name: Build OTP release (Unix)
-        if: runner.os != 'Windows'
+      - name: Build OTP release
         env:
           MIX_ENV: prod
         run: |
@@ -110,30 +94,6 @@ jobs:
           mix deps.get --only prod
           mix assets.deploy
           mix release desktop --overwrite --path rel/desktop/src-tauri/release
-
-      - name: Build OTP release (Windows)
-        if: runner.os == 'Windows'
-        env:
-          MIX_ENV: prod
-        run: |
-          mix local.hex --force
-          mix local.rebar --force
-          mix deps.get --only prod
-          mix assets.deploy
-          mix release desktop --overwrite --path rel/desktop/src-tauri/release
-
-      # --- Copy release for Tauri bundling ---
-      - name: Prepare release for bundling (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          mkdir -p rel/desktop/src-tauri/rel
-          cp -a rel/desktop/src-tauri/release/* rel/desktop/src-tauri/rel/
-
-      - name: Prepare release for bundling (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          New-Item -ItemType Directory -Force -Path rel/desktop/src-tauri/rel
-          Copy-Item -Recurse -Force rel/desktop/src-tauri/release/* rel/desktop/src-tauri/rel/
 
       # --- Build Tauri ---
       - name: Install Tauri CLI
@@ -142,6 +102,23 @@ jobs:
       - name: Build Tauri app
         working-directory: rel/desktop/src-tauri
         run: cargo tauri build --target ${{ matrix.target }}
+
+      # --- Inject OTP release into bundle ---
+      - name: Inject OTP release into macOS bundle
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          APP_DIR=$(find rel/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/macos -name '*.app' -type d | head -1)
+          if [ -n "$APP_DIR" ]; then
+            cp -a rel/desktop/src-tauri/release "$APP_DIR/Contents/Resources/release"
+          fi
+
+      - name: Inject OTP release into Linux bundle
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          APPDIR=$(find rel/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/appimage -name '*.AppDir' -type d 2>/dev/null | head -1)
+          if [ -n "$APPDIR" ]; then
+            cp -a rel/desktop/src-tauri/release "$APPDIR/usr/bin/release"
+          fi
 
       # --- Upload artifacts ---
       - name: Upload macOS artifacts
@@ -162,15 +139,6 @@ jobs:
           path: |
             rel/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
             rel/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
-          if-no-files-found: error
-
-      - name: Upload Windows artifacts
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: worth-${{ matrix.platform }}
-          path: |
-            rel/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
           if-no-files-found: error
 
   release:
@@ -197,6 +165,5 @@ jobs:
             artifacts/**/*.dmg
             artifacts/**/*.AppImage
             artifacts/**/*.deb
-            artifacts/**/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

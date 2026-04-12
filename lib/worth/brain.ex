@@ -565,7 +565,7 @@ defmodule Worth.Brain do
       %{mode: "auto", preference: pref, filter: filter} ->
         opts
         |> Keyword.put(:model_selection_mode, :auto)
-        |> Keyword.put(:model_preference, String.to_existing_atom(pref))
+        |> Keyword.put(:model_preference, String.to_atom(pref))
         |> maybe_put_filter(filter)
 
       %{mode: "manual", filter: filter} ->

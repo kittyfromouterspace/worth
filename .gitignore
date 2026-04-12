@@ -12,4 +12,25 @@
 /priv/static/assets/
 /priv/static/cache_manifest.json
 
-/rel/desktop/src-tauri/
+# Tauri source files (force track necessary files)
+!/rel/desktop/src-tauri/src/main.rs
+!/rel/desktop/src-tauri/Cargo.toml
+!/rel/desktop/src-tauri/Cargo.lock
+!/rel/desktop/src-tauri/build.rs
+!/rel/desktop/src-tauri/tauri.conf.json
+!/rel/desktop/src-tauri/icons/128x128.png
+!/rel/desktop/src-tauri/icons/128x128@2x.png
+!/rel/desktop/src-tauri/icons/32x32.png
+!/rel/desktop/src-tauri/icons/icon.icns
+!/rel/desktop/src-tauri/icons/icon.ico
+!/rel/desktop/src-tauri/gen/schemas/acl-manifests.json
+!/rel/desktop/src-tauri/gen/schemas/capabilities.json
+!/rel/desktop/src-tauri/gen/schemas/desktop-schema.json
+!/rel/desktop/src-tauri/gen/schemas/linux-schema.json
+
+# Tauri build artifacts (ignore build output)
+/rel/desktop/src-tauri/target/
+/rel/desktop/src-tauri/release/
+/rel/desktop/src-tauri/dist/
+
+erl_crash.dump
