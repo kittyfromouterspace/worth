@@ -42,7 +42,7 @@ defmodule Mix.Tasks.Worth.Export do
 
     output = Keyword.get(opts, :output)
 
-    unless output do
+    if !output do
       Mix.raise("Missing required option: --output")
     end
 

@@ -43,11 +43,11 @@ defmodule Mix.Tasks.Worth.Import do
 
     input = Keyword.get(opts, :input)
 
-    unless input do
+    if !input do
       Mix.raise("Missing required option: --input")
     end
 
-    unless File.exists?(input) do
+    if !File.exists?(input) do
       Mix.raise("Input file not found: #{input}")
     end
 
@@ -73,7 +73,9 @@ defmodule Mix.Tasks.Worth.Import do
         Total rows: #{metadata.total_rows}
         """)
 
-        unless import_opts[:dry_run] do
+        if import_opts[:dry_run] do
+          Mix.shell().info("Dry run complete. Use without --dry-run to import.")
+        else
           proceed = Mix.shell().yes?("Proceed with import?")
 
           if proceed do
@@ -81,8 +83,6 @@ defmodule Mix.Tasks.Worth.Import do
           else
             Mix.shell().info("Import cancelled.")
           end
-        else
-          Mix.shell().info("Dry run complete. Use without --dry-run to import.")
         end
 
       {:error, reason} ->
@@ -106,7 +106,8 @@ defmodule Mix.Tasks.Worth.Import do
         if result.errors != [] do
           Mix.shell().info("\nErrors encountered:")
 
-          Enum.take(result.errors, 10)
+          result.errors
+          |> Enum.take(10)
           |> Enum.each(fn error ->
             Mix.shell().info("  - #{inspect(error)}")
           end)

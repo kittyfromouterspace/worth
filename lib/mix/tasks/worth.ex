@@ -1,7 +1,8 @@
 defmodule Mix.Tasks.Worth do
-  use Mix.Task
-
   @shortdoc "Start Worth"
+
+  @moduledoc false
+  use Mix.Task
 
   @requirements ["app.start"]
 
