@@ -2,41 +2,36 @@ defmodule Worth.Config do
   @moduledoc """
   In-memory holder for Worth's runtime configuration.
 
-  At boot we load three layers and merge them in this order (later layers
-  override earlier ones):
+  Configuration comes from two sources (later overrides earlier):
 
     1. Compile-time `Application.get_all_env(:worth)` (config/*.exs)
-    2. The on-disk user config from `Worth.Config.Store` (`~/.worth/config.exs`)
+    2. User preferences from `Worth.Settings` (DB-backed, plaintext preferences)
 
-  Secrets stored under `[:secrets, :<env_var_name>]` are exported into the
-  process environment via `System.put_env/2` so downstream consumers
-  (notably `AgentEx.LLM.Credentials`) can pick them up without having to
-  know about Worth's config layout.
+  Secrets are managed via `Worth.Settings` (encrypted) and resolved
+  per-call by `Worth.LLM` — no env var intermediation needed.
   """
 
   use Agent
 
-  alias Worth.Config.Store
+  require Logger
+
+  # Preference keys that map to config paths.
+  # {settings_key, config_path, parser}
+  @preference_mappings [
+    {"workspace_directory", [:workspace_directory], &Worth.Config.parse_string/1},
+    {"memory_enabled", [:memory, :enabled], &Worth.Config.parse_boolean/1},
+    {"memory_decay_days", [:memory, :decay_days], &Worth.Config.parse_integer/1},
+    {"embedding_model", [:memory, :embedding_model], &Worth.Config.parse_string/1}
+  ]
 
   def start_link(_opts) do
-    {compile_time, disk} = load_layers()
-    state = %{compile_time: compile_time, disk: disk, merged: deep_merge(compile_time, disk)}
-    export_secrets(state.merged)
+    compile_time = load_compile_time()
+    overrides = load_settings_overrides()
+    merged = deep_merge(compile_time, overrides)
 
-    # Sync disk values to Application env so runtime code using
-    # Application.get_env can see user settings
-    sync_disk_to_application_env(disk)
+    sync_to_application_env(merged)
 
-    Agent.start_link(fn -> state end, name: __MODULE__)
-  end
-
-  # On startup, sync any user settings from disk to Application env
-  # so that code using Application.get_env(:worth, :key) sees them
-  defp sync_disk_to_application_env(disk) do
-    case disk[:workspace_directory] do
-      nil -> :ok
-      path when is_binary(path) -> Application.put_env(:worth, :workspace_directory, path)
-    end
+    Agent.start_link(fn -> %{base: compile_time, merged: merged} end, name: __MODULE__)
   end
 
   @doc """
@@ -63,43 +58,49 @@ defmodule Worth.Config do
   end
 
   @doc """
-  Persist a setting at `path` (list of atoms) to:
-  1. The in-memory merged state
-  2. The on-disk config file
-  3. Application env (for keys that need runtime access via Application.get_env)
-
-  Only the user-overrides layer is written to disk; compile-time defaults
-  are not round-tripped.
+  Store a runtime value in the in-memory config Agent.
+  Does NOT persist to the Settings DB or sync to Application env.
+  Use this for transient runtime state (e.g., current workspace).
   """
-  def put_setting(path, value) when is_list(path) do
+  def put(key, value) when is_atom(key) do
     Agent.update(__MODULE__, fn state ->
-      new_disk = put_in_path(state.disk, path, value)
-      Store.save!(new_disk)
-      new_merged = deep_merge(state.compile_time, new_disk)
-
-      # Sync certain critical keys to Application env for runtime access
-      sync_to_application_env(path, value)
-
-      %{state | disk: new_disk, merged: new_merged}
+      %{state | merged: Map.put(state.merged, key, value)}
     end)
   end
 
-  # Sync critical config values to Application env so other parts of the
-  # system can access them via Application.get_env(:worth, :key)
-  defp sync_to_application_env([:workspace_directory], value) when is_binary(value) do
-    Application.put_env(:worth, :workspace_directory, value)
+  def put(path, value) when is_list(path) do
+    Agent.update(__MODULE__, fn state ->
+      %{state | merged: put_in_path(state.merged, path, value)}
+    end)
   end
 
-  defp sync_to_application_env(_path, _value), do: :ok
+  @doc """
+  Persist a setting at `path` (list of atoms) to:
+  1. The in-memory merged state
+  2. The Settings DB as a preference
+  3. Application env (for keys that need runtime access)
+  """
+  def put_setting(path, value, opts \\ []) when is_list(path) do
+    # Persist to Settings DB unless explicitly skipped
+    if opts[:persist] != false do
+      settings_key = path_to_settings_key(path)
+      serialized = serialize_value(value)
+      safe_persist_preference(settings_key, serialized)
+    end
+
+    Agent.update(__MODULE__, fn state ->
+      new_merged = put_in_path(state.merged, path, value)
+      sync_to_application_env(path, value)
+      %{state | merged: new_merged}
+    end)
+  end
 
   @doc """
-  Store a secret keyed by its env-var name. If the encrypted vault is
-  unlocked, the secret goes into the encrypted DB store. Otherwise it
-  falls back to the plaintext disk config.
+  Store a secret keyed by its env-var name. Goes to the encrypted
+  Settings DB if vault is unlocked, otherwise stored as plaintext
+  preference (migrated to encrypted on next vault unlock).
   """
   def put_secret(env_var, value) when is_binary(env_var) and is_binary(value) do
-    System.put_env(env_var, value)
-
     if vault_available?() do
       case Worth.Settings.put(env_var, value, "secret") do
         {:ok, _setting} -> :ok
@@ -107,69 +108,125 @@ defmodule Worth.Config do
         error -> error
       end
     else
-      put_setting([:secrets, env_var], value)
+      # Vault locked — store as plaintext so it survives restart.
+      safe_persist_preference(env_var, value)
     end
   end
 
   @doc """
-  Export secrets from the encrypted vault into the process environment.
-  Called after vault unlock so credential resolvers can find them.
+  Called after vault unlock to migrate plaintext secrets to encrypted
+  storage and refresh the LLM catalog.
   """
   def export_vault_secrets do
-    if vault_available?() do
-      for setting <- Worth.Settings.all_by_category("secret") do
-        if is_binary(setting.encrypted_value) and setting.encrypted_value != "" do
-          System.put_env(setting.key, setting.encrypted_value)
-        end
-      end
-
-      :ok
-    else
-      :noop
-    end
+    migrate_plaintext_to_vault()
   end
 
-  defp vault_available? do
-    not Worth.Settings.locked?()
-  rescue
-    _ -> false
-  catch
-    :exit, _ -> false
+  @secret_env_vars ["OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]
+
+  defp migrate_plaintext_to_vault do
+    for key <- @secret_env_vars do
+      case safe_get_preference(key) do
+        val when is_binary(val) and val != "" ->
+          case Worth.Settings.put(key, val, "secret") do
+            {:ok, _} ->
+              # Clear the plaintext copy by setting it to empty
+              safe_persist_preference(key, "")
+
+            _ ->
+              :ok
+          end
+
+        _ ->
+          :ok
+      end
+    end
+
+    :ok
   end
 
   @doc """
-  Reload from compile-time env + disk. Used by tests and the `/setup`
-  command after editing the file out-of-band.
+  Reload configuration from compile-time env + Settings DB.
   """
   def reload do
-    {compile_time, disk} = load_layers()
-    merged = deep_merge(compile_time, disk)
-    export_secrets(merged)
-    Agent.update(__MODULE__, fn _ -> %{compile_time: compile_time, disk: disk, merged: merged} end)
+    compile_time = load_compile_time()
+    overrides = load_settings_overrides()
+    merged = deep_merge(compile_time, overrides)
+    sync_to_application_env(merged)
+    Agent.update(__MODULE__, fn _ -> %{base: compile_time, merged: merged} end)
   end
 
   # ----- internals -----
 
-  defp load_layers do
-    compile_time =
-      Application.get_all_env(:worth)
-      |> Enum.into(%{})
-      |> resolve_env_values()
-
-    {compile_time, Store.load()}
+  defp load_compile_time do
+    :worth
+    |> Application.get_all_env()
+    |> Map.new()
+    |> resolve_env_values()
   end
 
-  defp export_secrets(%{secrets: secrets}) when is_map(secrets) do
-    Enum.each(secrets, fn
-      {var, value} when is_binary(var) and is_binary(value) and value != "" ->
-        System.put_env(var, value)
-
-      _ ->
-        :ok
+  defp load_settings_overrides do
+    Enum.reduce(@preference_mappings, %{}, fn {key, path, parser}, acc ->
+      case safe_get_preference(key) do
+        nil -> acc
+        val -> put_in_path(acc, path, parser.(val))
+      end
     end)
   end
 
-  defp export_secrets(_), do: :ok
+  defp safe_get_preference(key) do
+    Worth.Settings.get_preference(key)
+  catch
+    :exit, {:noproc, _} -> nil
+    :exit, _ -> nil
+  end
+
+  defp vault_available? do
+    not Worth.Settings.locked?()
+  catch
+    :exit, {:noproc, _} -> false
+    :exit, _ -> false
+  end
+
+  defp safe_persist_preference(key, value) do
+    case Worth.Settings.put(key, value, "preference") do
+      {:ok, _} ->
+        :ok
+
+      :ok ->
+        :ok
+
+      {:error, e} ->
+        Logger.warning("Worth.Config: failed to persist preference #{key}: #{inspect(e)}")
+        :ok
+    end
+  rescue
+    DBConnection.OwnershipError -> :ok
+    Ecto.StaleEntryError -> :ok
+  catch
+    :exit, {:noproc, _} -> :ok
+    :exit, _ -> :ok
+  end
+
+  defp path_to_settings_key([:workspace_directory]), do: "workspace_directory"
+  defp path_to_settings_key([:memory, :enabled]), do: "memory_enabled"
+  defp path_to_settings_key([:memory, :decay_days]), do: "memory_decay_days"
+  defp path_to_settings_key([:memory, :embedding_model]), do: "embedding_model"
+  defp path_to_settings_key(path), do: Enum.map_join(path, ".", &to_string/1)
+
+  # Sync the full merged config to Application env at boot
+  defp sync_to_application_env(%{} = merged) do
+    case merged[:workspace_directory] do
+      nil -> :ok
+      path when is_binary(path) -> Application.put_env(:worth, :workspace_directory, path)
+    end
+  end
+
+  # Sync individual path updates
+  defp sync_to_application_env([:workspace_directory], value) when is_binary(value) do
+    Application.put_env(:worth, :workspace_directory, value)
+  end
+
+  defp sync_to_application_env(_path, _value), do: :ok
 
   defp put_in_path(state, [key], value), do: Map.put(state, key, value)
 
@@ -202,16 +259,41 @@ defmodule Worth.Config do
     end
   end
 
-  # Keyword pairs: preserve the key, recurse into the value. Without this
-  # clause `Enum.map` over a keyword list passes each `{k, v}` tuple
-  # through the catch-all and any nested `{:env, ...}` inside `v` never
-  # gets resolved — leading to Req warnings about non-string header
-  # values when an adapter receives the raw tuple as its api_key.
-  # Order matters: this MUST come after the `{:env, var}` clause,
-  # because `:env` is also an atom and would otherwise match here first.
   defp resolve_env_values({k, v}) when is_atom(k) do
     {k, resolve_env_values(v)}
   end
 
   defp resolve_env_values(other), do: other
+
+  defp serialize_value(val) when is_binary(val), do: val
+  defp serialize_value(val) when is_boolean(val), do: to_string(val)
+  defp serialize_value(val) when is_integer(val), do: to_string(val)
+  defp serialize_value(val) when is_float(val), do: to_string(val)
+  defp serialize_value(val) when is_atom(val), do: Atom.to_string(val)
+
+  defp serialize_value(val) when is_list(val) or is_map(val) do
+    case Jason.encode(val) do
+      {:ok, json} -> json
+      _ -> inspect(val)
+    end
+  end
+
+  defp serialize_value(val), do: to_string(val)
+
+  # Public parsers for preference mappings
+  @doc false
+  def parse_string(val), do: val
+  @doc false
+  def parse_boolean("true"), do: true
+  def parse_boolean("false"), do: false
+  def parse_boolean(val), do: val
+  @doc false
+  def parse_integer(val) when is_binary(val) do
+    case Integer.parse(val) do
+      {n, _} -> n
+      :error -> val
+    end
+  end
+
+  def parse_integer(val), do: val
 end

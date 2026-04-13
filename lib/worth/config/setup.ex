@@ -5,9 +5,8 @@ defmodule Worth.Config.Setup do
   Required keys for a usable Worth install:
 
     * `:workspace_directory` — root directory for user workspaces (e.g., "~/work")
-    * `[:secrets, "OPENROUTER_API_KEY"]` — chat + embeddings provider
-    * `[:memory, :embedding_model]` — model id passed to the embeddings
-      adapter (e.g. `"openai/text-embedding-3-small"` via OpenRouter)
+    * `OPENROUTER_API_KEY` — chat + embeddings provider (stored in Settings DB)
+    * `[:memory, :embedding_model]` — model id for embeddings
   """
 
   alias Worth.Config
@@ -17,8 +16,6 @@ defmodule Worth.Config.Setup do
 
   @doc "True if Worth is missing any required configuration."
   def needs_setup? do
-    # If a master password exists, setup was completed — the user just
-    # needs to unlock the vault, not re-do onboarding.
     if safe_has_password?() do
       false
     else
@@ -44,7 +41,7 @@ defmodule Worth.Config.Setup do
 
   @doc "Currently configured OpenRouter API key, or nil."
   def openrouter_key do
-    # Prefer encrypted vault, fall back to in-memory config, then env
+    # Prefer encrypted vault, fall back to env
     vault_value = vault_secret(@openrouter_env)
 
     case vault_value do
@@ -52,11 +49,7 @@ defmodule Worth.Config.Setup do
         key
 
       _ ->
-        case Config.get([:secrets, @openrouter_env]) do
-          nil -> System.get_env(@openrouter_env)
-          "" -> nil
-          key when is_binary(key) -> key
-        end
+        System.get_env(@openrouter_env)
     end
   end
 
@@ -78,7 +71,7 @@ defmodule Worth.Config.Setup do
   @doc "Default embedding model suggested in the wizard."
   def default_embedding_model, do: @default_embedding_model
 
-  @doc "Persist the OpenRouter API key (plain text on disk + process env)."
+  @doc "Persist the OpenRouter API key."
   def set_openrouter_key(key) when is_binary(key) do
     case String.trim(key) do
       "" ->
@@ -129,7 +122,7 @@ defmodule Worth.Config.Setup do
   def run_wizard! do
     IO.puts("")
     IO.puts("=== Worth setup ===")
-    IO.puts("Config will be saved to #{Worth.Config.Store.path()} (plain text, 0600).")
+    IO.puts("Settings are stored in the application database.")
     IO.puts("")
 
     prompt_workspace_directory()

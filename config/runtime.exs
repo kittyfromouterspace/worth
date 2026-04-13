@@ -21,7 +21,7 @@ if config_env() == :prod do
   if desktop_mode do
     secret_key_base =
       System.get_env("SECRET_KEY_BASE") ||
-        :crypto.strong_rand_bytes(48) |> Base.encode64(padding: false)
+        48 |> :crypto.strong_rand_bytes() |> Base.encode64(padding: false)
 
     config :worth, WorthWeb.Endpoint,
       url: [host: "localhost", port: port, scheme: "http"],
