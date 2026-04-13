@@ -1,14 +1,17 @@
-defmodule WorthWeb.SettingsComponents do
+defmodule WorthWeb.Components.Settings do
   @moduledoc """
   Function components for the settings panel, rendered in the center pane.
   """
   use Phoenix.Component
+
+  import WorthWeb.Components.Settings.Vault, only: [vault_forms: 1]
 
   @known_preferences [
     {"embedding_model", "Embedding Model"}
   ]
 
   attr :settings_form, :map, required: true
+  attr :target, :any, required: true
 
   def settings_panel(assigns) do
     ~H"""
@@ -16,154 +19,41 @@ defmodule WorthWeb.SettingsComponents do
       <div class="max-w-2xl mx-auto space-y-6">
         <div class="flex items-center justify-between">
           <h1 class="text-xl font-bold text-ctp-text">Settings</h1>
-          <button phx-click="settings_back" class="text-xs text-ctp-overlay0 hover:text-ctp-text cursor-pointer">
+          <button
+            phx-target={@target}
+            phx-click="settings_back"
+            class="text-xs text-ctp-overlay0 hover:text-ctp-text cursor-pointer"
+          >
             ← back to chat
           </button>
         </div>
 
-        <%= if not @settings_form.has_password do %>
-          <.setup_password_form />
-        <% else %>
-          <%= if @settings_form.locked do %>
-            <.unlock_form />
-          <% else %>
-            <.vault_status />
-            <.providers_section providers={@settings_form.providers} />
-            <.preferences_section preferences={@settings_form.preferences} />
-            <.change_password_section />
-          <% end %>
+        <.vault_forms settings_form={@settings_form} target={@target} />
+
+        <%= if @settings_form.has_password and not @settings_form.locked do %>
+          <.providers_section providers={@settings_form.providers} target={@target} />
+          <.preferences_section preferences={@settings_form.preferences} target={@target} />
         <% end %>
 
-        <%!-- These don't need the vault --%>
-        <.routing_section routing={@settings_form.routing} />
-        <.agent_limits_section limits={@settings_form.agent_limits} />
-        <.memory_section memory={@settings_form.memory} />
-        <.base_directory_section base_dir={@settings_form.base_dir} />
+        <.routing_section routing={@settings_form.routing} target={@target} />
+        <.agent_limits_section limits={@settings_form.agent_limits} target={@target} />
+        <.memory_section memory={@settings_form.memory} target={@target} />
+        <.base_directory_section base_dir={@settings_form.base_dir} target={@target} />
         <.coding_agents_section agents={@settings_form.coding_agents} />
         <.theme_section
           themes={@settings_form.themes}
           current_theme={@settings_form.current_theme}
+          target={@target}
         />
       </div>
     </div>
     """
   end
 
-  # ── Password forms ─────────────────────────────────────────────
-
-  defp setup_password_form(assigns) do
-    ~H"""
-    <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
-      <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-3">
-        Create Master Password
-      </h2>
-      <p class="text-xs text-ctp-subtext0 mb-4">
-        Choose a master password to encrypt your secrets. You'll need this password each time you start Worth.
-      </p>
-      <form phx-submit="settings_setup_password" class="flex gap-3">
-        <input
-          type="password"
-          name="password"
-          placeholder="Master password"
-          autocomplete="new-password"
-          required
-          class="flex-1 bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
-        />
-        <button
-          type="submit"
-          class="px-4 py-2 rounded text-xs font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer"
-        >
-          Set Password
-        </button>
-      </form>
-    </div>
-    """
-  end
-
-  defp unlock_form(assigns) do
-    ~H"""
-    <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
-      <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-3">
-        Unlock Vault
-      </h2>
-      <p class="text-xs text-ctp-subtext0 mb-4">
-        Enter your master password to decrypt secrets.
-      </p>
-      <form phx-submit="settings_unlock" class="flex gap-3">
-        <input
-          type="password"
-          name="password"
-          placeholder="Master password"
-          autocomplete="current-password"
-          required
-          class="flex-1 bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
-        />
-        <button
-          type="submit"
-          class="px-4 py-2 rounded text-xs font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer"
-        >
-          Unlock
-        </button>
-      </form>
-    </div>
-    """
-  end
-
-  defp vault_status(assigns) do
-    ~H"""
-    <div class="flex items-center justify-between rounded-lg border border-ctp-green/30 bg-ctp-green/5 px-4 py-2">
-      <span class="text-xs text-ctp-green font-semibold">Vault unlocked</span>
-      <button
-        phx-click="settings_lock"
-        class="text-xs text-ctp-overlay0 hover:text-ctp-red cursor-pointer"
-      >
-        Lock
-      </button>
-    </div>
-    """
-  end
-
-  defp change_password_section(assigns) do
-    ~H"""
-    <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
-      <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-3">
-        Change Password
-      </h2>
-      <form phx-submit="settings_change_password" class="space-y-3">
-        <div class="space-y-1">
-          <label class="text-xs text-ctp-subtext0 font-medium">Current Password</label>
-          <input
-            type="password"
-            name="current_password"
-            placeholder="Current password"
-            autocomplete="current-password"
-            required
-            class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
-          />
-        </div>
-        <div class="space-y-1">
-          <label class="text-xs text-ctp-subtext0 font-medium">New Password</label>
-          <input
-            type="password"
-            name="new_password"
-            placeholder="New password"
-            autocomplete="new-password"
-            required
-            class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
-          />
-        </div>
-        <button
-          type="submit"
-          class="px-4 py-2 rounded text-xs font-semibold bg-ctp-yellow text-ctp-base hover:bg-ctp-peach cursor-pointer"
-        >
-          Change Password
-        </button>
-      </form>
-    </div>
-    """
-  end
-
   # ── Providers (API Keys) ───────────────────────────────────────
+
+  attr :target, :any, required: true
+  attr :providers, :list, required: true
 
   defp providers_section(assigns) do
     configured = Enum.filter(assigns.providers, & &1.has_key)
@@ -187,7 +77,7 @@ defmodule WorthWeb.SettingsComponents do
             </div>
             <span class="text-xs text-ctp-overlay0 font-mono">{provider.key_hint}</span>
           </div>
-          <form phx-submit="settings_save_key" class="flex gap-2">
+          <form phx-target={@target} phx-submit="settings_save_key" class="flex gap-2">
             <input type="hidden" name="env_var" value={provider.env_var} />
             <input
               type="password"
@@ -203,6 +93,7 @@ defmodule WorthWeb.SettingsComponents do
             </button>
             <button
               type="button"
+              phx-target={@target}
               phx-click="settings_delete"
               phx-value-key={provider.env_var}
               class="px-2 py-1.5 text-xs text-ctp-overlay0 hover:text-ctp-red cursor-pointer"
@@ -221,7 +112,7 @@ defmodule WorthWeb.SettingsComponents do
       <%!-- Add new key --%>
       <div :if={@unconfigured != []} class="border-t border-ctp-surface0 pt-3">
         <div class="text-xs text-ctp-subtext0 font-medium mb-2">Add Provider</div>
-        <form phx-submit="settings_save_key" class="flex gap-2">
+        <form phx-target={@target} phx-submit="settings_save_key" class="flex gap-2">
           <select
             name="env_var"
             class="bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-1.5 text-xs text-ctp-text focus:outline-none focus:border-ctp-blue cursor-pointer"
@@ -269,6 +160,9 @@ defmodule WorthWeb.SettingsComponents do
     %{id: "optimize_speed", label: "Optimize Speed", description: "Prefer faster models"}
   ]
 
+  attr :target, :any, required: true
+  attr :routing, :map, required: true
+
   defp routing_section(assigns) do
     assigns =
       assign(assigns,
@@ -292,6 +186,7 @@ defmodule WorthWeb.SettingsComponents do
             mode.id == @routing.mode && "border-ctp-blue bg-ctp-blue/10",
             mode.id != @routing.mode && "border-ctp-surface1 hover:border-ctp-surface2 hover:bg-ctp-surface0/50"
           ]}
+          phx-target={@target}
           phx-click="settings_set_routing"
           phx-value-mode={mode.id}
           phx-value-preference={@routing.preference}
@@ -319,6 +214,7 @@ defmodule WorthWeb.SettingsComponents do
         <div class="flex gap-2">
           <button
             :for={pref <- @preferences}
+            phx-target={@target}
             phx-click="settings_set_routing"
             phx-value-mode={@routing.mode}
             phx-value-preference={pref.id}
@@ -338,6 +234,7 @@ defmodule WorthWeb.SettingsComponents do
       <%!-- Free-only filter --%>
       <div class="flex items-center gap-2">
         <button
+          phx-target={@target}
           phx-click="settings_set_routing"
           phx-value-mode={@routing.mode}
           phx-value-preference={@routing.preference}
@@ -357,13 +254,16 @@ defmodule WorthWeb.SettingsComponents do
 
   # ── Agent Limits ──────────────────────────────────────────────
 
+  attr :target, :any, required: true
+  attr :limits, :map, required: true
+
   defp agent_limits_section(assigns) do
     ~H"""
     <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
       <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-3">
         Agent Limits
       </h2>
-      <form phx-submit="settings_save_limits" class="space-y-3">
+      <form phx-target={@target} phx-submit="settings_save_limits" class="space-y-3">
         <div class="space-y-1">
           <label class="text-xs text-ctp-subtext0 font-medium">Cost Limit ($ per session)</label>
           <input
@@ -402,13 +302,16 @@ defmodule WorthWeb.SettingsComponents do
 
   # ── Memory ──────────────────────────────────────────────────
 
+  attr :target, :any, required: true
+  attr :memory, :map, required: true
+
   defp memory_section(assigns) do
     ~H"""
     <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
       <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-3">
         Memory
       </h2>
-      <form phx-submit="settings_save_memory" class="space-y-3">
+      <form phx-target={@target} phx-submit="settings_save_memory" class="space-y-3">
         <div class="flex items-center justify-between">
           <div>
             <div class="text-sm font-medium text-ctp-text">Enabled</div>
@@ -416,6 +319,7 @@ defmodule WorthWeb.SettingsComponents do
           </div>
           <button
             type="button"
+            phx-target={@target}
             phx-click="settings_toggle_memory"
             class={[
               "relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors",
@@ -456,6 +360,10 @@ defmodule WorthWeb.SettingsComponents do
 
   # ── Base Directory ──────────────────────────────────────────
 
+  attr :target, :any, required: true
+
+  attr :base_dir, :string, required: true
+
   defp base_directory_section(assigns) do
     ~H"""
     <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
@@ -472,7 +380,7 @@ defmodule WorthWeb.SettingsComponents do
             Internal files (database, config, logs). Auto-detected from OS conventions.
           </div>
         </div>
-        <form phx-submit="settings_save_base_dir" class="space-y-3">
+        <form phx-target={@target} phx-submit="settings_save_base_dir" class="space-y-3">
           <div class="space-y-1">
             <label class="text-xs text-ctp-subtext0 font-medium">Workspace Directory</label>
             <input
@@ -539,6 +447,8 @@ defmodule WorthWeb.SettingsComponents do
   attr :themes, :list, required: true
   attr :current_theme, :string, required: true
 
+  attr :target, :any, required: true
+
   defp theme_section(assigns) do
     ~H"""
     <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
@@ -553,6 +463,7 @@ defmodule WorthWeb.SettingsComponents do
             theme.name == @current_theme && "border-ctp-blue bg-ctp-blue/10",
             theme.name != @current_theme && "border-ctp-surface1 hover:border-ctp-surface2 hover:bg-ctp-surface0/50"
           ]}
+          phx-target={@target}
           phx-click="settings_set_theme"
           phx-value-theme={theme.name}
         >
@@ -844,6 +755,8 @@ defmodule WorthWeb.SettingsComponents do
     all_prefs =
       Enum.map(@known_preferences, fn {key, label} ->
         value = Enum.find_value(assigns.preferences, "", fn s -> if s.key == key, do: s.value end)
+        attr :target, :any, required: true
+
         %{key: key, label: label, value: value}
       end)
 
@@ -854,7 +767,7 @@ defmodule WorthWeb.SettingsComponents do
       <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-3">
         Preferences
       </h2>
-      <form phx-submit="settings_save" class="space-y-3">
+      <form phx-target={@target} phx-submit="settings_save" class="space-y-3">
         <div :for={pref <- @all_prefs} class="space-y-1">
           <label class="text-xs text-ctp-subtext0 font-medium">{pref.label}</label>
           <input

@@ -1,4 +1,4 @@
-defmodule WorthWeb.ChatComponents do
+defmodule WorthWeb.Components.Chat do
   @moduledoc """
   Function components for the Worth chat UI.
   Replaces the TUI render modules (Header, LeftPanel, Sidebar, Message, Input).
@@ -91,7 +91,7 @@ defmodule WorthWeb.ChatComponents do
   defp model_label(models) do
     primary = Map.get(models, :primary, %{})
     label = Map.get(primary, :label)
-    if label && label != "", do: label, else: nil
+    if label && label != "", do: label
   end
 
   # ── Left Panel ──────────────────────────────────────────────────
@@ -307,6 +307,8 @@ defmodule WorthWeb.ChatComponents do
         AgentEx.LLM.Catalog.info()
       rescue
         _ -> %{model_count: 0, providers: %{}}
+      catch
+        :exit, _ -> %{model_count: 0, providers: %{}}
       end
 
     coding_agents =
@@ -370,23 +372,26 @@ defmodule WorthWeb.ChatComponents do
   end
 
   defp tab_content(%{tab: :usage} = assigns) do
+    default_metrics = %{
+      cost: 0.0,
+      calls: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      cache_read: 0,
+      cache_write: 0,
+      embed_calls: 0,
+      embed_cost: 0.0,
+      by_provider: %{},
+      started_at: System.system_time(:millisecond)
+    }
+
     metrics =
       try do
         Worth.Metrics.session()
       rescue
-        _ ->
-          %{
-            cost: 0.0,
-            calls: 0,
-            input_tokens: 0,
-            output_tokens: 0,
-            cache_read: 0,
-            cache_write: 0,
-            embed_calls: 0,
-            embed_cost: 0.0,
-            by_provider: %{},
-            started_at: System.system_time(:millisecond)
-          }
+        _ -> default_metrics
+      catch
+        :exit, _ -> default_metrics
       end
 
     duration_min =
@@ -395,7 +400,8 @@ defmodule WorthWeb.ChatComponents do
     avg_cost_per_call = if metrics.calls > 0, do: metrics.cost / metrics.calls, else: 0.0
 
     assigns =
-      assign(assigns, :metrics, metrics)
+      assigns
+      |> assign(:metrics, metrics)
       |> assign(:duration_min, duration_min)
       |> assign(:avg_cost, avg_cost_per_call)
 
@@ -490,6 +496,8 @@ defmodule WorthWeb.ChatComponents do
         Worth.Skill.Registry.all()
       rescue
         _ -> []
+      catch
+        :exit, _ -> []
       end
 
     assigns = assign(assigns, :skills, skills)
@@ -509,6 +517,8 @@ defmodule WorthWeb.ChatComponents do
         Worth.LogBuffer.recent(50)
       rescue
         _ -> []
+      catch
+        :exit, _ -> []
       end
 
     assigns = assign(assigns, :entries, entries)
@@ -527,228 +537,6 @@ defmodule WorthWeb.ChatComponents do
     <div class="color(:text_dim) text-xs">Unknown tab</div>
     """
   end
-
-  # ── Message ─────────────────────────────────────────────────────
-
-  attr :msg, :map, required: true
-
-  def message(assigns) do
-    ~H"""
-    <div class={message_wrapper_class(@msg.type)}>
-      <.message_content msg={@msg} />
-    </div>
-    """
-  end
-
-  defp message_content(%{msg: %{type: :user}} = assigns) do
-    ~H"""
-    <div class="flex gap-2">
-      <span class="color(:success) font-bold shrink-0">you</span>
-      <span class="color(:text)">{@msg.content}</span>
-    </div>
-    """
-  end
-
-  defp message_content(%{msg: %{type: :assistant}} = assigns) do
-    ~H"""
-    <div class="flex gap-2">
-      <span class="color(:primary) font-bold shrink-0">ai</span>
-      <div class="markdown-content flex-1 min-w-0">{render_markdown(@msg.content)}</div>
-    </div>
-    """
-  end
-
-  defp message_content(%{msg: %{type: :system}} = assigns) do
-    has_learning = Map.has_key?(assigns.msg, :learning_report)
-    has_permission = Map.has_key?(assigns.msg, :permission_agents)
-    has_mapping = Map.has_key?(assigns.msg, :project_mapping)
-    assigns = assign(assigns, :has_learning, has_learning)
-    assigns = assign(assigns, :has_permission, has_permission)
-    assigns = assign(assigns, :has_mapping, has_mapping)
-
-    ~H"""
-    <div class="flex gap-2">
-      <span class="text-ctp-mauve font-bold shrink-0">sys</span>
-      <div class="flex-1 min-w-0">
-        <pre class="color(:text_muted) whitespace-pre-wrap text-xs">{@msg.content}</pre>
-        <.permission_actions :if={@has_permission} agents={@msg.permission_agents} />
-        <.project_mapping_actions :if={@has_mapping} projects={@msg.project_mapping} workspace={@msg.mapping_workspace} />
-        <.learning_actions :if={@has_learning} report={@msg.learning_report} />
-      </div>
-    </div>
-    """
-  end
-
-  defp message_content(%{msg: %{type: :error}} = assigns) do
-    ~H"""
-    <div class="flex gap-2">
-      <span class="color(:error) font-bold shrink-0">err</span>
-      <span class="color(:error)">{@msg.content}</span>
-    </div>
-    """
-  end
-
-  defp message_content(%{msg: %{type: :tool_call, content: content}} = assigns) do
-    assigns = assign(assigns, :name, content.name)
-
-    ~H"""
-    <div class="flex items-center gap-2 text-xs">
-      <.icon name="hero-wrench-screwdriver" class="size-3 color(:info)" />
-      <span class="color(:info) font-semibold">{@name}</span>
-      <span :if={@msg.content[:status] == :running} class="spinner color(:accent)"></span>
-    </div>
-    """
-  end
-
-  defp message_content(%{msg: %{type: :tool_result, content: content}} = assigns) do
-    status = Map.get(content, :status, :success)
-    output = Map.get(content, :output, "")
-    truncated = if String.length(output) > 300, do: String.slice(output, 0, 300) <> "...", else: output
-
-    assigns = assign(assigns, name: content.name, status: status, output: truncated)
-
-    ~H"""
-    <div class="text-xs">
-      <div class="flex items-center gap-2">
-        <span class={if @status == :failed, do: "color(:error)", else: "color(:success)"}>
-          {if @status == :failed, do: "× ", else: "✓ "}
-        </span>
-        <span class="color(:info)">{@name}</span>
-      </div>
-      <pre :if={@output != ""} class="color(:text_dim) whitespace-pre-wrap ml-5 mt-1 max-h-32 overflow-y-auto">{@output}</pre>
-    </div>
-    """
-  end
-
-  defp message_content(%{msg: %{type: :thinking}} = assigns) do
-    ~H"""
-    <div class="flex gap-2 text-xs">
-      <span class="text-ctp-mauve italic shrink-0">thinking</span>
-      <span class="color(:text_dim) italic">{String.slice(@msg.content, 0, 200)}</span>
-    </div>
-    """
-  end
-
-  defp message_content(assigns) do
-    ~H"""
-    <div class="color(:text_dim) text-xs">{inspect(@msg)}</div>
-    """
-  end
-
-  # ── Learning Actions ────────────────────────────────────────────
-
-  attr :agents, :list, required: true
-
-  defp permission_actions(assigns) do
-    ~H"""
-    <div class="mt-2 space-y-2">
-      <div class="flex gap-2">
-        <button
-          phx-click="grant_all_agents"
-          class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_primary)} cursor-pointer"}
-        >
-          Grant access to all
-        </button>
-      </div>
-      <div class="space-y-1">
-        <%= for agent <- @agents do %>
-          <div class="flex items-center gap-2">
-            <span class="color(:text_muted) text-xs">{format_agent_name(agent.agent)} — {hd(agent.data_paths)}</span>
-            <button
-              phx-click="grant_agent_permission"
-              phx-value-agent={agent.agent}
-              class={"px-2 py-0.5 rounded text-xs transition-colors #{color(:button_primary)} cursor-pointer"}
-            >
-              Allow
-            </button>
-            <button
-              phx-click="deny_agent_permission"
-              phx-value-agent={agent.agent}
-              class={"px-2 py-0.5 rounded text-xs transition-colors #{color(:button_secondary)} cursor-pointer"}
-            >
-              Deny
-            </button>
-          </div>
-        <% end %>
-      </div>
-    </div>
-    """
-  end
-
-  defp format_agent_name(:claude_code), do: "Claude Code"
-  defp format_agent_name(:codex), do: "Codex"
-  defp format_agent_name(:gemini), do: "Gemini"
-  defp format_agent_name(:opencode), do: "OpenCode"
-  defp format_agent_name(name), do: Phoenix.HTML.Safe.to_iodata(name) |> to_string()
-
-  attr :projects, :map, required: true
-  attr :workspace, :string, required: true
-
-  defp project_mapping_actions(assigns) do
-    ~H"""
-    <div class="mt-2 space-y-2">
-      <div class="flex gap-2">
-        <button
-          phx-click="map_all_projects"
-          phx-value-workspace={@workspace}
-          class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_primary)} cursor-pointer"}
-        >
-          Select all projects
-        </button>
-      </div>
-      <%= for {agent, projects} <- @projects do %>
-        <div class="space-y-1">
-          <div class="color(:text) text-xs font-semibold">{format_agent_name(agent)}</div>
-          <div class="ml-2 flex flex-wrap gap-1">
-            <%= for project <- projects do %>
-              <button
-                phx-click="map_projects"
-                phx-value-workspace={@workspace}
-                phx-value-agent={agent}
-                phx-value-projects={Jason.encode!(projects)}
-                class={"px-2 py-0.5 rounded text-xs transition-colors #{color(:button_secondary)} cursor-pointer"}
-              >
-                {project}
-              </button>
-            <% end %>
-          </div>
-        </div>
-      <% end %>
-    </div>
-    """
-  end
-
-  attr :report, :map, required: true
-
-  defp learning_actions(assigns) do
-    ~H"""
-    <div class="flex gap-2 mt-2">
-      <button
-        phx-click="approve_learning"
-        phx-value-workspace={@report.workspace}
-        class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_primary)} cursor-pointer"}
-      >
-        Yes, learn from this workspace
-      </button>
-      <button
-        phx-click="decline_learning"
-        phx-value-workspace={@report.workspace}
-        class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_secondary)} cursor-pointer"}
-      >
-        No, skip for now
-      </button>
-    </div>
-    """
-  end
-
-  defp message_wrapper_class(:user), do: "py-2 px-3 rounded-md #{color(:message_user_bg)}"
-  defp message_wrapper_class(:assistant), do: "py-2 px-3"
-  defp message_wrapper_class(:error), do: "py-2 px-3 rounded-md #{color(:message_error_bg)}"
-  defp message_wrapper_class(:tool_call), do: "py-1 px-3 ml-4"
-  defp message_wrapper_class(:tool_result), do: "py-1 px-3 ml-4"
-  defp message_wrapper_class(:thinking), do: "py-1 px-3 ml-4 #{color(:message_thinking_border)}"
-  defp message_wrapper_class(:system), do: "py-2 px-3 rounded-md #{color(:message_system_bg)}"
-  defp message_wrapper_class(_), do: "py-1 px-3"
 
   # ── Input bar ───────────────────────────────────────────────────
 
@@ -790,18 +578,6 @@ defmodule WorthWeb.ChatComponents do
     """
   end
 
-  # ── Markdown rendering ─────────────────────────────────────────
-
-  defp render_markdown(nil), do: ""
-  defp render_markdown(""), do: ""
-
-  defp render_markdown(text) do
-    case Earmark.as_html(text, compact_output: true) do
-      {:ok, html, _} -> Phoenix.HTML.raw(html)
-      _ -> text
-    end
-  end
-
   # ── Sidebar helpers ─────────────────────────────────────────────
 
   defp routing_mode_label(%{mode: "auto", preference: "optimize_price", filter: "free_only"}),
@@ -817,8 +593,7 @@ defmodule WorthWeb.ChatComponents do
 
     if label && label != "" do
       # Strip provider prefix like "Anthropic: " for brevity
-      label
-      |> String.replace(~r/^[A-Za-z]+:\s*/, "")
+      String.replace(label, ~r/^[A-Za-z]+:\s*/, "")
     else
       "..."
     end

@@ -100,9 +100,9 @@ Hooks.InputFocus = {
     })
   },
   updated() {
+    // Re-focus when input becomes enabled (e.g. after agent finishes)
     if (!this.el.disabled) {
       this.el.focus()
-      this.el.value = ""
     }
   }
 }
@@ -148,25 +148,23 @@ liveSocket.connect()
 window.liveSocket = liveSocket
 
 // Dev quality of life features
-if (process.env.NODE_ENV === "development") {
-  window.addEventListener("phx:live_reload:attached", ({detail: reloader}) => {
-    reloader.enableServerLogs()
+window.addEventListener("phx:live_reload:attached", ({detail: reloader}) => {
+  reloader.enableServerLogs()
 
-    let keyDown
-    window.addEventListener("keydown", e => keyDown = e.key)
-    window.addEventListener("keyup", _e => keyDown = null)
-    window.addEventListener("click", e => {
-      if(keyDown === "c"){
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        reloader.openEditorAtCaller(e.target)
-      } else if(keyDown === "d"){
-        e.preventDefault()
-        e.stopImmediatePropagation()
-        reloader.openEditorAtDef(e.target)
-      }
-    }, true)
+  let keyDown
+  window.addEventListener("keydown", e => keyDown = e.key)
+  window.addEventListener("keyup", _e => keyDown = null)
+  window.addEventListener("click", e => {
+    if(keyDown === "c"){
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      reloader.openEditorAtCaller(e.target)
+    } else if(keyDown === "d"){
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      reloader.openEditorAtDef(e.target)
+    }
+  }, true)
 
-    window.liveReloader = reloader
-  })
-}
+  window.liveReloader = reloader
+})
