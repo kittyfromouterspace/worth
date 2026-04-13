@@ -18,5 +18,4 @@ defmodule Worth.BrainTest do
 
     Worth.Brain.switch_mode(@workspace, :code)
   end
-
 end

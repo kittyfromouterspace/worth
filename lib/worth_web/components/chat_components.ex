@@ -251,11 +251,51 @@ defmodule WorthWeb.ChatComponents do
     ~H"""
     <aside class="w-72 color(:background) border-l color(:border) overflow-y-auto shrink-0 text-sm">
       <div class="p-3 space-y-4">
-        <.tab_content tab={:status} models={@models} model_routing={@model_routing} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
-        <.tab_content tab={:usage} models={@models} model_routing={@model_routing} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
-        <.tab_content tab={:tools} models={@models} model_routing={@model_routing} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
-        <.tab_content tab={:skills} models={@models} model_routing={@model_routing} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
-        <.tab_content tab={:logs} models={@models} model_routing={@model_routing} cost={@cost} turn={@turn} mode={@mode} workspace={@workspace} />
+        <.tab_content
+          tab={:status}
+          models={@models}
+          model_routing={@model_routing}
+          cost={@cost}
+          turn={@turn}
+          mode={@mode}
+          workspace={@workspace}
+        />
+        <.tab_content
+          tab={:usage}
+          models={@models}
+          model_routing={@model_routing}
+          cost={@cost}
+          turn={@turn}
+          mode={@mode}
+          workspace={@workspace}
+        />
+        <.tab_content
+          tab={:tools}
+          models={@models}
+          model_routing={@model_routing}
+          cost={@cost}
+          turn={@turn}
+          mode={@mode}
+          workspace={@workspace}
+        />
+        <.tab_content
+          tab={:skills}
+          models={@models}
+          model_routing={@model_routing}
+          cost={@cost}
+          turn={@turn}
+          mode={@mode}
+          workspace={@workspace}
+        />
+        <.tab_content
+          tab={:logs}
+          models={@models}
+          model_routing={@model_routing}
+          cost={@cost}
+          turn={@turn}
+          mode={@mode}
+          workspace={@workspace}
+        />
       </div>
     </aside>
     """
@@ -764,7 +804,9 @@ defmodule WorthWeb.ChatComponents do
 
   # ── Sidebar helpers ─────────────────────────────────────────────
 
-  defp routing_mode_label(%{mode: "auto", preference: "optimize_price", filter: "free_only"}), do: "auto · price · free only"
+  defp routing_mode_label(%{mode: "auto", preference: "optimize_price", filter: "free_only"}),
+    do: "auto · price · free only"
+
   defp routing_mode_label(%{mode: "auto", preference: pref, filter: "free_only"}), do: "auto · #{pref} · free only"
   defp routing_mode_label(%{mode: "auto", preference: pref}), do: "auto · #{pref}"
   defp routing_mode_label(_), do: "auto"

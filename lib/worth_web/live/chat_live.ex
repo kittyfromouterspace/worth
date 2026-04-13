@@ -616,8 +616,7 @@ defmodule WorthWeb.ChatLive do
 
       socket = load_settings_form(socket)
 
-      {:noreply,
-       append_system_message(socket, "Workspace directory set to #{expanded}.")}
+      {:noreply, append_system_message(socket, "Workspace directory set to #{expanded}.")}
     else
       {:noreply, append_system_message(socket, "Cannot create directory: #{expanded}")}
     end
@@ -632,7 +631,6 @@ defmodule WorthWeb.ChatLive do
   defp routing_label("manual", _, "free_only"), do: "Manual (free only)"
   defp routing_label("manual", _, _), do: "Manual (tier-based)"
   defp routing_label(m, _, _), do: m
-
 
   defp persist_preference(key, value) do
     try do

@@ -134,7 +134,10 @@ defmodule WorthWeb.Commands.ModelCommands do
         end
 
       :error ->
-        append_system(socket, "Usage: /model set <provider>/<model_id>\nExample: /model set anthropic/claude-sonnet-4-20250514")
+        append_system(
+          socket,
+          "Usage: /model set <provider>/<model_id>\nExample: /model set anthropic/claude-sonnet-4-20250514"
+        )
     end
   end
 

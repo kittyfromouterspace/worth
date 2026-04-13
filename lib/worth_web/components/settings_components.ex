@@ -693,10 +693,13 @@ defmodule WorthWeb.SettingsComponents do
             </p>
 
             <div class="rounded-lg border border-ctp-surface1 bg-ctp-surface0/50 p-4 mb-4 space-y-3">
-              <div class="text-xs font-semibold text-ctp-lavender uppercase tracking-wider">How to get your free API key</div>
+              <div class="text-xs font-semibold text-ctp-lavender uppercase tracking-wider">
+                How to get your free API key
+              </div>
               <ol class="text-sm text-ctp-subtext0 space-y-2 list-decimal list-inside">
                 <li>
-                  Go to <span class="text-ctp-blue font-mono text-xs">openrouter.ai</span> and create a <span class="text-ctp-green font-semibold">free account</span>
+                  Go to <span class="text-ctp-blue font-mono text-xs">openrouter.ai</span>
+                  and create a <span class="text-ctp-green font-semibold">free account</span>
                 </li>
                 <li>
                   Navigate to <span class="text-ctp-blue font-mono text-xs">openrouter.ai/keys</span>
@@ -734,7 +737,8 @@ defmodule WorthWeb.SettingsComponents do
             <h2 class="text-lg font-semibold text-ctp-text mb-2">Make It Yours</h2>
             <p class="text-sm text-ctp-subtext0 mb-4">
               Tell Worth a bit about yourself so it can tailor its help to you.
-              This creates your <span class="font-semibold text-ctp-text">personal workspace</span> — your home base for everything.
+              This creates your <span class="font-semibold text-ctp-text">personal workspace</span>
+              — your home base for everything.
             </p>
 
             <form phx-submit="onboarding_save_profile" class="space-y-4">
