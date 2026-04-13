@@ -3,16 +3,14 @@ defmodule WorthWeb.CommandHandler do
   Routes slash commands to namespace-specific handler modules.
   """
 
-  alias WorthWeb.Commands.{
-    MemoryCommands,
-    ModelCommands,
-    SettingsCommands,
-    SkillCommands,
-    McpCommands,
-    ProviderCommands,
-    SystemCommands,
-    WorkspaceCommands
-  }
+  alias WorthWeb.Commands.McpCommands
+  alias WorthWeb.Commands.MemoryCommands
+  alias WorthWeb.Commands.ModelCommands
+  alias WorthWeb.Commands.ProviderCommands
+  alias WorthWeb.Commands.SettingsCommands
+  alias WorthWeb.Commands.SkillCommands
+  alias WorthWeb.Commands.SystemCommands
+  alias WorthWeb.Commands.WorkspaceCommands
 
   def handle(cmd, _text, socket) do
     dispatch(cmd, socket)

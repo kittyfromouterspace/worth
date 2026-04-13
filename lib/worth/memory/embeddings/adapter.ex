@@ -18,6 +18,9 @@ defmodule Worth.Memory.Embeddings.Adapter do
 
   @behaviour Mneme.EmbeddingProvider
 
+  alias AgentEx.LLM.Credentials
+  alias AgentEx.LLM.ProviderRegistry
+
   @default_dimensions 1536
   @default_model "text-embedding-3-small"
 
@@ -33,7 +36,7 @@ defmodule Worth.Memory.Embeddings.Adapter do
 
     transport = provider.transport()
 
-    case AgentEx.LLM.Credentials.resolve(provider) do
+    case Credentials.resolve(provider) do
       {:ok, creds} ->
         base_url = creds.base_url_override || provider.default_base_url()
 
@@ -83,7 +86,7 @@ defmodule Worth.Memory.Embeddings.Adapter do
   defp embed_direct(text, provider, model_id) do
     transport = provider.transport()
 
-    case AgentEx.LLM.Credentials.resolve(provider) do
+    case Credentials.resolve(provider) do
       {:ok, creds} ->
         base_url = creds.base_url_override || provider.default_base_url()
 
@@ -131,19 +134,19 @@ defmodule Worth.Memory.Embeddings.Adapter do
         if model do
           case catalog_model_provider(model) do
             nil -> default_provider()
-            provider -> AgentEx.LLM.ProviderRegistry.get(provider)
+            provider -> ProviderRegistry.get(provider)
           end
         else
           default_provider()
         end
 
       provider_id ->
-        AgentEx.LLM.ProviderRegistry.get(provider_id)
+        ProviderRegistry.get(provider_id)
     end
   end
 
   defp default_provider do
-    AgentEx.LLM.ProviderRegistry.get(:openrouter)
+    ProviderRegistry.get(:openrouter)
   end
 
   defp catalog_model_provider(model_id) do
@@ -174,7 +177,7 @@ defmodule Worth.Memory.Embeddings.Adapter do
   end
 
   def credentials do
-    case AgentEx.LLM.Credentials.resolve(AgentEx.LLM.Provider.OpenRouter) do
+    case Credentials.resolve(AgentEx.LLM.Provider.OpenRouter) do
       {:ok, %{api_key: key}} -> %{api_key: key}
       _ -> :disabled
     end

@@ -1,9 +1,13 @@
 defmodule WorthWeb.Commands.WorkspaceCommands do
+  @moduledoc false
   import Phoenix.Component, only: [assign: 2]
   import WorthWeb.Commands.Helpers
 
+  alias Worth.Config.Setup
+  alias Worth.Workspace.Service
+
   def handle({:workspace, :list}, socket) do
-    workspaces = Worth.Workspace.Service.list()
+    workspaces = Service.list()
     append_system(socket, "Workspaces: #{Enum.join(workspaces, ", ")}")
   end
 
@@ -12,18 +16,18 @@ defmodule WorthWeb.Commands.WorkspaceCommands do
     Phoenix.PubSub.unsubscribe(Worth.PubSub, "workspace:#{old_workspace}")
     Phoenix.PubSub.subscribe(Worth.PubSub, "workspace:#{name}")
 
-    socket = assign(socket, workspace: name, workspaces: Worth.Workspace.Service.list())
+    socket = assign(socket, workspace: name, workspaces: Service.list())
     append_system(socket, "Switched to workspace: #{name}")
   end
 
   def handle({:workspace, {:new, name}}, socket) do
-    case Worth.Workspace.Service.create(name) do
+    case Service.create(name) do
       {:ok, _path} ->
         old_workspace = socket.assigns.workspace
         Phoenix.PubSub.unsubscribe(Worth.PubSub, "workspace:#{old_workspace}")
         Phoenix.PubSub.subscribe(Worth.PubSub, "workspace:#{name}")
 
-        socket = assign(socket, workspace: name, workspaces: Worth.Workspace.Service.list())
+        socket = assign(socket, workspace: name, workspaces: Service.list())
         append_system(socket, "Created and switched to workspace: #{name}")
 
       {:error, reason} ->
@@ -70,7 +74,7 @@ defmodule WorthWeb.Commands.WorkspaceCommands do
 
     case Worth.Brain.list_sessions(workspace) do
       {:ok, sessions} when is_list(sessions) and sessions != [] ->
-        lines = sessions |> Enum.map(&"  #{&1}") |> Enum.join("\n")
+        lines = Enum.map_join(sessions, "\n", &"  #{&1}")
         append_system(socket, "Sessions:\n#{lines}")
 
       _ ->
@@ -103,15 +107,15 @@ defmodule WorthWeb.Commands.WorkspaceCommands do
 
   def handle({:setup, :show}, socket) do
     key =
-      case Worth.Config.Setup.openrouter_key() do
+      case Setup.openrouter_key() do
         nil -> "(not set)"
         k -> "#{String.slice(k, 0, 8)}... (#{String.length(k)} chars)"
       end
 
-    model = Worth.Config.Setup.embedding_model() || "(not set)"
+    model = Setup.embedding_model() || "(not set)"
 
     msg =
-      "Setup status:\n  config file:     #{Worth.Config.Store.path()}\n  openrouter key:  #{key}\n  embedding model: #{model}"
+      "Setup status:\n  openrouter key:  #{key}\n  embedding model: #{model}"
 
     append_system(socket, msg)
   end
@@ -124,14 +128,14 @@ defmodule WorthWeb.Commands.WorkspaceCommands do
   end
 
   def handle({:setup, {:openrouter, key}}, socket) do
-    case Worth.Config.Setup.set_openrouter_key(key) do
-      :ok -> append_system(socket, "OpenRouter key saved to #{Worth.Config.Store.path()}.")
+    case Setup.set_openrouter_key(key) do
+      :ok -> append_system(socket, "OpenRouter key saved.")
       {:error, :empty_key} -> append_error(socket, "OpenRouter key cannot be empty.")
     end
   end
 
   def handle({:setup, {:embedding, model}}, socket) do
-    case Worth.Config.Setup.set_embedding_model(model) do
+    case Setup.set_embedding_model(model) do
       :ok -> append_system(socket, "Embedding model set to #{model}.")
       {:error, :empty_model} -> append_error(socket, "Embedding model cannot be empty.")
     end

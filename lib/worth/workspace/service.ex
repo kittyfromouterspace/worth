@@ -1,9 +1,11 @@
 defmodule Worth.Workspace.Service do
+  @moduledoc false
   def list do
     dir = Worth.Paths.workspace_dir()
 
     if File.dir?(dir) do
-      File.ls!(dir)
+      dir
+      |> File.ls!()
       |> Enum.filter(fn name ->
         path = Path.join(dir, name)
         File.dir?(path) and File.exists?(Path.join(path, "IDENTITY.md"))
@@ -68,9 +70,9 @@ defmodule Worth.Workspace.Service do
     about_section =
       if name != "" or role != "" or goals != "" do
         lines = []
-        lines = if name != "", do: lines ++ ["- **Name**: #{name}"], else: lines
-        lines = if role != "", do: lines ++ ["- **Role**: #{role}"], else: lines
-        lines = if goals != "", do: lines ++ ["- **Goals**: #{goals}"], else: lines
+        lines = if name == "", do: lines, else: lines ++ ["- **Name**: #{name}"]
+        lines = if role == "", do: lines, else: lines ++ ["- **Role**: #{role}"]
+        lines = if goals == "", do: lines, else: lines ++ ["- **Goals**: #{goals}"]
 
         """
 

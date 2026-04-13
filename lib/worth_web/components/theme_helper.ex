@@ -57,8 +57,6 @@ defmodule WorthWeb.ThemeHelper do
         {:ok, rendered} -> rendered
         _ -> nil
       end
-    else
-      nil
     end
   end
 
@@ -66,8 +64,7 @@ defmodule WorthWeb.ThemeHelper do
   Get all themes for selection UI
   """
   def available_themes do
-    Registry.list()
-    |> Enum.map(fn theme ->
+    Enum.map(Registry.list(), fn theme ->
       %{
         name: theme.name(),
         display_name: theme.display_name(),

@@ -16,10 +16,9 @@ defmodule Worth.Mcp.Server.Tools.MemoryQuery do
     case Worth.Memory.Manager.search(query, opts) do
       {:ok, %{entries: entries}} ->
         lines =
-          Enum.map(entries, fn e ->
+          Enum.map_join(entries, "\n", fn e ->
             "[#{Float.round(e.confidence || 0.5, 2)}] #{e.content}"
           end)
-          |> Enum.join("\n")
 
         {:reply, lines, frame}
 

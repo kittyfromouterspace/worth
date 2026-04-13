@@ -56,23 +56,30 @@ defmodule Worth.Paths do
   def workspace_dir do
     case Process.whereis(Worth.Config) do
       nil ->
-        load_workspace_dir_from_file_or_default()
+        load_workspace_dir_default()
 
       _pid ->
-        Worth.Config.get(:workspace_directory) || load_workspace_dir_from_file_or_default()
+        Worth.Config.get(:workspace_directory) || load_workspace_dir_default()
     end
   end
 
-  defp load_workspace_dir_from_file_or_default do
-    disk_config = Worth.Config.Store.load()
+  defp load_workspace_dir_default do
+    # Try Settings DB directly (preference, no vault needed)
+    pref =
+      try do
+        Worth.Settings.get_preference("workspace_directory")
+      rescue
+        _ -> nil
+      catch
+        :exit, _ -> nil
+      end
 
-    case disk_config[:workspace_directory] do
-      nil ->
-        Application.get_env(:worth, :workspace_directory, @default_workspace_dir)
-        |> Path.expand()
-
-      path when is_binary(path) ->
+    case pref do
+      path when is_binary(path) and path != "" ->
         Path.expand(path)
+
+      _ ->
+        Path.expand(@default_workspace_dir)
     end
   end
 

@@ -1,4 +1,5 @@
 defmodule Worth.Mcp.Client.Supervisor do
+  @moduledoc false
   def child_spec(opts) do
     name = Keyword.fetch!(opts, :name)
 

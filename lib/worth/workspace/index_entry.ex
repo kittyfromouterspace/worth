@@ -6,6 +6,7 @@ defmodule Worth.Workspace.IndexEntry do
   and stored in memory. The content_hash allows detecting changes.
   """
   use Ecto.Schema
+
   import Ecto.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -22,6 +23,8 @@ defmodule Worth.Workspace.IndexEntry do
 
     timestamps(type: :utc_datetime_usec)
   end
+
+  @type t :: %__MODULE__{}
 
   @doc """
   Returns the changeset for an index entry.
@@ -52,7 +55,8 @@ defmodule Worth.Workspace.IndexEntry do
   Calculates a content hash for a file or content.
   """
   def calculate_hash(content) when is_binary(content) do
-    :crypto.hash(:sha256, content)
+    :sha256
+    |> :crypto.hash(content)
     |> Base.encode16(case: :lower)
   end
 

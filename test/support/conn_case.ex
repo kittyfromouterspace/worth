@@ -9,16 +9,16 @@ defmodule WorthWeb.ConnCase do
 
   using do
     quote do
-      @endpoint WorthWeb.Endpoint
-
-      import Plug.Conn
-      import Phoenix.ConnTest
-      import Phoenix.LiveViewTest
-
       use Phoenix.VerifiedRoutes,
         endpoint: WorthWeb.Endpoint,
         router: WorthWeb.Router,
         statics: WorthWeb.static_paths()
+
+      import Phoenix.ConnTest
+      import Phoenix.LiveViewTest
+      import Plug.Conn
+
+      @endpoint WorthWeb.Endpoint
     end
   end
 

@@ -57,10 +57,12 @@ defmodule Worth.MixProject do
   defp deps do
     [
       {:tidewave, "~> 0.5", only: [:dev]},
-      {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.4.1"},
+      # {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.4.1"},
+      {:mneme, path: "../mneme"},
       # Local embedding support (optional - enables Mneme.Embedding.Local)
       {:bumblebee, "~> 0.6.0"},
-      {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.5"},
+      # {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.5"},
+      {:agent_ex, path: "../agent_ex"},
 
       # Phoenix
       {:phoenix, "~> 1.8.5"},
@@ -97,10 +99,15 @@ defmodule Worth.MixProject do
       {:nimble_options, "~> 1.1"},
       {:jason, "~> 1.4"},
       {:req, "~> 0.5"},
-      {:earmark, "~> 1.4"},
+      {:mdex, "~> 0.2"},
 
-      # Dev
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+      # Dev/Test tooling
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:ex_check, "~> 0.16", only: [:dev], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:doctor, "~> 0.22", only: [:dev], runtime: false},
+      {:styler, ">= 0.11.0", only: [:dev, :test], runtime: false},
+      {:lazy_html, ">= 0.1.0", only: :test}
     ]
   end
 

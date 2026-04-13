@@ -1,4 +1,5 @@
 defmodule WorthWeb.Layouts do
+  @moduledoc false
   use WorthWeb, :html
 
   embed_templates "layouts/*"

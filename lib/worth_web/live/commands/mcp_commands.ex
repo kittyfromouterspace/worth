@@ -1,4 +1,5 @@
 defmodule WorthWeb.Commands.McpCommands do
+  @moduledoc false
   import WorthWeb.Commands.Helpers
 
   def handle({:mcp, :list}, socket) do
@@ -8,9 +9,7 @@ defmodule WorthWeb.Commands.McpCommands do
       append_system(socket, "No MCP servers connected.")
     else
       lines =
-        connections
-        |> Enum.map(fn c -> "  [#{c.status}] #{c.name} (#{c.tool_count} tools)" end)
-        |> Enum.join("\n")
+        Enum.map_join(connections, "\n", fn c -> "  [#{c.status}] #{c.name} (#{c.tool_count} tools)" end)
 
       append_system(socket, "MCP Servers:\n#{lines}")
     end
@@ -52,9 +51,7 @@ defmodule WorthWeb.Commands.McpCommands do
       append_system(socket, "No tools found for server '#{name}'.")
     else
       lines =
-        tools
-        |> Enum.map(fn t -> "  #{t["name"]}: #{String.slice(t["description"] || "", 0, 60)}" end)
-        |> Enum.join("\n")
+        Enum.map_join(tools, "\n", fn t -> "  #{t["name"]}: #{String.slice(t["description"] || "", 0, 60)}" end)
 
       append_system(socket, "Tools from #{name}:\n#{lines}")
     end

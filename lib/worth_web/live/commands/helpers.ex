@@ -1,4 +1,5 @@
 defmodule WorthWeb.Commands.Helpers do
+  @moduledoc false
   import Phoenix.LiveView, only: [stream_insert: 3]
 
   def append_system(socket, msg) do
@@ -7,7 +8,7 @@ defmodule WorthWeb.Commands.Helpers do
 
   def append_error(socket, msg) do
     stream_insert(socket, :messages, %{
-      id: System.unique_integer([:positive]) |> to_string(),
+      id: [:positive] |> System.unique_integer() |> to_string(),
       type: :error,
       content: msg
     })

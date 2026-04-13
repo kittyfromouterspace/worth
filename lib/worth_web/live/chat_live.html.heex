@@ -15,7 +15,12 @@
 </div>
 
 <%!-- Main app view --%>
-<div :if={@view not in [:onboarding, :unlock]} class="flex flex-col h-screen font-mono" phx-window-keydown="keydown">
+<div
+  :if={@view not in [:onboarding, :unlock]}
+  class="flex flex-col h-screen font-mono"
+  phx-window-keydown="keydown"
+  phx-key="Escape"
+>
   <%!-- Header --%>
   <.chat_header
     status={@status}
@@ -43,8 +48,10 @@
     <%!-- Center pane: chat or settings --%>
     <div class="flex-1 flex flex-col overflow-hidden">
       <%!-- Settings view --%>
-      <.settings_panel
+      <.live_component
         :if={@view == :settings}
+        module={WorthWeb.ChatLive.SettingsComponent}
+        id="settings"
         settings_form={@settings_form}
       />
 

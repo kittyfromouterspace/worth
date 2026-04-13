@@ -1,4 +1,5 @@
 defmodule Worth.Learning.State do
+  @moduledoc false
   use Ecto.Schema
 
   import Ecto.Query
@@ -14,6 +15,8 @@ defmodule Worth.Learning.State do
     timestamps(updated_at: :updated_at)
   end
 
+  @type t :: %__MODULE__{}
+
   def load(workspace_name, key) when is_binary(workspace_name) and is_binary(key) do
     case Repo.get_by(__MODULE__, workspace_name: workspace_name, key: key) do
       nil -> nil
@@ -24,8 +27,7 @@ defmodule Worth.Learning.State do
   def save(workspace_name, key, value) when is_binary(workspace_name) and is_binary(key) and is_map(value) do
     case Repo.get_by(__MODULE__, workspace_name: workspace_name, key: key) do
       nil ->
-        %__MODULE__{workspace_name: workspace_name, key: key, value: value}
-        |> Repo.insert()
+        Repo.insert(%__MODULE__{workspace_name: workspace_name, key: key, value: value})
 
       existing ->
         existing
@@ -35,13 +37,12 @@ defmodule Worth.Learning.State do
   end
 
   def delete(workspace_name, key) when is_binary(workspace_name) and is_binary(key) do
-    from(s in __MODULE__, where: s.workspace_name == ^workspace_name and s.key == ^key)
-    |> Repo.delete_all()
+    Repo.delete_all(from(s in __MODULE__, where: s.workspace_name == ^workspace_name and s.key == ^key))
   end
 
   def load_all(workspace_name) when is_binary(workspace_name) do
     from(s in __MODULE__, where: s.workspace_name == ^workspace_name, select: {s.key, s.value})
     |> Repo.all()
-    |> Enum.into(%{})
+    |> Map.new()
   end
 end

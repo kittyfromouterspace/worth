@@ -8,7 +8,7 @@ defmodule Worth.Mcp.Server.Tools.Chat do
 
   @impl true
   def execute(%{"message" => message}, frame) do
-    workspace = Application.get_env(:worth, :current_workspace, "personal")
+    workspace = Worth.Config.get(:current_workspace, "personal")
 
     case Worth.Brain.send_message(message, workspace) do
       {:ok, response} ->
@@ -18,8 +18,11 @@ defmodule Worth.Mcp.Server.Tools.Chat do
       {:error, reason} ->
         {:error, reason, frame}
     end
-  rescue
-    e ->
-      {:error, Exception.message(e), frame}
+  catch
+    :exit, {:timeout, _} ->
+      {:error, "Brain request timed out", frame}
+
+    :exit, reason ->
+      {:error, "Brain unavailable: #{inspect(reason)}", frame}
   end
 end

@@ -15,40 +15,30 @@ defmodule Worth.Memory.FactExtractor do
 
   def extract_facts(text, opts \\ []) do
     if extraction_enabled?(opts) do
-      case extract_facts_impl(text, opts) do
-        {:ok, facts} when is_list(facts) ->
-          {:ok, facts}
-
-        _ ->
-          {:ok, []}
-      end
+      {:ok, facts} = extract_facts_impl(text, opts)
+      {:ok, facts}
     else
       {:ok, []}
     end
   end
 
   def extract_and_store(text, opts \\ []) do
-    case extract_facts(text, opts) do
-      {:ok, facts} ->
-        results =
-          facts
-          |> Enum.map(fn fact ->
-            Worth.Memory.Manager.remember(fact, %{
-              entry_type: "observation",
-              source: "fact_extractor",
-              workspace: opts[:workspace],
-              metadata: %{
-                source_type: opts[:source_type] || "response",
-                turn: opts[:turn]
-              }
-            })
-          end)
+    {:ok, facts} = extract_facts(text, opts)
 
-        {:ok, results}
+    results =
+      Enum.map(facts, fn fact ->
+        Worth.Memory.Manager.remember(fact,
+          entry_type: "observation",
+          source: "fact_extractor",
+          workspace: opts[:workspace],
+          metadata: %{
+            source_type: opts[:source_type] || "response",
+            turn: opts[:turn]
+          }
+        )
+      end)
 
-      error ->
-        error
-    end
+    {:ok, results}
   end
 
   defp extract_facts_impl(text, opts) do
@@ -64,22 +54,18 @@ defmodule Worth.Memory.FactExtractor do
   defp extract_with_llm(text, llm_fn) do
     prompt = @extraction_prompt <> text
 
-    try do
-      case llm_fn.([%{role: "user", content: prompt}]) do
-        {:ok, %{"content" => response}} ->
-          parse_json_array(response)
+    case llm_fn.([%{role: "user", content: prompt}]) do
+      {:ok, %{"content" => response}} ->
+        parse_json_array(response)
 
-        {:ok, %{content: response}} ->
-          parse_json_array(response)
+      {:ok, %{content: response}} ->
+        parse_json_array(response)
 
-        {:ok, response} when is_binary(response) ->
-          parse_json_array(response)
+      {:ok, response} when is_binary(response) ->
+        parse_json_array(response)
 
-        _ ->
-          {:ok, []}
-      end
-    rescue
-      _ -> {:ok, []}
+      _ ->
+        {:ok, []}
     end
   end
 

@@ -9,12 +9,16 @@ defmodule Worth.Workspace.Learning do
   4. Tracks what has been indexed
   """
 
-  require Logger
-
-  alias Worth.Workspace.{Scanner, IndexEntry}
-  alias Worth.Repo
-
   import Ecto.Query
+
+  alias Worth.Learning.Checkpoint
+  alias Worth.Learning.Permissions
+  alias Worth.Learning.ProjectMapping
+  alias Worth.Repo
+  alias Worth.Workspace.IndexEntry
+  alias Worth.Workspace.Scanner
+
+  require Logger
 
   @doc """
   Analyzes a workspace and returns a learning opportunity report.
@@ -27,14 +31,14 @@ defmodule Worth.Workspace.Learning do
         is_new = Scanner.new_workspace?(workspace_name)
         opportunities = build_opportunities(scan_report)
 
-        unasked_agents = Worth.Learning.Permissions.unasked_agents()
-        needs_mapping = Worth.Learning.ProjectMapping.needs_mapping?(workspace_name)
-        discovered_projects = Worth.Learning.ProjectMapping.discover()
+        unasked_agents = Permissions.unasked_agents()
+        needs_mapping = ProjectMapping.needs_mapping?(workspace_name)
+        discovered_projects = ProjectMapping.discover()
 
         recommendation =
           cond do
             unasked_agents != [] ->
-              names = unasked_agents |> Enum.map(& &1.agent) |> Enum.join(", ")
+              names = Enum.map_join(unasked_agents, ", ", & &1.agent)
               "Found coding agents that need permission before learning: #{names}"
 
             needs_mapping ->
@@ -85,11 +89,11 @@ defmodule Worth.Workspace.Learning do
   def ingest(workspace_name, _opts \\ []) do
     scope_id = workspace_scope_id(workspace_name)
 
-    git_checkpoint = Worth.Learning.Checkpoint.load_git(workspace_name)
+    git_checkpoint = Checkpoint.load_git(workspace_name)
     git_since = Map.get(git_checkpoint, "latest_sha", "7 days ago")
 
-    project_mapping = Worth.Learning.ProjectMapping.get(workspace_name)
-    agent_checkpoints = Worth.Learning.Checkpoint.load_agents(workspace_name)
+    project_mapping = ProjectMapping.get(workspace_name)
+    agent_checkpoints = Checkpoint.load_agents(workspace_name)
 
     Logger.info("[Learning] Starting ingestion for #{workspace_name} (git since: #{git_since})")
 
@@ -97,11 +101,11 @@ defmodule Worth.Workspace.Learning do
     agent_result = run_agent_learning(scope_id, project_mapping, agent_checkpoints)
 
     if git_result[:latest_git_sha] do
-      Worth.Learning.Checkpoint.save_git(workspace_name, git_result[:latest_git_sha])
+      Checkpoint.save_git(workspace_name, git_result[:latest_git_sha])
     end
 
     new_agent_checkpoints = compute_agent_checkpoints(agent_result)
-    Worth.Learning.Checkpoint.save_agents(workspace_name, new_agent_checkpoints)
+    Checkpoint.save_agents(workspace_name, new_agent_checkpoints)
 
     summary = %{
       workspace: workspace_name,
@@ -137,23 +141,23 @@ defmodule Worth.Workspace.Learning do
 
   defp run_agent_learning(scope_id, project_mapping, agent_checkpoints) do
     filter_fn = fn provider ->
-      Worth.Learning.Permissions.check(provider.agent_name()) == :granted
+      Permissions.check(provider.agent_name()) == :granted
     end
 
-    case coding_agent_module().fetch_authorized_events(filter_fn,
-           projects: project_mapping,
-           since: agent_checkpoints
-         ) do
-      {:ok, events} ->
-        {:ok, run_result} =
-          Mneme.learn(
-            scope_id: scope_id,
-            sources: [coding_agent_module()]
-          )
+    {:ok, events} =
+      coding_agent_module().fetch_authorized_events(filter_fn,
+        projects: project_mapping,
+        since: agent_checkpoints
+      )
 
-        coding_agents_result = Map.get(run_result.results, :coding_agents, %{})
-        Map.put(coding_agents_result, :events, events)
-    end
+    {:ok, run_result} =
+      Mneme.learn(
+        scope_id: scope_id,
+        sources: [coding_agent_module()]
+      )
+
+    coding_agents_result = Map.get(run_result.results, :coding_agents, %{})
+    Map.put(coding_agents_result, :events, events)
   rescue
     e ->
       Logger.error("[Learning] Agent learning failed: #{Exception.message(e)}")
@@ -165,8 +169,8 @@ defmodule Worth.Workspace.Learning do
 
     events
     |> Enum.group_by(&{Map.get(&1, :agent), Map.get(&1, :project)})
-    |> Enum.into(%{}, fn {{agent, project}, _evts} ->
-      now = DateTime.utc_now() |> DateTime.to_iso8601()
+    |> Map.new(fn {{agent, project}, _evts} ->
+      now = DateTime.to_iso8601(DateTime.utc_now())
       {to_string(agent), %{to_string(project) => now}}
     end)
   end
@@ -179,9 +183,7 @@ defmodule Worth.Workspace.Learning do
   def ingest_type(workspace_name, type, opts \\ []) do
     {:ok, scan_report} = Scanner.scan(workspace_name, opts)
 
-    items =
-      (scan_report.new ++ scan_report.modified)
-      |> Enum.filter(&(&1.type == type))
+    items = Enum.filter(scan_report.new ++ scan_report.modified, &(&1.type == type))
 
     results = Enum.map(items, &process_item(&1, workspace_name, opts))
 
@@ -201,9 +203,7 @@ defmodule Worth.Workspace.Learning do
   as needing re-learning.
   """
   def reset_workspace(workspace_name) do
-    {deleted, _} =
-      from(e in IndexEntry, where: e.workspace_name == ^workspace_name)
-      |> Repo.delete_all()
+    {deleted, _} = Repo.delete_all(from(e in IndexEntry, where: e.workspace_name == ^workspace_name))
 
     Logger.info("[Learning] Reset workspace #{workspace_name}: #{deleted} entries removed")
     {:ok, deleted}
@@ -271,98 +271,88 @@ defmodule Worth.Workspace.Learning do
   defp describe_type(:workspace_skills, :modified), do: "Updated workspace skills"
   defp describe_type(type, _), do: "#{type} content"
 
+  # Install the skill from the workspace
   defp process_item(%{type: :workspace_skills} = item, workspace_name, _opts) do
-    # Install the skill from the workspace
-    try do
-      _skill_name = item.path |> Path.dirname() |> Path.basename()
+    _skill_name = item.path |> Path.dirname() |> Path.basename()
 
-      case Worth.Skill.Service.install(%{type: :local, path: Path.dirname(item.path)}, workspace: workspace_name) do
-        {:ok, installed_name} ->
-          # Record that we indexed this
-          entry_attrs = %{
-            workspace_name: workspace_name,
-            source_type: "workspace_skills",
-            source_path: item.path,
-            content_hash: item.hash,
-            file_size: item.size,
-            last_modified: item.modified,
-            mneme_entry_ids: [],
-            indexed_at: DateTime.utc_now(),
-            status: "installed"
-          }
+    case Worth.Skill.Service.install(%{type: :local, path: Path.dirname(item.path)}, workspace: workspace_name) do
+      {:ok, installed_name} ->
+        # Record that we indexed this
+        entry_attrs = %{
+          workspace_name: workspace_name,
+          source_type: "workspace_skills",
+          source_path: item.path,
+          content_hash: item.hash,
+          file_size: item.size,
+          last_modified: item.modified,
+          mneme_entry_ids: [],
+          indexed_at: DateTime.utc_now(),
+          status: "installed"
+        }
 
-          existing =
-            from(e in IndexEntry,
-              where: e.workspace_name == ^workspace_name and e.source_path == ^item.path
-            )
-            |> Repo.one()
+        existing =
+          Repo.one(from(e in IndexEntry, where: e.workspace_name == ^workspace_name and e.source_path == ^item.path))
 
-          if existing do
-            existing
-            |> IndexEntry.changeset(entry_attrs)
-            |> Repo.update!()
-          else
-            %IndexEntry{}
-            |> IndexEntry.changeset(entry_attrs)
-            |> Repo.insert!()
-          end
+        if existing do
+          existing
+          |> IndexEntry.changeset(entry_attrs)
+          |> Repo.update!()
+        else
+          %IndexEntry{}
+          |> IndexEntry.changeset(entry_attrs)
+          |> Repo.insert!()
+        end
 
-          {:ok, %{path: item.path, type: item.type, skill_name: installed_name}}
+        {:ok, %{path: item.path, type: item.type, skill_name: installed_name}}
 
-        {:error, reason} ->
-          {:error, %{path: item.path, type: item.type, reason: reason}}
-      end
-    rescue
-      e ->
-        Logger.error("[Learning] Failed to install skill #{item.path}: #{Exception.message(e)}")
-        {:error, %{path: item.path, type: item.type, reason: Exception.message(e)}}
+      {:error, reason} ->
+        {:error, %{path: item.path, type: item.type, reason: reason}}
     end
+  rescue
+    e ->
+      Logger.error("[Learning] Failed to install skill #{item.path}: #{Exception.message(e)}")
+      {:error, %{path: item.path, type: item.type, reason: Exception.message(e)}}
   end
 
   defp process_item(item, workspace_name, _opts) do
-    try do
-      case ingest_by_type(item, workspace_name) do
-        {:ok, mneme_entries} ->
-          # Record that we indexed this
-          entry_attrs = %{
-            workspace_name: workspace_name,
-            source_type: to_string(item.type),
-            source_path: item.path,
-            content_hash: item.hash,
-            file_size: item.size,
-            last_modified: item.modified,
-            mneme_entry_ids: mneme_entries,
-            indexed_at: DateTime.utc_now(),
-            status: "indexed"
-          }
+    case ingest_by_type(item, workspace_name) do
+      {:ok, mneme_entries} ->
+        # Record that we indexed this
+        entry_attrs = %{
+          workspace_name: workspace_name,
+          source_type: to_string(item.type),
+          source_path: item.path,
+          content_hash: item.hash,
+          file_size: item.size,
+          last_modified: item.modified,
+          mneme_entry_ids: mneme_entries,
+          indexed_at: DateTime.utc_now(),
+          status: "indexed"
+        }
 
-          # Update or create index entry
-          existing =
-            from(e in IndexEntry,
-              where: e.workspace_name == ^workspace_name and e.source_path == ^item.path
-            )
-            |> Repo.one()
+        # Update or create index entry
+        existing =
+          Repo.one(from(e in IndexEntry, where: e.workspace_name == ^workspace_name and e.source_path == ^item.path))
 
-          if existing do
-            existing
-            |> IndexEntry.changeset(entry_attrs)
-            |> Repo.update!()
-          else
-            %IndexEntry{}
-            |> IndexEntry.changeset(entry_attrs)
-            |> Repo.insert!()
-          end
+        if existing do
+          existing
+          |> IndexEntry.changeset(entry_attrs)
+          |> Repo.update!()
+        else
+          %IndexEntry{}
+          |> IndexEntry.changeset(entry_attrs)
+          |> Repo.insert!()
+        end
 
-          {:ok, %{path: item.path, type: item.type, entries: mneme_entries}}
+        {:ok, %{path: item.path, type: item.type, entries: mneme_entries}}
 
-        {:error, reason} ->
-          {:error, %{path: item.path, type: item.type, reason: reason}}
-      end
-    rescue
-      e ->
-        Logger.error("[Learning] Failed to process #{item.path}: #{Exception.message(e)}")
-        {:error, %{path: item.path, type: item.type, reason: Exception.message(e)}}
+      {:error, reason} ->
+        {:error, %{path: item.path, type: item.type, reason: reason}}
     end
+  rescue
+    e ->
+      Logger.error("[Learning] Failed to process #{item.path}: #{Exception.message(e)}")
+      {:error, %{path: item.path, type: item.type, reason: Exception.message(e)}}
   end
 
   defp ingest_by_type(%{type: :source_files} = item, workspace_name) do

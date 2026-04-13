@@ -54,8 +54,7 @@ defmodule Worth.Tools.Git do
     run_git("status", ["--short"], ctx)
   end
 
-  defp run_git(subcommand, args, ctx) do
-    workspace = ctx.metadata[:workspace] || ctx.metadata["workspace"]
+  defp run_git(subcommand, args, workspace) when is_binary(workspace) do
     full_args = [subcommand | args]
 
     case System.cmd("git", full_args, cd: workspace, stderr_to_stdout: true) do
@@ -65,8 +64,14 @@ defmodule Worth.Tools.Git do
       {output, _code} ->
         {:error, output}
     end
-  rescue
-    e ->
-      {:error, Exception.message(e)}
+  end
+
+  defp run_git(subcommand, args, ctx) when is_map(ctx) do
+    workspace = ctx[:workspace] || ctx["workspace"]
+    run_git(subcommand, args, workspace)
+  end
+
+  defp run_git(_subcommand, _args, _ctx) do
+    {:error, "No workspace provided"}
   end
 end

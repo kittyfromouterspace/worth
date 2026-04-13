@@ -81,8 +81,7 @@ defmodule Worth.Learning.Permissions do
   def all_statuses do
     permissions = load_permissions()
 
-    coding_agent_providers()
-    |> Enum.map(fn provider ->
+    Enum.map(coding_agent_providers(), fn provider ->
       name = provider.agent_name()
       available = provider.available?()
       status = Map.get(permissions, to_string(name), if(available, do: :unasked, else: :unavailable))
@@ -112,7 +111,7 @@ defmodule Worth.Learning.Permissions do
       json when is_binary(json) ->
         case Jason.decode(json) do
           {:ok, perms} when is_map(perms) ->
-            Enum.into(perms, %{}, fn {k, v} ->
+            Map.new(perms, fn {k, v} ->
               atom_v = if is_atom(v), do: v, else: safe_to_atom(v)
               {k, atom_v}
             end)

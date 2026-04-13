@@ -22,6 +22,7 @@ defmodule Worth.Workspace.FileBrowser do
   rescue
     e ->
       require Logger
+
       Logger.warning("FileBrowser.scan failed for #{workspace_name}: #{Exception.message(e)}")
       []
   end

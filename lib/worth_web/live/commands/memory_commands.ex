@@ -1,13 +1,14 @@
 defmodule WorthWeb.Commands.MemoryCommands do
+  @moduledoc false
   import WorthWeb.Commands.Helpers
 
+  alias Worth.Memory.Manager
+
   def handle({:memory, {:query, query}}, socket) do
-    case Worth.Memory.Manager.search(query, workspace: socket.assigns.workspace, limit: 5) do
+    case Manager.search(query, workspace: socket.assigns.workspace, limit: 5) do
       {:ok, %{entries: entries}} when is_list(entries) and entries != [] ->
         lines =
-          entries
-          |> Enum.map(fn e -> "  [#{Float.round(e.confidence || 0.5, 2)}] #{e.content}" end)
-          |> Enum.join("\n")
+          Enum.map_join(entries, "\n", fn e -> "  [#{Float.round(e.confidence || 0.5, 2)}] #{e.content}" end)
 
         append_system(socket, "Memory results for '#{query}':\n#{lines}")
 
@@ -17,7 +18,7 @@ defmodule WorthWeb.Commands.MemoryCommands do
   end
 
   def handle({:memory, {:note, note}}, socket) do
-    case Worth.Memory.Manager.working_push(note,
+    case Manager.working_push(note,
            workspace: socket.assigns.workspace,
            importance: 0.5,
            metadata: %{entry_type: "note", role: "user"}
@@ -42,12 +43,10 @@ defmodule WorthWeb.Commands.MemoryCommands do
   end
 
   def handle({:memory, :recent}, socket) do
-    case Worth.Memory.Manager.recent(workspace: socket.assigns.workspace, limit: 10) do
+    case Manager.recent(workspace: socket.assigns.workspace, limit: 10) do
       {:ok, entries} when is_list(entries) and entries != [] ->
         lines =
-          entries
-          |> Enum.map(fn e -> "  [#{e.entry_type}] #{String.slice(e.content, 0, 80)}" end)
-          |> Enum.join("\n")
+          Enum.map_join(entries, "\n", fn e -> "  [#{e.entry_type}] #{String.slice(e.content, 0, 80)}" end)
 
         append_system(socket, "Recent memories:\n#{lines}")
 

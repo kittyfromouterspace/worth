@@ -4,6 +4,8 @@ defmodule Worth.Boot do
   Used by both CLI and desktop bridge.
   """
 
+  alias Worth.Workspace.Service
+
   def run(opts \\ []) do
     Worth.Config.Setup.maybe_run_first_run!()
     ensure_directories!()
@@ -11,16 +13,16 @@ defmodule Worth.Boot do
     workspace = Keyword.get(opts, :workspace, "personal")
     mode = parse_mode(Keyword.get(opts, :mode, "code"))
 
-    workspace_path = Worth.Workspace.Service.resolve_path(workspace)
+    workspace_path = Service.resolve_path(workspace)
 
     if !File.dir?(workspace_path) do
       IO.puts("Workspace '#{workspace}' not found. Creating...")
-      Worth.Workspace.Service.create(workspace)
+      Service.create(workspace)
     end
 
-    Application.put_env(:worth, :current_workspace, workspace)
-    Application.put_env(:worth, :current_workspace_path, workspace_path)
-    Application.put_env(:worth, :current_mode, mode)
+    Worth.Config.put(:current_workspace, workspace)
+    Worth.Config.put(:current_workspace_path, workspace_path)
+    Worth.Config.put(:current_mode, mode)
 
     if auto_migrate?() do
       run_migrations!()
@@ -32,9 +34,10 @@ defmodule Worth.Boot do
     url()
   end
 
+  @endpoint_config Application.compile_env(:worth, WorthWeb.Endpoint, http: [port: 4090])
+
   def url do
-    endpoint_config = Application.get_env(:worth, WorthWeb.Endpoint)
-    port = get_in(endpoint_config, [:http, :port]) || 4090
+    port = get_in(@endpoint_config, [:http, :port]) || 4090
     "http://localhost:#{port}"
   end
 
@@ -43,8 +46,10 @@ defmodule Worth.Boot do
       System.get_env("WORTH_AUTO_MIGRATE") == "1"
   end
 
+  @repo_config Application.compile_env(:worth, Worth.Repo, database: nil)
+
   def run_migrations! do
-    db_path = Application.get_env(:worth, Worth.Repo)[:database]
+    db_path = @repo_config[:database]
 
     if db_path do
       db_path |> Path.dirname() |> File.mkdir_p!()

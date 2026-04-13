@@ -1,9 +1,12 @@
 defmodule Worth.Tools.MemoryTest do
   use Worth.DataCase, async: false
 
+  alias Worth.Memory.Manager
+  alias Worth.Tools.Memory
+
   describe "definitions/0" do
     test "returns four tool definitions" do
-      defs = Worth.Tools.Memory.definitions()
+      defs = Memory.definitions()
       assert length(defs) == 4
 
       names = Enum.map(defs, & &1.name)
@@ -14,7 +17,7 @@ defmodule Worth.Tools.MemoryTest do
     end
 
     test "each definition has required fields" do
-      for def <- Worth.Tools.Memory.definitions() do
+      for def <- Memory.definitions() do
         assert Map.has_key?(def, :name)
         assert Map.has_key?(def, :description)
         assert Map.has_key?(def, :input_schema)
@@ -25,7 +28,7 @@ defmodule Worth.Tools.MemoryTest do
   describe "execute/3" do
     test "memory_write stores a fact" do
       result =
-        Worth.Tools.Memory.execute(
+        Memory.execute(
           "memory_write",
           %{
             "content" => "This project uses Ash",
@@ -38,14 +41,14 @@ defmodule Worth.Tools.MemoryTest do
     end
 
     test "memory_query returns results or no memories message" do
-      Worth.Tools.Memory.execute(
+      Memory.execute(
         "memory_write",
         %{"content" => "User prefers vim keybindings"},
         "test-ws"
       )
 
       result =
-        Worth.Tools.Memory.execute(
+        Memory.execute(
           "memory_query",
           %{"query" => "vim", "limit" => 5},
           "test-ws"
@@ -56,7 +59,7 @@ defmodule Worth.Tools.MemoryTest do
 
     test "memory_note adds to working memory" do
       assert {:ok, "Note added to working memory."} =
-               Worth.Tools.Memory.execute(
+               Memory.execute(
                  "memory_note",
                  %{
                    "content" => "Remember to check config",
@@ -65,32 +68,32 @@ defmodule Worth.Tools.MemoryTest do
                  "test-ws"
                )
     after
-      Worth.Memory.Manager.working_clear(workspace: "test-ws")
+      Manager.working_clear(workspace: "test-ws")
     end
 
     test "memory_recall reads working memory" do
-      Worth.Tools.Memory.execute(
+      Memory.execute(
         "memory_note",
         %{"content" => "Session observation"},
         "test-ws"
       )
 
-      {:ok, result} = Worth.Tools.Memory.execute("memory_recall", %{}, "test-ws")
+      {:ok, result} = Memory.execute("memory_recall", %{}, "test-ws")
       assert is_binary(result)
       assert result =~ "Session observation"
     after
-      Worth.Memory.Manager.working_clear(workspace: "test-ws")
+      Manager.working_clear(workspace: "test-ws")
     end
 
     test "memory_recall returns empty message when no notes" do
-      {:ok, result} = Worth.Tools.Memory.execute("memory_recall", %{}, "empty-ws")
+      {:ok, result} = Memory.execute("memory_recall", %{}, "empty-ws")
       assert result =~ "empty"
     after
-      Worth.Memory.Manager.working_clear(workspace: "empty-ws")
+      Manager.working_clear(workspace: "empty-ws")
     end
 
     test "unknown tool returns error" do
-      assert {:error, msg} = Worth.Tools.Memory.execute("memory_unknown", %{}, "test-ws")
+      assert {:error, msg} = Memory.execute("memory_unknown", %{}, "test-ws")
       assert String.contains?(msg, "Unknown")
     end
   end

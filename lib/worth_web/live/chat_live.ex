@@ -1,15 +1,38 @@
 defmodule WorthWeb.ChatLive do
+  @moduledoc false
   use WorthWeb, :live_view
 
-  import WorthWeb.ChatComponents
-  import WorthWeb.SettingsComponents
+  import WorthWeb.Components.Chat
+  import WorthWeb.Components.Chat.Messages
+  import WorthWeb.Components.Settings
+
+  alias AgentEx.LLM.Catalog
+  alias Worth.Agent.Tracker
+  alias Worth.Config.Setup
+  alias Worth.Learning.Permissions
+  alias Worth.Learning.ProjectMapping
+  alias Worth.Memory.Manager
+  alias Worth.Persistence.Transcript
+  alias Worth.Workspace.Learning
+  alias Worth.Workspace.Service
 
   require Logger
 
   @impl true
+  def terminate(reason, _socket) do
+    Logger.error("[ChatLive] TERMINATED: #{inspect(reason, limit: :infinity, printable_limit: :infinity)}")
+
+    Worth.LogBuffer.push(%{
+      level: :error,
+      text: "[ChatLive] TERMINATED: #{inspect(reason, limit: :infinity)}",
+      ts: System.system_time(:millisecond)
+    })
+  end
+
+  @impl true
   def mount(_params, _session, socket) do
-    workspace = Application.get_env(:worth, :current_workspace, "personal")
-    mode = Application.get_env(:worth, :current_mode, :code)
+    workspace = Worth.Config.get(:current_workspace, "personal")
+    mode = Worth.Config.get(:current_mode, :code)
 
     if connected?(socket) do
       topic = "workspace:#{workspace}"
@@ -65,23 +88,17 @@ defmodule WorthWeb.ChatLive do
 
   @impl true
   def handle_info({:agent_event, event}, socket) do
-    Logger.info("[ChatLive.handle_info] RECEIVED agent_event: #{inspect(event)}")
-    Logger.info("[ChatLive.handle_info] Processing event type: #{elem(event, 0)}")
     {:noreply, process_event(event, socket)}
   end
 
   def handle_info(:agents_updated, socket) do
-    agents =
-      Worth.Agent.Tracker.list_active()
-      |> Enum.filter(&(&1.workspace == socket.assigns.workspace))
+    agents = Enum.filter(Tracker.list_active(), &(&1.workspace == socket.assigns.workspace))
 
     {:noreply, assign(socket, active_agents: agents)}
   end
 
   def handle_info({:global_event, :agents_updated}, socket) do
-    agents =
-      Worth.Agent.Tracker.list_active()
-      |> Enum.filter(&(&1.workspace == socket.assigns.workspace))
+    agents = Enum.filter(Tracker.list_active(), &(&1.workspace == socket.assigns.workspace))
 
     {:noreply, assign(socket, active_agents: agents)}
   end
@@ -97,7 +114,13 @@ defmodule WorthWeb.ChatLive do
   end
 
   def handle_info(:scan_files, socket) do
-    files = Worth.Workspace.FileBrowser.scan(socket.assigns.workspace)
+    files =
+      try do
+        Worth.Workspace.FileBrowser.scan(socket.assigns.workspace)
+      rescue
+        _ -> socket.assigns.workspace_files
+      end
+
     if connected?(socket), do: Process.send_after(self(), :scan_files, 5_000)
     {:noreply, assign(socket, workspace_files: files)}
   end
@@ -121,7 +144,7 @@ defmodule WorthWeb.ChatLive do
   def handle_info({:check_learning, workspace}, socket) do
     # Check for learning opportunities in the background
     Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-      case Worth.Workspace.Learning.analyze(workspace) do
+      case Learning.analyze(workspace) do
         {:ok, report} when report.has_learning_opportunity ->
           Phoenix.PubSub.broadcast(
             Worth.PubSub,
@@ -134,6 +157,33 @@ defmodule WorthWeb.ChatLive do
       end
     end)
 
+    {:noreply, socket}
+  end
+
+  # ── SettingsComponent bridge messages ───────────────────────────
+
+  def handle_info({:set_view, view}, socket) do
+    {:noreply, assign(socket, view: view)}
+  end
+
+  def handle_info({:append_system_message, msg}, socket) do
+    {:noreply, append_system_message(socket, msg)}
+  end
+
+  def handle_info({:apply_theme, bg_class, css}, socket) do
+    {:noreply, push_event(socket, "apply_theme", %{bg_class: bg_class, css: css})}
+  end
+
+  def handle_info({:refresh_settings_form}, socket) do
+    {:noreply, load_settings_form(socket)}
+  end
+
+  def handle_info({:lock_settings_form}, socket) do
+    {:noreply, assign(socket, settings_form: default_settings_form())}
+  end
+
+  def handle_info({:export_secrets_to_env}, socket) do
+    export_secrets_to_env()
     {:noreply, socket}
   end
 
@@ -167,7 +217,9 @@ defmodule WorthWeb.ChatLive do
 
     # Promote any in-flight streaming text to a complete message
     socket =
-      if socket.assigns.streaming_text != "" do
+      if socket.assigns.streaming_text == "" do
+        socket
+      else
         socket
         |> stream_insert(:messages, %{
           id: msg_id(),
@@ -175,8 +227,6 @@ defmodule WorthWeb.ChatLive do
           content: socket.assigns.streaming_text <> "\n\n*[stopped]*"
         })
         |> assign(streaming_text: "")
-      else
-        socket
       end
 
     socket =
@@ -208,7 +258,7 @@ defmodule WorthWeb.ChatLive do
     # Start the learning ingestion process
     Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
       try do
-        {:ok, summary} = Worth.Workspace.Learning.ingest(workspace)
+        {:ok, summary} = Learning.ingest(workspace)
 
         Phoenix.PubSub.broadcast(
           Worth.PubSub,
@@ -234,7 +284,7 @@ defmodule WorthWeb.ChatLive do
 
   def handle_event("grant_agent_permission", %{"agent" => agent_str}, socket) do
     agent = String.to_existing_atom(agent_str)
-    Worth.Learning.Permissions.grant(agent)
+    Permissions.grant(agent)
 
     {:noreply,
      append_system_message(socket, "Granted access to #{agent} data. It will be included in the next learning run.")}
@@ -242,14 +292,14 @@ defmodule WorthWeb.ChatLive do
 
   def handle_event("deny_agent_permission", %{"agent" => agent_str}, socket) do
     agent = String.to_existing_atom(agent_str)
-    Worth.Learning.Permissions.deny(agent)
+    Permissions.deny(agent)
     {:noreply, append_system_message(socket, "Denied access to #{agent} data.")}
   end
 
   def handle_event("grant_all_agents", _params, socket) do
-    unasked = Worth.Learning.Permissions.unasked_agents()
-    Enum.each(unasked, &Worth.Learning.Permissions.grant(&1.agent))
-    names = unasked |> Enum.map(& &1.agent) |> Enum.join(", ")
+    unasked = Permissions.unasked_agents()
+    Enum.each(unasked, &Permissions.grant(&1.agent))
+    names = Enum.map_join(unasked, ", ", & &1.agent)
     {:noreply, append_system_message(socket, "Granted access to: #{names}")}
   end
 
@@ -262,7 +312,7 @@ defmodule WorthWeb.ChatLive do
 
     case Jason.decode(projects_json) do
       {:ok, projects} when is_list(projects) ->
-        Worth.Learning.ProjectMapping.set(workspace, agent, projects)
+        ProjectMapping.set(workspace, agent, projects)
         {:noreply, append_system_message(socket, "Mapped #{length(projects)} projects for #{agent}.")}
 
       _ ->
@@ -271,17 +321,17 @@ defmodule WorthWeb.ChatLive do
   end
 
   def handle_event("map_all_projects", %{"workspace" => workspace}, socket) do
-    discovered = Worth.Learning.ProjectMapping.discover()
-    Worth.Learning.ProjectMapping.set_all(workspace, discovered)
+    discovered = ProjectMapping.discover()
+    ProjectMapping.set_all(workspace, discovered)
     total = discovered |> Map.values() |> List.flatten() |> length()
     {:noreply, append_system_message(socket, "Mapped all #{total} discovered projects.")}
   end
 
   def handle_event("memory_query", %{"workspace" => workspace}, socket) do
     msg =
-      case Worth.Memory.Manager.recent(workspace: workspace, limit: 5) do
+      case Manager.recent(workspace: workspace, limit: 5) do
         {:ok, entries} when entries != [] ->
-          items = Enum.map(entries, &"  - #{truncate_memory(&1)}") |> Enum.join("\n")
+          items = Enum.map_join(entries, "\n", &"  - #{truncate_memory(&1)}")
           "Recent memories:\n#{items}"
 
         {:ok, []} ->
@@ -296,7 +346,7 @@ defmodule WorthWeb.ChatLive do
 
   def handle_event("memory_flush", %{"workspace" => workspace}, socket) do
     msg =
-      case Worth.Memory.Manager.working_flush(workspace: workspace) do
+      case Manager.working_flush(workspace: workspace) do
         {:ok, count} ->
           "Flushed #{count} working memories to long-term storage."
 
@@ -328,8 +378,6 @@ defmodule WorthWeb.ChatLive do
     end
   end
 
-  def handle_event("keydown", _params, socket), do: {:noreply, socket}
-
   def handle_event("quit_app", _params, socket) do
     System.stop(0)
     {:noreply, socket}
@@ -338,7 +386,7 @@ defmodule WorthWeb.ChatLive do
   # ── Onboarding events ──────────────────────────────────────────
 
   def handle_event("onboarding_save_dir", %{"workspace_directory" => path}, socket) do
-    case Worth.Config.Setup.set_workspace_directory(path) do
+    case Setup.set_workspace_directory(path) do
       :ok ->
         {:noreply, assign(socket, onboarding_step: 2)}
 
@@ -379,7 +427,7 @@ defmodule WorthWeb.ChatLive do
   end
 
   def handle_event("onboarding_save_key", %{"api_key" => key}, socket) do
-    case Worth.Config.Setup.set_openrouter_key(key) do
+    case Setup.set_openrouter_key(key) do
       :ok ->
         {:noreply, assign(socket, onboarding_step: 4)}
 
@@ -423,250 +471,17 @@ defmodule WorthWeb.ChatLive do
 
   # ── Settings events ────────────────────────────────────────────
 
-  def handle_event("settings_setup_password", %{"password" => password}, socket) do
-    case Worth.Settings.setup_password(password) do
-      :ok ->
-        Worth.Settings.import_from_config_store()
-        socket = load_settings_form(socket)
-        {:noreply, append_system_message(socket, "Master password set and vault unlocked.")}
-
-      {:error, :already_set} ->
-        {:noreply, append_system_message(socket, "Master password already exists. Use unlock.")}
-
-      {:error, :empty_password} ->
-        {:noreply, append_system_message(socket, "Password cannot be empty.")}
-
-      {:error, _} ->
-        {:noreply, append_system_message(socket, "Failed to set password.")}
-    end
-  end
-
-  def handle_event("settings_unlock", %{"password" => password}, socket) do
-    case Worth.Settings.unlock(password) do
-      :ok ->
-        export_secrets_to_env()
-        socket = load_settings_form(socket)
-        {:noreply, append_system_message(socket, "Vault unlocked.")}
-
-      {:error, :invalid_password} ->
-        {:noreply, append_system_message(socket, "Invalid password.")}
-
-      {:error, :no_password_set} ->
-        {:noreply, append_system_message(socket, "No master password set yet.")}
-    end
-  end
-
-  def handle_event("settings_lock", _params, socket) do
-    Worth.Settings.lock()
-    {:noreply, socket |> assign(settings_form: default_settings_form())}
-  end
-
-  def handle_event("settings_save", params, socket) do
-    saved =
-      params
-      |> Map.drop(["_target", "_csrf_token"])
-      |> Enum.reject(fn {_k, v} -> v == "" end)
-      |> Enum.map(fn {key, value} ->
-        category =
-          if String.contains?(key, "API_KEY") or String.contains?(key, "SECRET"), do: "secret", else: "preference"
-
-        Worth.Settings.put(key, value, category)
-        key
-      end)
-
-    if saved != [] do
-      export_secrets_to_env()
-      socket = load_settings_form(socket)
-      {:noreply, append_system_message(socket, "Saved: #{Enum.join(saved, ", ")}")}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_event("settings_save_key", %{"env_var" => env_var, "api_key" => key}, socket) when key != "" do
-    Worth.Settings.put(env_var, key, "secret")
-    System.put_env(env_var, key)
-    export_secrets_to_env()
-    socket = load_settings_form(socket)
-    {:noreply, append_system_message(socket, "Saved #{env_var}.")}
-  end
-
-  def handle_event("settings_save_key", _params, socket), do: {:noreply, socket}
-
-  def handle_event("settings_delete", %{"key" => key}, socket) do
-    Worth.Settings.delete(key)
-    socket = load_settings_form(socket)
-    {:noreply, append_system_message(socket, "Deleted: #{key}")}
-  end
-
-  def handle_event("settings_change_password", params, socket) do
-    current = params["current_password"] || ""
-    new_pw = params["new_password"] || ""
-
-    case Worth.Settings.change_password(current, new_pw) do
-      :ok ->
-        {:noreply, append_system_message(socket, "Master password changed.")}
-
-      {:error, :invalid_password} ->
-        {:noreply, append_system_message(socket, "Current password is incorrect.")}
-
-      {:error, :empty_password} ->
-        {:noreply, append_system_message(socket, "New password cannot be empty.")}
-
-      {:error, _} ->
-        {:noreply, append_system_message(socket, "Failed to change password.")}
-    end
-  end
-
-  def handle_event("settings_set_theme", %{"theme" => theme_name}, socket) do
-    case Worth.Theme.Registry.get(theme_name) do
-      {:ok, theme_mod} ->
-        Application.put_env(:worth, :theme, theme_name)
-
-        try do
-          if function_exported?(Worth.Settings, :put, 3) do
-            Worth.Settings.put("theme", theme_name, "preference")
-          end
-        rescue
-          _ -> nil
-        end
-
-        socket =
-          socket
-          |> assign(theme_module: theme_mod)
-          |> load_settings_form()
-          |> push_event("apply_theme", %{
-            bg_class: theme_mod.colors()[:background] || "",
-            css: theme_mod.css()
-          })
-
-        {:noreply, append_system_message(socket, "Theme changed to #{theme_name}.")}
-
-      {:error, _} ->
-        {:noreply, append_system_message(socket, "Unknown theme: #{theme_name}")}
-    end
-  end
-
-  def handle_event("settings_set_routing", %{"mode" => mode} = params, socket) do
-    preference = params["preference"] || "optimize_price"
-    filter = params["filter"] || ""
-
-    routing = %{
-      mode: mode,
-      preference: preference,
-      filter: if(filter == "free_only", do: "free_only", else: "")
-    }
-
-    Application.put_env(:worth, :model_routing, routing)
-
-    try do
-      Worth.Settings.put("model_routing_mode", mode, "preference")
-      Worth.Settings.put("model_routing_preference", preference, "preference")
-      Worth.Settings.put("model_routing_filter", routing.filter, "preference")
-    rescue
-      _ -> nil
-    end
-
-    socket = load_settings_form(socket)
-    label = routing_label(mode, preference, routing.filter)
-    {:noreply, append_system_message(socket, "Model routing: #{label}")}
-  end
-
-  def handle_event("settings_save_limits", params, socket) do
-    cost = parse_float(params["cost_limit"], 5.0)
-    turns = parse_int(params["max_turns"], 50)
-
-    Application.put_env(:worth, :cost_limit, cost)
-    Application.put_env(:worth, :max_turns, turns)
-
-    persist_preference("cost_limit", to_string(cost))
-    persist_preference("max_turns", to_string(turns))
-
-    socket = load_settings_form(socket)
-    {:noreply, append_system_message(socket, "Agent limits: $#{cost}/session, #{turns} max turns")}
-  end
-
-  def handle_event("settings_toggle_memory", _params, socket) do
-    current = Worth.Config.get([:memory, :enabled], true)
-    new_val = !current
-
-    Worth.Config.put_setting([:memory, :enabled], new_val)
-    persist_preference("memory_enabled", to_string(new_val))
-
-    socket = load_settings_form(socket)
-    {:noreply, append_system_message(socket, "Memory #{if new_val, do: "enabled", else: "disabled"}")}
-  end
-
-  def handle_event("settings_save_memory", params, socket) do
-    decay = parse_int(params["decay_days"], 90)
-
-    Worth.Config.put_setting([:memory, :decay_days], decay)
-    persist_preference("memory_decay_days", to_string(decay))
-
-    socket = load_settings_form(socket)
-    {:noreply, append_system_message(socket, "Memory decay: #{decay} days")}
-  end
-
-  def handle_event("settings_save_base_dir", %{"workspace_directory" => path}, socket) do
-    expanded = Path.expand(path)
-
-    if File.dir?(expanded) or File.mkdir_p(expanded) == :ok do
-      Worth.Config.put_setting([:workspace_directory], expanded)
-      persist_preference("workspace_directory", expanded)
-
-      socket = load_settings_form(socket)
-
-      {:noreply, append_system_message(socket, "Workspace directory set to #{expanded}.")}
-    else
-      {:noreply, append_system_message(socket, "Cannot create directory: #{expanded}")}
-    end
-  end
-
-  def handle_event("settings_back", _params, socket) do
-    {:noreply, assign(socket, view: :chat)}
-  end
-
-  defp routing_label("auto", pref, "free_only"), do: "Auto (#{pref}, free only)"
-  defp routing_label("auto", pref, _), do: "Auto (#{pref})"
-  defp routing_label("manual", _, "free_only"), do: "Manual (free only)"
-  defp routing_label("manual", _, _), do: "Manual (tier-based)"
-  defp routing_label(m, _, _), do: m
-
-  defp persist_preference(key, value) do
-    try do
-      Worth.Settings.put(key, value, "preference")
-    rescue
-      _ -> nil
-    end
-  end
-
-  defp parse_float(nil, default), do: default
-
-  defp parse_float(val, default) when is_binary(val) do
-    case Float.parse(val) do
-      {f, _} when f > 0 -> f
-      _ -> default
-    end
-  end
-
-  defp parse_float(_, default), do: default
-
-  defp parse_int(nil, default), do: default
-
-  defp parse_int(val, default) when is_binary(val) do
-    case Integer.parse(val) do
-      {i, _} when i > 0 -> i
-      _ -> default
-    end
-  end
-
-  defp parse_int(_, default), do: default
-
   # ── Event processing ──────────────────────────────────────────
 
   defp process_event(event, socket) do
-    Logger.info("[ChatLive.process_event] Processing event: #{inspect(event)}")
-    socket = assign(socket, cost: Worth.Metrics.session_cost())
+    cost =
+      try do
+        Worth.Metrics.session_cost()
+      rescue
+        _ -> socket.assigns.cost
+      end
+
+    socket = assign(socket, cost: cost)
 
     case event do
       {:text_chunk, chunk} ->
@@ -729,11 +544,11 @@ defmodule WorthWeb.ChatLive do
         Logger.info("[ChatLive] RECEIVED :done event with text: #{inspect(text)}")
 
         final =
-          if socket.assigns.streaming_text != "",
-            do: socket.assigns.streaming_text,
-            else: text || ""
+          if socket.assigns.streaming_text == "",
+            do: text || "",
+            else: socket.assigns.streaming_text
 
-        final = strip_eom_tokens(final) |> String.trim()
+        final = final |> strip_eom_tokens() |> String.trim()
 
         socket
         |> stream_insert(:messages, %{id: msg_id(), type: :assistant, content: final})
@@ -757,7 +572,9 @@ defmodule WorthWeb.ChatLive do
         Logger.info("[ChatLive] Received learning opportunity for #{report.workspace}")
 
         socket =
-          if report.unasked_agents != [] do
+          if report.unasked_agents == [] do
+            socket
+          else
             prompt = build_permission_prompt(report.unasked_agents)
 
             stream_insert(socket, :messages, %{
@@ -766,8 +583,6 @@ defmodule WorthWeb.ChatLive do
               content: prompt,
               permission_agents: report.unasked_agents
             })
-          else
-            socket
           end
 
         socket =
@@ -809,31 +624,24 @@ defmodule WorthWeb.ChatLive do
   # ── Helpers ─────────────────────────────────────────────────────
 
   defp send_to_brain(text, socket) do
-    workspace = socket.assigns.workspace
-
-    Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-      Worth.Brain.send_message(text, workspace)
-    end)
-
+    Worth.Brain.cast_message(text, socket.assigns.workspace)
     assign(socket, status: :running, streaming_text: "")
   end
 
   defp poll_resolved_model(socket) do
-    try do
-      primary = AgentEx.ModelRouter.resolve(:primary)
-      lightweight = AgentEx.ModelRouter.resolve(:lightweight)
+    primary = AgentEx.ModelRouter.resolve(:primary)
+    lightweight = AgentEx.ModelRouter.resolve(:lightweight)
 
-      models = %{
-        primary: format_model_slot(primary),
-        lightweight: format_model_slot(lightweight)
-      }
+    models = %{
+      primary: format_model_slot(primary),
+      lightweight: format_model_slot(lightweight)
+    }
 
-      routing = current_routing()
+    routing = current_routing()
 
-      assign(socket, models: models, model_routing: routing)
-    rescue
-      _ -> socket
-    end
+    assign(socket, models: models, model_routing: routing)
+  rescue
+    _ -> socket
   end
 
   defp format_model_slot(nil), do: %{label: nil, source: nil}
@@ -846,7 +654,7 @@ defmodule WorthWeb.ChatLive do
 
     %{
       label: Map.get(resolved, :label) || Map.get(resolved, :model_id),
-      source: if(provider != "", do: "#{source}/#{provider}", else: to_string(source)),
+      source: if(provider == "", do: to_string(source), else: "#{source}/#{provider}"),
       context_window: Map.get(resolved, :context_window)
     }
   end
@@ -860,11 +668,11 @@ defmodule WorthWeb.ChatLive do
   end
 
   defp push_input_history(socket, text) do
-    history = [text | socket.assigns.input_history] |> Enum.take(50)
+    history = Enum.take([text | socket.assigns.input_history], 50)
     assign(socket, input_history: history, history_index: -1)
   end
 
-  defp msg_id, do: System.unique_integer([:positive]) |> to_string()
+  defp msg_id, do: [:positive] |> System.unique_integer() |> to_string()
 
   defp default_settings_form do
     %{
@@ -885,17 +693,17 @@ defmodule WorthWeb.ChatLive do
   defp finish_onboarding(socket, profile) when is_map(profile) do
     # Set routing defaults
     routing = %{mode: "auto", preference: "optimize_price", filter: "free_only"}
-    Application.put_env(:worth, :model_routing, routing)
+    Worth.Config.put([:model_routing], routing)
 
     export_secrets_to_env()
 
     # Create the personal workspace
-    {:ok, _path} = Worth.Workspace.Service.create_personal(profile)
+    {:ok, _path} = Service.create_personal(profile)
 
     # Set personal as the current workspace
     workspace = "personal"
-    Application.put_env(:worth, :current_workspace, workspace)
-    Application.put_env(:worth, :current_mode, :code)
+    Worth.Config.put(:current_workspace, workspace)
+    Worth.Config.put(:current_mode, :code)
 
     # Start the Brain for this workspace
     Worth.Brain.ensure(workspace)
@@ -926,12 +734,12 @@ defmodule WorthWeb.ChatLive do
 
     if name != "" or role != "" or goals != "" do
       parts = []
-      parts = if name != "", do: parts ++ ["User's name is #{name}."], else: parts
-      parts = if role != "", do: parts ++ ["Role: #{role}."], else: parts
-      parts = if goals != "", do: parts ++ ["Goals: #{goals}"], else: parts
+      parts = if name == "", do: parts, else: parts ++ ["User's name is #{name}."]
+      parts = if role == "", do: parts, else: parts ++ ["Role: #{role}."]
+      parts = if goals == "", do: parts, else: parts ++ ["Goals: #{goals}"]
 
       text = Enum.join(parts, " ")
-      scope_id = Worth.Workspace.Learning.workspace_scope_id(workspace)
+      scope_id = Learning.workspace_scope_id(workspace)
 
       Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
         try do
@@ -949,16 +757,16 @@ defmodule WorthWeb.ChatLive do
   defp build_welcome_message(profile) do
     name = Map.get(profile, :name, "")
 
-    if name != "" do
-      "Hey #{name}! Your personal workspace is ready. What would you like to work on?"
-    else
+    if name == "" do
       "Your personal workspace is ready. What would you like to work on?"
+    else
+      "Hey #{name}! Your personal workspace is ready. What would you like to work on?"
     end
   end
 
   defp initial_view do
     cond do
-      Worth.Config.Setup.needs_setup?() -> :onboarding
+      Setup.needs_setup?() -> :onboarding
       safe_vault_call(fn -> Worth.Settings.has_password?() and Worth.Settings.locked?() end, false) -> :unlock
       true -> :chat
     end
@@ -982,7 +790,8 @@ defmodule WorthWeb.ChatLive do
         {[], []}
       else
         prefs =
-          Worth.Settings.all_by_category("preference")
+          "preference"
+          |> Worth.Settings.all_by_category()
           |> Enum.map(fn s -> %{key: s.key, value: s.encrypted_value} end)
 
         {provider_list(), prefs}
@@ -1006,16 +815,15 @@ defmodule WorthWeb.ChatLive do
   end
 
   defp theme_list do
-    Worth.Theme.Registry.list()
-    |> Enum.map(fn mod -> %{name: mod.name(), display_name: mod.display_name(), description: mod.description()} end)
+    Enum.map(Worth.Theme.Registry.list(), fn mod ->
+      %{name: mod.name(), display_name: mod.display_name(), description: mod.description()}
+    end)
   end
 
   defp list_workspaces do
-    try do
-      Worth.Workspace.Service.list()
-    rescue
-      _ -> []
-    end
+    Service.list()
+  rescue
+    _ -> []
   end
 
   defp current_theme_name do
@@ -1026,7 +834,8 @@ defmodule WorthWeb.ChatLive do
   defp provider_list do
     # Get stored keys from the vault
     stored_keys =
-      Worth.Settings.all_by_category("secret")
+      "secret"
+      |> Worth.Settings.all_by_category()
       |> Map.new(fn s -> {s.key, s.encrypted_value} end)
 
     AgentEx.LLM.ProviderRegistry.list()
@@ -1067,21 +876,17 @@ defmodule WorthWeb.ChatLive do
   defp key_hint(_, _), do: ""
 
   defp provider_model_count(provider_id) do
-    try do
-      AgentEx.LLM.Catalog.for_provider(provider_id) |> length()
-    rescue
-      _ -> 0
-    catch
-      :exit, _ -> 0
-    end
+    provider_id |> Catalog.for_provider() |> length()
+  rescue
+    _ -> 0
+  catch
+    :exit, _ -> 0
   end
 
   defp current_agent_limits do
-    config = Application.get_env(:worth, :agent, [])
-
     %{
-      cost_limit: config[:cost_limit] || Application.get_env(:worth, :cost_limit, 5.0),
-      max_turns: config[:max_turns] || Application.get_env(:worth, :max_turns, 50)
+      cost_limit: Worth.Config.get(:cost_limit, 5.0),
+      max_turns: Worth.Config.get(:max_turns, 50)
     }
   end
 
@@ -1093,7 +898,7 @@ defmodule WorthWeb.ChatLive do
   end
 
   defp current_routing do
-    case Application.get_env(:worth, :model_routing) do
+    case Worth.Config.get([:model_routing]) do
       %{mode: mode, preference: pref, filter: filter} ->
         %{mode: mode, preference: pref, filter: filter}
 
@@ -1103,13 +908,12 @@ defmodule WorthWeb.ChatLive do
   end
 
   defp load_last_session_messages(workspace) do
-    workspace_path = Worth.Workspace.Service.resolve_path(workspace)
+    workspace_path = Service.resolve_path(workspace)
 
-    with {:ok, sessions} <- Worth.Persistence.Transcript.list_sessions(workspace_path),
+    with {:ok, sessions} <- Transcript.list_sessions(workspace_path),
          last when not is_nil(last) <- List.last(sessions),
-         {:ok, entries} <- Worth.Persistence.Transcript.load(last, workspace_path) do
-      entries
-      |> Enum.map(fn entry ->
+         {:ok, entries} <- Transcript.load(last, workspace_path) do
+      Enum.map(entries, fn entry ->
         event = entry["event"] || %{}
         role = event["role"]
         text = event["text"] || ""
@@ -1131,21 +935,20 @@ defmodule WorthWeb.ChatLive do
   end
 
   defp coding_agents_list do
-    try do
-      Worth.CodingAgents.discover()
-    rescue
-      _ -> []
-    catch
-      :exit, _ -> []
-    end
+    Worth.CodingAgents.discover()
+  rescue
+    _ -> []
+  catch
+    :exit, _ -> []
   end
 
   defp export_secrets_to_env do
+    # Migrate any plaintext secrets to encrypted vault storage
     Worth.Config.export_vault_secrets()
 
-    # Trigger catalog refresh so providers pick up new keys
+    # Refresh catalog so provider availability is up to date
     Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-      AgentEx.LLM.Catalog.refresh()
+      Catalog.refresh()
     end)
   end
 
@@ -1156,11 +959,9 @@ defmodule WorthWeb.ChatLive do
 
   defp build_learning_prompt(report) do
     type_list =
-      report.opportunities
-      |> Enum.map(fn opp ->
+      Enum.map_join(report.opportunities, "\n", fn opp ->
         "- #{opp.description}: #{opp.item_count} items (#{format_bytes(opp.total_bytes)})"
       end)
-      |> Enum.join("\n")
 
     total_bytes = report.total_new_bytes + report.total_modified_bytes
 
@@ -1178,12 +979,10 @@ defmodule WorthWeb.ChatLive do
 
   defp build_permission_prompt(agents) do
     agent_list =
-      agents
-      |> Enum.map(fn a ->
+      Enum.map_join(agents, "\n", fn a ->
         paths = Enum.join(a.data_paths, ", ")
         "- **#{a.agent}** (reads from #{paths})"
       end)
-      |> Enum.join("\n")
 
     """
     The following coding agents have data on this machine that Worth can learn from:
@@ -1198,12 +997,10 @@ defmodule WorthWeb.ChatLive do
 
   defp build_project_mapping_prompt(workspace, discovered) do
     agent_sections =
-      discovered
-      |> Enum.map(fn {agent, projects} ->
+      Enum.map_join(discovered, "\n\n", fn {agent, projects} ->
         project_list = Enum.map_join(projects, "\n", &"    - #{&1}")
         "**#{format_agent_display(agent)}** (#{length(projects)} projects):\n#{project_list}"
       end)
-      |> Enum.join("\n\n")
 
     """
     The following coding agent projects were discovered. Select which ones are relevant to workspace "#{workspace}":
@@ -1222,7 +1019,7 @@ defmodule WorthWeb.ChatLive do
 
   defp format_learning_progress(%{phase: :start} = details) do
     sources = details[:sources] || []
-    names = Enum.map(sources, &inspect/1) |> Enum.join(", ")
+    names = Enum.map_join(sources, ", ", &inspect/1)
     "[learning] Starting pipeline: #{names}"
   end
 
@@ -1259,27 +1056,25 @@ defmodule WorthWeb.ChatLive do
   defp format_bytes(bytes), do: "#{div(bytes, 1024 * 1024)} MB"
 
   defp render_streaming(text) do
-    case Earmark.as_html(text, compact_output: true) do
-      {:ok, html, _} -> Phoenix.HTML.raw(html)
+    case MDEx.to_html(text) do
+      {:ok, html} -> Phoenix.HTML.raw(html)
       _ -> text
     end
   end
 
   defp fetch_memory_stats(workspace) do
-    try do
-      {:ok, working} = Worth.Memory.Manager.working_read(workspace: workspace)
-      {:ok, recent} = Worth.Memory.Manager.recent(limit: 100)
+    {:ok, working} = Manager.working_read(workspace: workspace)
+    {:ok, recent} = Manager.recent(limit: 100)
 
-      %{
-        working_count: length(working),
-        recent_count: length(recent),
-        enabled: Worth.Config.get([:memory, :enabled], true)
-      }
-    rescue
-      _ -> %{working_count: 0, recent_count: 0, enabled: true}
-    catch
-      :exit, _ -> %{working_count: 0, recent_count: 0, enabled: true}
-    end
+    %{
+      working_count: length(working),
+      recent_count: length(recent),
+      enabled: Worth.Config.get([:memory, :enabled], true)
+    }
+  rescue
+    _ -> %{working_count: 0, recent_count: 0, enabled: true}
+  catch
+    :exit, _ -> %{working_count: 0, recent_count: 0, enabled: true}
   end
 
   defp truncate_memory(entry) do

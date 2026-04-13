@@ -1,5 +1,8 @@
 defmodule Worth.Mcp.ConnectionMonitor do
+  @moduledoc false
   use GenServer
+
+  alias Worth.Mcp.Broker
 
   @check_interval 30_000
   @max_reconnect_attempts 10
@@ -32,7 +35,7 @@ defmodule Worth.Mcp.ConnectionMonitor do
   end
 
   defp check_all_connections(state) do
-    connections = Worth.Mcp.Broker.list_connections()
+    connections = Broker.list_connections()
 
     Enum.reduce(connections, state, fn conn, acc ->
       if conn.status == :connected do
@@ -68,12 +71,12 @@ defmodule Worth.Mcp.ConnectionMonitor do
           :ok
 
         config ->
-          Worth.Mcp.Broker.disconnect(server_name)
+          Broker.disconnect(server_name)
 
           backoff = min(trunc(:math.pow(2, attempt_count)) * 1_000, 30_000)
           Process.sleep(backoff)
 
-          case Worth.Mcp.Broker.connect(server_name, config) do
+          case Broker.connect(server_name, config) do
             {:ok, _} ->
               GenServer.cast(__MODULE__, {:reset_attempts, server_name})
               Phoenix.PubSub.broadcast(Worth.PubSub, "mcp:events", {:mcp_reconnected, server_name})

@@ -1,4 +1,5 @@
 defmodule WorthWeb.Commands.SystemCommands do
+  @moduledoc false
   import Phoenix.Component, only: [assign: 2]
   import Phoenix.LiveView, only: [stream: 4]
   import WorthWeb.Commands.Helpers

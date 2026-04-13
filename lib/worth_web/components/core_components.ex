@@ -91,4 +91,108 @@ defmodule WorthWeb.CoreComponents do
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
+
+  # ── Form primitives ────────────────────────────────────────────
+
+  @doc """
+  Renders a text input with the app's standard styling.
+  """
+  attr :name, :string, default: nil
+  attr :type, :string, default: "text"
+  attr :value, :any, default: nil
+  attr :placeholder, :string, default: nil
+  attr :rest, :global
+
+  def input(assigns) do
+    ~H"""
+    <input
+      type={@type}
+      name={@name}
+      value={@value}
+      placeholder={@placeholder}
+      class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
+      {@rest}
+    />
+    """
+  end
+
+  @doc """
+  Renders a primary button.
+  """
+  attr :type, :string, default: "button"
+  attr :rest, :global
+
+  slot :inner_block, required: true
+
+  def button(assigns) do
+    ~H"""
+    <button
+      type={@type}
+      class="px-4 py-2 rounded text-xs font-semibold bg-ctp-blue text-ctp-base hover:bg-ctp-lavender cursor-pointer"
+      {@rest}
+    >
+      {render_slot(@inner_block)}
+    </button>
+    """
+  end
+
+  @doc """
+  Renders a secondary button.
+  """
+  attr :type, :string, default: "button"
+  attr :rest, :global
+
+  slot :inner_block, required: true
+
+  def button_secondary(assigns) do
+    ~H"""
+    <button
+      type={@type}
+      class="px-4 py-2 rounded text-xs font-semibold bg-ctp-surface0 text-ctp-text border border-ctp-surface1 hover:bg-ctp-surface1 cursor-pointer"
+      {@rest}
+    >
+      {render_slot(@inner_block)}
+    </button>
+    """
+  end
+
+  @doc """
+  Renders a select dropdown with standard styling.
+  """
+  attr :name, :string, default: nil
+  attr :value, :any, default: nil
+  attr :rest, :global
+
+  slot :inner_block, required: true
+
+  def select(assigns) do
+    ~H"""
+    <select
+      name={@name}
+      class="w-full bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-2 text-sm text-ctp-text focus:outline-none focus:border-ctp-blue"
+      {@rest}
+    >
+      {render_slot(@inner_block)}
+    </select>
+    """
+  end
+
+  @doc """
+  Renders a form section container.
+  """
+  attr :title, :string, default: nil
+  attr :rest, :global
+
+  slot :inner_block, required: true
+
+  def form_section(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4" {@rest}>
+      <h2 :if={@title} class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-3">
+        {@title}
+      </h2>
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
 end

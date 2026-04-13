@@ -1,6 +1,8 @@
 defmodule Worth.Skill.ParserTest do
   use ExUnit.Case
 
+  alias Worth.Skill.Parser
+
   @valid_skill """
   ---
   name: test-skill
@@ -33,7 +35,7 @@ defmodule Worth.Skill.ParserTest do
 
   describe "parse/1" do
     test "parses valid SKILL.md with frontmatter and body" do
-      {:ok, skill} = Worth.Skill.Parser.parse(@valid_skill)
+      {:ok, skill} = Parser.parse(@valid_skill)
 
       assert skill.name == "test-skill"
       assert skill.description == "A test skill for parsing"
@@ -43,7 +45,7 @@ defmodule Worth.Skill.ParserTest do
     end
 
     test "parses skill with worth extensions" do
-      {:ok, skill} = Worth.Skill.Parser.parse(@skill_with_extensions)
+      {:ok, skill} = Parser.parse(@skill_with_extensions)
 
       assert skill.name == "advanced-skill"
       assert skill.loading == :on_demand
@@ -56,19 +58,19 @@ defmodule Worth.Skill.ParserTest do
     end
 
     test "returns error for missing frontmatter" do
-      assert {:error, msg} = Worth.Skill.Parser.parse("Just some text without frontmatter")
+      assert {:error, msg} = Parser.parse("Just some text without frontmatter")
       assert msg =~ "No frontmatter"
     end
 
     test "returns error for invalid YAML" do
       invalid = "---\nname: [invalid yaml: {{{\n---\nBody"
-      assert {:error, msg} = Worth.Skill.Parser.parse(invalid)
+      assert {:error, msg} = Parser.parse(invalid)
       assert msg =~ "YAML"
     end
 
     test "handles missing optional fields with defaults" do
       minimal = "---\nname: minimal\n---\nBody"
-      {:ok, skill} = Worth.Skill.Parser.parse(minimal)
+      {:ok, skill} = Parser.parse(minimal)
 
       assert skill.loading == :on_demand
       assert skill.model_tier == :any
@@ -81,7 +83,7 @@ defmodule Worth.Skill.ParserTest do
   describe "parse_file/1" do
     test "parses a core skill file" do
       path = Path.join(:code.priv_dir(:worth), "core_skills/agent-tools/SKILL.md")
-      {:ok, skill} = Worth.Skill.Parser.parse_file(path)
+      {:ok, skill} = Parser.parse_file(path)
 
       assert skill.name == "agent-tools"
       assert skill.trust_level == :core
@@ -90,16 +92,16 @@ defmodule Worth.Skill.ParserTest do
     end
 
     test "returns error for nonexistent file" do
-      assert {:error, msg} = Worth.Skill.Parser.parse_file("/nonexistent/SKILL.md")
+      assert {:error, msg} = Parser.parse_file("/nonexistent/SKILL.md")
       assert msg =~ "Failed to read"
     end
   end
 
   describe "to_frontmatter_string/1" do
     test "roundtrips a parsed skill" do
-      {:ok, skill} = Worth.Skill.Parser.parse(@valid_skill)
-      serialized = Worth.Skill.Parser.to_frontmatter_string(skill)
-      {:ok, reparsed} = Worth.Skill.Parser.parse(serialized)
+      {:ok, skill} = Parser.parse(@valid_skill)
+      serialized = Parser.to_frontmatter_string(skill)
+      {:ok, reparsed} = Parser.parse(serialized)
 
       assert reparsed.name == skill.name
       assert reparsed.description == skill.description

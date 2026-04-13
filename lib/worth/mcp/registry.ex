@@ -1,4 +1,5 @@
 defmodule Worth.Mcp.Registry do
+  @moduledoc false
   @table :worth_mcp_registry
 
   def init do
@@ -34,12 +35,14 @@ defmodule Worth.Mcp.Registry do
   end
 
   def all do
-    :ets.tab2list(@table)
-    |> Enum.map(fn {name, pid, meta} -> Map.put(meta, :name, name) |> Map.put(:pid, pid) end)
+    @table
+    |> :ets.tab2list()
+    |> Enum.map(fn {name, pid, meta} -> meta |> Map.put(:name, name) |> Map.put(:pid, pid) end)
   end
 
   def server_names do
-    :ets.match(@table, {:"$1", :_, :_})
+    @table
+    |> :ets.match({:"$1", :_, :_})
     |> List.flatten()
   end
 

@@ -1,12 +1,12 @@
 defmodule Worth.Kits do
+  @moduledoc false
   @base_url "https://journeykits.ai/api"
 
   def search(query, opts \\ []) do
     url = "#{@base_url}/kits/search?q=#{URI.encode_www_form(query)}"
 
     url =
-      opts
-      |> Enum.reduce(url, fn
+      Enum.reduce(opts, url, fn
         {:tag, tag}, acc -> acc <> "&tag[]=#{URI.encode_www_form(tag)}"
         {:tech, tech}, acc -> acc <> "&tech[]=#{URI.encode_www_form(tech)}"
         _, acc -> acc
@@ -88,33 +88,28 @@ defmodule Worth.Kits do
   def publish(kit_dir, opts \\ []) do
     kit_md = Path.join(kit_dir, "kit.md")
 
-    if !File.exists?(kit_md) do
-      {:error, "No kit.md found in #{kit_dir}"}
-    else
-      case build_publish_payload(kit_dir) do
-        {:ok, payload} ->
-          api_key = opts[:api_key] || System.get_env("JOURNEY_API_KEY")
+    if File.exists?(kit_md) do
+      {:ok, payload} = build_publish_payload(kit_dir)
+      api_key = opts[:api_key] || System.get_env("JOURNEY_API_KEY")
 
-          headers = if api_key, do: [{"Authorization", "Bearer #{api_key}"}], else: []
+      headers = if api_key, do: [{"Authorization", "Bearer #{api_key}"}], else: []
 
-          case Req.post("#{@base_url}/kits/import",
-                 json: payload,
-                 headers: headers,
-                 receive_timeout: 15_000
-               ) do
-            {:ok, %Req.Response{status: 201, body: body}} ->
-              {:ok, body}
+      case Req.post("#{@base_url}/kits/import",
+             json: payload,
+             headers: headers,
+             receive_timeout: 15_000
+           ) do
+        {:ok, %Req.Response{status: 201, body: body}} ->
+          {:ok, body}
 
-            {:ok, %Req.Response{status: status, body: body}} ->
-              {:error, "Publish failed (#{status}): #{inspect(body)}"}
+        {:ok, %Req.Response{status: status, body: body}} ->
+          {:error, "Publish failed (#{status}): #{inspect(body)}"}
 
-            {:error, reason} ->
-              {:error, "Failed to reach JourneyKits: #{inspect(reason)}"}
-          end
-
-        error ->
-          error
+        {:error, reason} ->
+          {:error, "Failed to reach JourneyKits: #{inspect(reason)}"}
       end
+    else
+      {:error, "No kit.md found in #{kit_dir}"}
     end
   end
 
@@ -136,8 +131,6 @@ defmodule Worth.Kits do
     end)
   end
 
-  defp extract_skills(_, _, _), do: :ok
-
   defp maybe_write_sources(%{sources: sources}, nil) when is_list(sources), do: :ok
 
   defp maybe_write_sources(%{sources: sources}, workspace_path) when is_list(sources) do
@@ -151,8 +144,6 @@ defmodule Worth.Kits do
         :ok
     end)
   end
-
-  defp maybe_write_sources(_, _), do: :ok
 
   defp track_installation(owner, slug, payload) do
     config_file = Path.expand("installed_kits.json", Worth.Paths.data_dir())
@@ -169,7 +160,7 @@ defmodule Worth.Kits do
     updated =
       Map.put(existing, key, %{
         version: payload[:version] || "unknown",
-        installed_at: DateTime.utc_now() |> DateTime.to_iso8601(),
+        installed_at: DateTime.to_iso8601(DateTime.utc_now()),
         skills: (payload[:skills] || []) |> Enum.map(& &1[:name]) |> Enum.filter(& &1),
         status: "active"
       })
@@ -238,8 +229,8 @@ defmodule Worth.Kits do
   defp parse_install_payload(body) when is_map(body) do
     %{
       version: body["version"],
-      skills: (body["skills"] || []) |> Enum.map(&normalize_skill/1),
-      sources: (body["sources"] || body["files"] || []) |> Enum.map(&normalize_source/1),
+      skills: Enum.map(body["skills"] || [], &normalize_skill/1),
+      sources: Enum.map(body["sources"] || body["files"] || [], &normalize_source/1),
       instructions: body["instructions"] || body["steps"] || ""
     }
   end

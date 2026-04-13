@@ -16,11 +16,15 @@ defmodule Worth.LLM do
     route has failed does it fall through to `chat_with_configured/2`.
   """
 
+  alias AgentEx.LLM.Error
+  alias AgentEx.LLM.Provider
+  alias AgentEx.LLM.Provider.Anthropic
+
   require Logger
 
   @providers %{
     "openrouter" => AgentEx.LLM.Provider.OpenRouter,
-    "anthropic" => AgentEx.LLM.Provider.Anthropic,
+    "anthropic" => Anthropic,
     "openai" => AgentEx.LLM.Provider.OpenAI,
     "groq" => AgentEx.LLM.Provider.Groq
   }
@@ -44,12 +48,12 @@ defmodule Worth.LLM do
   defp stream_chat_with_route(params, %{provider_name: name} = route, on_chunk) do
     case provider_for_route(name) do
       {:ok, provider_module} ->
-        opts = [model: route.model_id, on_chunk: on_chunk]
-        AgentEx.LLM.Provider.stream_chat(provider_module, strip_route(params), opts)
+        opts = [model: route.model_id, on_chunk: on_chunk] ++ credential_opts(provider_module)
+        Provider.stream_chat(provider_module, strip_route(params), opts)
 
       :error ->
         {:error,
-         %AgentEx.LLM.Error{
+         %Error{
            message: "Unknown route provider: #{name}",
            classification: :permanent
          }}
@@ -64,7 +68,8 @@ defmodule Worth.LLM do
       get_in(config, [:llm, :providers, provider, :default_model]) ||
         default_model_for(provider_module)
 
-    AgentEx.LLM.Provider.stream_chat(provider_module, params, model: model, on_chunk: on_chunk)
+    opts = [model: model, on_chunk: on_chunk] ++ credential_opts(provider_module)
+    Provider.stream_chat(provider_module, params, opts)
   end
 
   # ----- chat/2: single dispatch -----
@@ -128,30 +133,29 @@ defmodule Worth.LLM do
 
   defp safe_resolve_all(tier) do
     AgentEx.ModelRouter.resolve_all(tier)
-  rescue
-    _ -> :error
   catch
+    :exit, {:noproc, _} -> :error
     :exit, _ -> :error
   end
 
   defp report_success(route) do
     AgentEx.ModelRouter.report_success(route.provider_name, route.model_id)
-  rescue
-    _ -> :ok
+    :ok
   catch
+    :exit, {:noproc, _} -> :ok
     :exit, _ -> :ok
   end
 
   defp report_error(route, failure, retry_after_ms) do
     opts = if is_integer(retry_after_ms), do: [retry_after_ms: retry_after_ms], else: []
     AgentEx.ModelRouter.report_error(route.provider_name, route.model_id, failure, opts)
-  rescue
-    _ -> :ok
+    :ok
   catch
+    :exit, {:noproc, _} -> :ok
     :exit, _ -> :ok
   end
 
-  defp classify_error({:error, %AgentEx.LLM.Error{classification: classification}}) do
+  defp classify_error({:error, %Error{classification: classification}}) do
     legacy_failure(classification)
   end
 
@@ -196,7 +200,7 @@ defmodule Worth.LLM do
   defp legacy_failure(:session_expired), do: :auth_error
   defp legacy_failure(_), do: :other
 
-  defp extract_retry_after({:error, %AgentEx.LLM.Error{retry_after_ms: ms}}) when is_integer(ms) and ms > 0, do: ms
+  defp extract_retry_after({:error, %Error{retry_after_ms: ms}}) when is_integer(ms) and ms > 0, do: ms
   defp extract_retry_after({:error, %{retry_after_ms: ms}}) when is_integer(ms) and ms > 0, do: ms
   defp extract_retry_after(_), do: nil
 
@@ -214,12 +218,12 @@ defmodule Worth.LLM do
   defp chat_with_route(params, %{provider_name: name} = route) do
     case provider_for_route(name) do
       {:ok, provider_module} ->
-        opts = [model: route.model_id]
-        AgentEx.LLM.Provider.chat(provider_module, strip_route(params), opts)
+        opts = [model: route.model_id] ++ credential_opts(provider_module)
+        Provider.chat(provider_module, strip_route(params), opts)
 
       :error ->
         {:error,
-         %AgentEx.LLM.Error{
+         %Error{
            message: "Unknown route provider: #{name}",
            classification: :permanent
          }}
@@ -249,7 +253,8 @@ defmodule Worth.LLM do
       get_in(config, [:llm, :providers, provider, :default_model]) ||
         default_model_for(provider_module)
 
-    AgentEx.LLM.Provider.chat(provider_module, params, model: model)
+    opts = [model: model] ++ credential_opts(provider_module)
+    Provider.chat(provider_module, params, opts)
   end
 
   defp provider_module_for(provider) do
@@ -258,7 +263,7 @@ defmodule Worth.LLM do
     case Map.get(@providers, key) do
       nil ->
         case AgentEx.LLM.ProviderRegistry.get(provider) do
-          nil -> AgentEx.LLM.Provider.Anthropic
+          nil -> Anthropic
           module -> module
         end
 
@@ -271,8 +276,31 @@ defmodule Worth.LLM do
     module.default_models()
     |> Enum.find(&(&1.tier_hint == :primary))
     |> case do
-      nil -> (module.default_models() |> List.first() || %{id: "unknown"}).id
+      nil -> (List.first(module.default_models()) || %{id: "unknown"}).id
       model -> model.id
     end
+  end
+
+  # ----- credential injection -----
+
+  # Resolve the API key for a provider from Worth.Settings (secret or
+  # plaintext fallback). Returns opts to merge into the Provider call.
+  defp credential_opts(provider_module) do
+    case resolve_api_key(provider_module) do
+      key when is_binary(key) and key != "" -> [api_key: key]
+      _ -> []
+    end
+  end
+
+  defp resolve_api_key(provider_module) do
+    env_vars = provider_module.env_vars()
+
+    # Try each env var name as a Settings key (secret first, then preference fallback)
+    Enum.find_value(env_vars, fn var ->
+      case Worth.Settings.get(var) do
+        key when is_binary(key) and key != "" -> key
+        _ -> nil
+      end
+    end)
   end
 end

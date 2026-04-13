@@ -131,7 +131,7 @@ defmodule Worth.Learning.TelemetryBridge do
   defp workspace_from_scope(nil), do: nil
 
   defp workspace_from_scope(scope_id) when is_binary(scope_id) do
-    default = Application.get_env(:worth, :current_workspace, "personal")
+    default = Worth.Config.get(:current_workspace, "personal")
 
     try do
       import Ecto.Query
@@ -144,7 +144,7 @@ defmodule Worth.Learning.TelemetryBridge do
         )
       ) || default
     rescue
-      _ -> default
+      Ecto.QueryError -> default
     end
   end
 end

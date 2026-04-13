@@ -1,4 +1,5 @@
 defmodule WorthWeb.Commands.SettingsCommands do
+  @moduledoc false
   import Phoenix.Component, only: [assign: 2]
 
   def handle(:settings, socket) do

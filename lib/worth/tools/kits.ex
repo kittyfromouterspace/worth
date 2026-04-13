@@ -1,4 +1,5 @@
 defmodule Worth.Tools.Kits do
+  @moduledoc false
   def definitions do
     [
       %{

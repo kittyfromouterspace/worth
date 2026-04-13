@@ -1,55 +1,58 @@
 defmodule WorthWeb.Commands.ProviderCommands do
+  @moduledoc false
   import WorthWeb.Commands.Helpers
 
+  alias AgentEx.LLM.Catalog
+  alias AgentEx.LLM.ProviderRegistry
+  alias AgentEx.LLM.UsageManager
+
   def handle({:provider, :list}, socket) do
-    providers = AgentEx.LLM.ProviderRegistry.list()
+    providers = ProviderRegistry.list()
 
     if providers == [] do
       append_system(socket, "No providers registered.")
     else
       lines =
-        providers
-        |> Enum.map(fn p ->
+        Enum.map_join(providers, "\n", fn p ->
           status = if p.status == :enabled, do: "enabled", else: "disabled"
 
           models =
             try do
-              p.module.default_models() |> length()
+              length(p.module.default_models())
             rescue
               _ -> "?"
             end
 
           "  [#{status}] #{p.module.label()} (#{p.id}) - #{models} models"
         end)
-        |> Enum.join("\n")
 
       append_system(socket, "Providers:\n#{lines}")
     end
   end
 
   def handle({:provider, {:enable, id}}, socket) do
-    case AgentEx.LLM.ProviderRegistry.enable(id) do
+    case ProviderRegistry.enable(id) do
       :ok -> append_system(socket, "Provider #{id} enabled.")
       {:error, :not_found} -> append_error(socket, "Provider '#{id}' not found.")
     end
   end
 
   def handle({:provider, {:disable, id}}, socket) do
-    case AgentEx.LLM.ProviderRegistry.disable(id) do
+    case ProviderRegistry.disable(id) do
       :ok -> append_system(socket, "Provider #{id} disabled.")
       {:error, :not_found} -> append_error(socket, "Provider '#{id}' not found.")
     end
   end
 
   def handle({:catalog, :refresh}, socket) do
-    AgentEx.LLM.Catalog.refresh()
-    info = AgentEx.LLM.Catalog.info()
+    Catalog.refresh()
+    info = Catalog.info()
     append_system(socket, "Catalog refresh triggered. #{info.model_count} models loaded.")
   end
 
   def handle(:usage, socket) do
     metrics = Worth.Metrics.session()
-    snapshots = AgentEx.LLM.UsageManager.snapshot()
+    snapshots = UsageManager.snapshot()
 
     provider_section =
       if snapshots == [] do
@@ -90,7 +93,7 @@ defmodule WorthWeb.Commands.ProviderCommands do
   end
 
   def handle({:usage, :refresh}, socket) do
-    AgentEx.LLM.UsageManager.refresh()
+    UsageManager.refresh()
     append_system(socket, "Usage refresh triggered.")
   end
 end

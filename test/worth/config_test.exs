@@ -2,7 +2,7 @@ defmodule Worth.ConfigTest do
   use ExUnit.Case, async: true
 
   test "get returns config values" do
-    assert Worth.Config.get(:cost_limit) != nil
+    assert Worth.Config.get(:cost_limit)
   end
 
   test "get returns default for missing keys" do
@@ -16,7 +16,7 @@ defmodule Worth.ConfigTest do
 end
 
 defmodule Worth.Config.SetupTest do
-  use ExUnit.Case
+  use Worth.DataCase
 
   alias Worth.Config.Setup
 
@@ -34,12 +34,12 @@ defmodule Worth.Config.SetupTest do
   test "needs_setup? requires workspace_directory" do
     original = Worth.Config.get(:workspace_directory)
 
-    try do
-      Worth.Config.put_setting([:workspace_directory], nil)
-      assert Setup.needs_setup?()
-    after
+    on_exit(fn ->
       Worth.Config.put_setting([:workspace_directory], original)
-    end
+    end)
+
+    Worth.Config.put_setting([:workspace_directory], nil)
+    assert Setup.needs_setup?()
   end
 
   test "default_embedding_model is local model" do

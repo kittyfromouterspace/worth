@@ -39,13 +39,13 @@ defmodule Worth.Agent.Tracker do
 
   @doc "Return all active agents as a list of maps, sorted by depth then start time."
   def list_active do
-    if :ets.whereis(@table) != :undefined do
+    if :ets.whereis(@table) == :undefined do
+      []
+    else
       @table
       |> :ets.tab2list()
       |> Enum.map(&elem(&1, 1))
       |> Enum.sort_by(&{&1.depth, &1.started_at})
-    else
-      []
     end
   rescue
     _ -> []

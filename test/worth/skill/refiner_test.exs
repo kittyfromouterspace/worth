@@ -1,6 +1,9 @@
 defmodule Worth.Skill.RefinerTest do
   use ExUnit.Case, async: false
 
+  alias Worth.Skill.Paths
+  alias Worth.Skill.Refiner
+
   setup do
     tmp_dir = System.tmp_dir!()
     skill_dir = Path.join(tmp_dir, "refiner-test-skill")
@@ -32,11 +35,11 @@ defmodule Worth.Skill.RefinerTest do
     ws_path = Worth.Workspace.Service.resolve_path("personal")
     File.mkdir_p!(Path.join(ws_path, ".worth/skills"))
 
-    unless File.exists?(Path.join(ws_path, "IDENTITY.md")) do
+    if !File.exists?(Path.join(ws_path, "IDENTITY.md")) do
       File.write!(Path.join(ws_path, "IDENTITY.md"), "# personal\n")
     end
 
-    user_skills = Worth.Skill.Paths.user_dir("personal")
+    user_skills = Paths.user_dir("personal")
     dest = Path.join(user_skills, "refiner-test-skill")
 
     File.rm_rf(dest)
@@ -56,7 +59,7 @@ defmodule Worth.Skill.RefinerTest do
 
   describe "refine/2" do
     test "refines a failing skill without LLM" do
-      result = Worth.Skill.Refiner.refine("refiner-test-skill")
+      result = Refiner.refine("refiner-test-skill")
       assert {:ok, %{version: 2}} = result
     end
 
@@ -85,14 +88,14 @@ defmodule Worth.Skill.RefinerTest do
 
       File.write!(Path.join(skill_dir, "SKILL.md"), skill_content)
 
-      user_skills = Worth.Skill.Paths.user_dir("personal")
+      user_skills = Paths.user_dir("personal")
       dest = Path.join(user_skills, "healthy-skill")
       File.rm_rf(dest)
       File.mkdir_p!(user_skills)
       File.cp_r(skill_dir, dest)
       Worth.Skill.Registry.refresh()
 
-      result = Worth.Skill.Refiner.refine("healthy-skill")
+      result = Refiner.refine("healthy-skill")
       assert {:ok, :no_refinement_needed} = result
 
       File.rm_rf(dest)
@@ -102,14 +105,14 @@ defmodule Worth.Skill.RefinerTest do
 
   describe "reactive_refine/3" do
     test "appends failure context without LLM" do
-      result = Worth.Skill.Refiner.reactive_refine("refiner-test-skill", "Timeout on large files")
+      result = Refiner.reactive_refine("refiner-test-skill", "Timeout on large files")
       assert {:ok, %{version: 2}} = result
     end
   end
 
   describe "proactive_review/1" do
     test "returns error for nonexistent skill" do
-      assert {:error, _} = Worth.Skill.Refiner.proactive_review("nonexistent-skill-xyz")
+      assert {:error, _} = Refiner.proactive_review("nonexistent-skill-xyz")
     end
   end
 end

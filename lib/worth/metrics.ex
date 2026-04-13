@@ -32,6 +32,8 @@ defmodule Worth.Metrics do
             by_provider: %{},
             started_at: nil
 
+  @type t :: %__MODULE__{}
+
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end

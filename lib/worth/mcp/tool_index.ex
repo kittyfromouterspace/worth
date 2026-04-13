@@ -1,4 +1,5 @@
 defmodule Worth.Mcp.ToolIndex do
+  @moduledoc false
   @table :worth_mcp_tool_index
 
   def init do
@@ -43,7 +44,8 @@ defmodule Worth.Mcp.ToolIndex do
   end
 
   def all_tools do
-    :ets.tab2list(@table)
+    @table
+    |> :ets.tab2list()
     |> Enum.filter(fn {key, _, _, _} -> not String.contains?(key, ":") end)
     |> Enum.map(fn {key, server, _original, schema} ->
       %{
@@ -59,7 +61,8 @@ defmodule Worth.Mcp.ToolIndex do
   def tools_for_server(server_name) do
     server = to_string(server_name)
 
-    :ets.tab2list(@table)
+    @table
+    |> :ets.tab2list()
     |> Enum.filter(fn {_key, srv, _, _} -> srv == server end)
     |> Enum.filter(fn {key, _, _, _} -> not String.contains?(key, ":") end)
     |> Enum.map(fn {_key, _srv, _original, schema} ->

@@ -34,8 +34,7 @@ defmodule Worth.Learning.ProjectMapping do
 
   def set_all(workspace_name, mapping) when is_map(mapping) do
     normalized =
-      mapping
-      |> Enum.into(%{}, fn {k, v} -> {to_string(k), Enum.map(v, &to_string/1)} end)
+      Map.new(mapping, fn {k, v} -> {to_string(k), Enum.map(v, &to_string/1)} end)
 
     State.save(workspace_name, @mapping_key, normalized)
   end
@@ -59,14 +58,13 @@ defmodule Worth.Learning.ProjectMapping do
       {provider.agent_name(), projects}
     end)
     |> Enum.reject(fn {_, projects} -> projects == [] end)
-    |> Enum.into(%{})
+    |> Map.new()
   end
 
   def unmapped_for_workspace(workspace_name) do
     current_mapping = get(workspace_name)
 
-    discover()
-    |> Enum.flat_map(fn {agent, projects} ->
+    Enum.flat_map(discover(), fn {agent, projects} ->
       mapped = Map.get(current_mapping, to_string(agent), nil)
 
       if is_nil(mapped) do

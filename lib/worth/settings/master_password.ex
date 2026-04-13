@@ -7,6 +7,7 @@ defmodule Worth.Settings.MasterPassword do
   """
 
   use Ecto.Schema
+
   import Ecto.Changeset
 
   schema "worth_master_password" do
@@ -14,6 +15,8 @@ defmodule Worth.Settings.MasterPassword do
     field(:key_salt, :binary)
     timestamps()
   end
+
+  @type t :: %__MODULE__{}
 
   def changeset(record, attrs) do
     record

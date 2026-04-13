@@ -1,5 +1,8 @@
 defmodule WorthWeb.Commands.SkillCommands do
+  @moduledoc false
   import WorthWeb.Commands.Helpers
+
+  alias Worth.Skill.Service
 
   def handle({:skill, :list}, socket) do
     skills = Worth.Skill.Registry.all()
@@ -8,19 +11,17 @@ defmodule WorthWeb.Commands.SkillCommands do
       append_system(socket, "No skills loaded.")
     else
       lines =
-        skills
-        |> Enum.map(fn s ->
+        Enum.map_join(skills, "\n", fn s ->
           loading = if s.loading == :always, do: "[always]", else: "[on-demand]"
           "  [#{s.trust_level}] #{loading} #{s.name}: #{String.slice(s.description, 0, 60)}"
         end)
-        |> Enum.join("\n")
 
       append_system(socket, "Skills:\n#{lines}")
     end
   end
 
   def handle({:skill, {:read, name}}, socket) do
-    case Worth.Skill.Service.read_body(name) do
+    case Service.read_body(name) do
       {:ok, body} ->
         preview = String.slice(body, 0, 500)
         append_system(socket, "Skill '#{name}':\n#{preview}")
@@ -31,7 +32,7 @@ defmodule WorthWeb.Commands.SkillCommands do
   end
 
   def handle({:skill, {:remove, name}}, socket) do
-    case Worth.Skill.Service.remove(name) do
+    case Service.remove(name) do
       {:ok, _} -> append_system(socket, "Skill '#{name}' removed.")
       {:error, reason} -> append_error(socket, reason)
     end
@@ -41,9 +42,7 @@ defmodule WorthWeb.Commands.SkillCommands do
     case Worth.Brain.skill_history(socket.assigns.workspace, name) do
       {:ok, versions} when is_list(versions) and versions != [] ->
         lines =
-          versions
-          |> Enum.map(fn {v, info} -> "  v#{v} (#{info.size} bytes)" end)
-          |> Enum.join("\n")
+          Enum.map_join(versions, "\n", fn {v, info} -> "  v#{v} (#{info.size} bytes)" end)
 
         append_system(socket, "Skill '#{name}' versions:\n#{lines}")
 

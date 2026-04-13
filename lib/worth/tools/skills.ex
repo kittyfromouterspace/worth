@@ -1,6 +1,8 @@
 defmodule Worth.Tools.Skills do
   @moduledoc false
 
+  alias Worth.Skill.Service
+
   def definitions do
     [
       %{
@@ -77,9 +79,9 @@ defmodule Worth.Tools.Skills do
 
     skills =
       case filter do
-        "core" -> Worth.Skill.Registry.all() |> Enum.filter(&(&1.trust_level == :core))
-        "installed" -> Worth.Skill.Registry.all() |> Enum.filter(&(&1.trust_level == :installed))
-        "learned" -> Worth.Skill.Registry.all() |> Enum.filter(&(&1.trust_level == :learned))
+        "core" -> Enum.filter(Worth.Skill.Registry.all(), &(&1.trust_level == :core))
+        "installed" -> Enum.filter(Worth.Skill.Registry.all(), &(&1.trust_level == :installed))
+        "learned" -> Enum.filter(Worth.Skill.Registry.all(), &(&1.trust_level == :learned))
         "always" -> Worth.Skill.Registry.always_loaded()
         "on_demand" -> Worth.Skill.Registry.on_demand()
         _ -> Worth.Skill.Registry.all()
@@ -89,27 +91,22 @@ defmodule Worth.Tools.Skills do
       {:ok, "No skills found."}
     else
       lines =
-        skills
-        |> Enum.map(fn s ->
+        Enum.map_join(skills, "\n", fn s ->
           loading = if s.loading == :always, do: "[always]", else: "[on-demand]"
           "[#{s.trust_level}] #{loading} #{s.name}: #{s.description}"
         end)
-        |> Enum.join("\n")
 
       {:ok, "Available skills:\n#{lines}"}
     end
   end
 
   def execute("skill_read", %{"name" => name}, _workspace) do
-    case Worth.Skill.Service.read(name) do
+    case Service.read(name) do
       {:ok, skill} ->
         {:ok, skill.body}
 
-      {:error, reason} when is_binary(reason) ->
-        {:error, "Failed to read skill '#{name}': #{reason}"}
-
       {:error, reason} ->
-        {:error, "Failed to read skill '#{name}': #{inspect(reason)}"}
+        {:error, "Failed to read skill '#{name}': #{reason}"}
     end
   end
 
@@ -120,14 +117,14 @@ defmodule Worth.Tools.Skills do
       provenance: :human
     ]
 
-    case Worth.Skill.Service.install(%{type: :content, name: name, content: content}, opts) do
+    case Service.install(%{type: :content, name: name, content: content}, opts) do
       {:ok, ^name} -> {:ok, "Skill '#{name}' installed successfully."}
       other -> {:error, "Failed to install: #{inspect(other)}"}
     end
   end
 
   def execute("skill_remove", %{"name" => name}, _workspace) do
-    case Worth.Skill.Service.remove(name) do
+    case Service.remove(name) do
       {:ok, ^name} -> {:ok, "Skill '#{name}' removed."}
       {:error, reason} -> {:error, reason}
     end
@@ -141,7 +138,7 @@ defmodule Worth.Tools.Skills do
       allowed_tools: args["allowed_tools"]
     ]
 
-    case Worth.Skill.Service.install(%{type: :content, name: name, content: content}, opts) do
+    case Service.install(%{type: :content, name: name, content: content}, opts) do
       {:ok, ^name} -> {:ok, "Learned skill '#{name}' created."}
       other -> {:error, "Failed to create skill: #{inspect(other)}"}
     end

@@ -1,4 +1,8 @@
 defmodule WorthWeb.Endpoint do
+  @moduledoc """
+  Phoenix endpoint for the Worth web UI.
+  """
+
   use Phoenix.Endpoint, otp_app: :worth
 
   # The session will be stored in the cookie and signed,

@@ -1,4 +1,5 @@
 defmodule Worth.CLI do
+  @moduledoc false
   def main(args \\ []) do
     {opts, _rest} =
       OptionParser.parse!(args,
@@ -45,7 +46,7 @@ defmodule Worth.CLI do
         mode: opts[:mode]
       )
 
-    unless opts[:no_open] do
+    if !opts[:no_open] do
       open_browser(url)
     end
 

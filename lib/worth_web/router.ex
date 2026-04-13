@@ -1,4 +1,8 @@
 defmodule WorthWeb.Router do
+  @moduledoc """
+  Routes for the Worth web UI.
+  """
+
   use WorthWeb, :router
 
   pipeline :browser do

@@ -4,19 +4,25 @@ defmodule Worth.Tools.Router do
   Single source of truth for tool definition aggregation and dispatch.
   """
 
-  @tool_modules [
+  @base_tool_modules [
     {"memory_", Worth.Tools.Memory},
     {"skill_", Worth.Tools.Skills},
     {"mcp_", Worth.Tools.Mcp},
-    {"kit_", Worth.Tools.Kits}
+    {"kit_", Worth.Tools.Kits},
+    {"workspace_", Worth.Tools.Workspace},
+    {"web_", Worth.Tools.Web}
   ]
 
-  def all_definitions do
-    Enum.flat_map(@tool_modules, fn {_prefix, mod} -> mod.definitions() end)
+  def all_definitions(workspace_path \\ nil) do
+    workspace_path
+    |> tool_modules()
+    |> Enum.flat_map(fn {_prefix, mod} -> mod.definitions() end)
   end
 
   def execute(name, args, workspace) do
-    case find_module(name) do
+    workspace_path = if is_binary(workspace), do: workspace
+
+    case find_module(name, workspace_path) do
       {:ok, mod} ->
         mod.execute(name, args, workspace)
 
@@ -29,14 +35,27 @@ defmodule Worth.Tools.Router do
     end
   end
 
-  def get_schema(name) do
-    Enum.find(all_definitions(), fn d ->
+  def get_schema(name, workspace_path \\ nil) do
+    Enum.find(all_definitions(workspace_path), fn d ->
       (d[:name] || d["name"]) == name
     end)
   end
 
-  defp find_module(name) do
-    case Enum.find(@tool_modules, fn {prefix, _} -> String.starts_with?(name, prefix) end) do
+  defp tool_modules(workspace_path) do
+    git_available? =
+      System.find_executable("git") != nil and
+        workspace_path != nil and
+        File.dir?(Path.join(workspace_path, ".git"))
+
+    if git_available? do
+      [{"git_", Worth.Tools.Git} | @base_tool_modules]
+    else
+      @base_tool_modules
+    end
+  end
+
+  defp find_module(name, workspace_path) do
+    case Enum.find(tool_modules(workspace_path), fn {prefix, _} -> String.starts_with?(name, prefix) end) do
       {_, mod} -> {:ok, mod}
       nil -> :not_found
     end

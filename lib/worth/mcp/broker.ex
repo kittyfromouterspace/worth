@@ -1,9 +1,13 @@
 defmodule Worth.Mcp.Broker do
+  @moduledoc false
   use DynamicSupervisor
+
+  alias Worth.Mcp.Config
+  alias Worth.Mcp.ToolIndex
 
   def start_link(opts \\ []) do
     Worth.Mcp.Registry.init()
-    Worth.Mcp.ToolIndex.init()
+    ToolIndex.init()
     DynamicSupervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
@@ -29,7 +33,7 @@ defmodule Worth.Mcp.Broker do
 
     case Worth.Mcp.Registry.lookup(server_name) do
       {:ok, pid, _meta} ->
-        Worth.Mcp.ToolIndex.unregister_server(server_name)
+        ToolIndex.unregister_server(server_name)
         Worth.Mcp.Registry.unregister(server_name)
         DynamicSupervisor.terminate_child(__MODULE__, pid)
 
@@ -39,9 +43,10 @@ defmodule Worth.Mcp.Broker do
   end
 
   def connect_auto(workspace_path \\ nil) do
-    Worth.Mcp.Config.autoconnect_servers(workspace_path)
+    workspace_path
+    |> Config.autoconnect_servers()
     |> Enum.map(fn name ->
-      case Worth.Mcp.Config.get_server(name, workspace_path) do
+      case Config.get_server(name, workspace_path) do
         nil -> {name, {:error, :not_configured}}
         config -> {name, connect(name, config)}
       end
@@ -49,8 +54,7 @@ defmodule Worth.Mcp.Broker do
   end
 
   def list_connections do
-    Worth.Mcp.Registry.all()
-    |> Enum.map(fn entry ->
+    Enum.map(Worth.Mcp.Registry.all(), fn entry ->
       status =
         if is_pid(entry.pid) and Process.alive?(entry.pid) do
           :connected
@@ -69,7 +73,7 @@ defmodule Worth.Mcp.Broker do
   end
 
   defp start_connection(server_name, server_config) do
-    case Worth.Mcp.Config.build_transport_opts(server_config) do
+    case Config.build_transport_opts(server_config) do
       {:error, reason} ->
         {:error, reason}
 
@@ -101,7 +105,7 @@ defmodule Worth.Mcp.Broker do
     try do
       case Hermes.Client.Base.list_tools(client_name, timeout: 10_000) do
         {:ok, %Hermes.MCP.Response{result: %{"tools" => tools}}} ->
-          Worth.Mcp.ToolIndex.register_tools(server_name, tools)
+          ToolIndex.register_tools(server_name, tools)
           Worth.Mcp.Registry.update_meta(server_name, %{tool_count: length(tools)})
           {:ok, server_name}
 

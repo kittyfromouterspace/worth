@@ -1,17 +1,23 @@
 defmodule Worth.Settings do
   @moduledoc """
-  Service facade for encrypted settings.
+  Service facade for application settings.
 
-  Secrets are stored in PostgreSQL encrypted via Cloak/AES-GCM. The cipher
-  key is derived from a user-chosen master password. The vault starts locked
-  on boot; call `unlock/1` (or `setup_password/1` on first run) before
-  reading or writing secrets.
+  Two storage tiers:
+
+    * **Preferences** (`category: "preference"`) — stored as plaintext in the
+      `value` column. Always readable, no vault unlock required. Used for
+      theme, workspace directory, memory settings, model routing, etc.
+
+    * **Secrets** (`category: "secret"`) — encrypted at rest via Cloak/AES-GCM
+      in the `encrypted_value` column. Requires vault unlock to read/write.
+      Used for API keys and other sensitive data.
   """
 
   import Ecto.Query
 
   alias Worth.Repo
-  alias Worth.Settings.{MasterPassword, Setting}
+  alias Worth.Settings.MasterPassword
+  alias Worth.Settings.Setting
   alias Worth.Vault
   alias Worth.Vault.Password
 
@@ -79,7 +85,7 @@ defmodule Worth.Settings do
 
   @doc """
   Change the master password. Requires the current password for verification.
-  Re-encrypts all existing settings with the new key.
+  Re-encrypts all existing secret settings with the new key.
   """
   def change_password(current_password, new_password)
       when is_binary(current_password) and is_binary(new_password) and new_password != "" do
@@ -89,9 +95,10 @@ defmodule Worth.Settings do
 
       %MasterPassword{password_hash: hash} = record ->
         if Password.verify_password(current_password, hash) do
-          # Decrypt all settings with the current key first
-          all_settings =
-            Repo.all(Setting)
+          # Decrypt all secret settings with the current key first
+          all_secrets =
+            from(s in Setting, where: s.category == "secret")
+            |> Repo.all()
             |> Enum.map(fn s -> {s.key, s.encrypted_value, s.category} end)
 
           # Generate new salt and derive new key
@@ -99,28 +106,30 @@ defmodule Worth.Settings do
           new_hash = Password.hash_password(new_password)
           new_key = Password.derive_key(new_password, new_salt)
 
-          # Update the master password record
-          record
-          |> MasterPassword.changeset(%{password_hash: new_hash, key_salt: new_salt})
-          |> Repo.update!()
+          Repo.transaction(fn ->
+            # Update the master password record
+            record
+            |> MasterPassword.changeset(%{password_hash: new_hash, key_salt: new_salt})
+            |> Repo.update!()
 
-          # Configure vault with the new key
-          Vault.configure_key(new_key)
+            # Configure vault with the new key
+            Vault.configure_key(new_key)
 
-          # Re-encrypt all settings with the new key
-          for {key, value, category} <- all_settings do
-            case Repo.get_by(Setting, key: key) do
-              nil ->
-                :ok
+            # Re-encrypt all secret settings with the new key
+            for {key, value, category} <- all_secrets do
+              case Repo.get_by(Setting, key: key) do
+                nil ->
+                  :ok
 
-              setting ->
-                setting
-                |> Setting.changeset(%{encrypted_value: value, category: category})
-                |> Repo.update!()
+                setting ->
+                  setting
+                  |> Setting.changeset(%{encrypted_value: value, category: category})
+                  |> Repo.update!()
+              end
             end
-          end
 
-          :ok
+            :ok
+          end)
         else
           {:error, :invalid_password}
         end
@@ -136,25 +145,63 @@ defmodule Worth.Settings do
 
   # ── Settings CRUD ───────────────────────────────────────────────
 
-  @doc "Get a decrypted setting value by key. Returns nil if not found or vault locked."
+  @doc """
+  Get a setting value by key.
+
+  Preferences are returned from the plaintext `value` column (always available).
+  Secrets are returned from the encrypted `encrypted_value` column (requires
+  vault unlock — returns nil if locked).
+  """
   def get(key) when is_binary(key) do
     case Repo.get_by(Setting, key: key) do
-      nil -> nil
-      %Setting{encrypted_value: value} -> value
+      nil ->
+        nil
+
+      %Setting{category: "preference", value: value} ->
+        value
+
+      %Setting{category: "secret", encrypted_value: value} ->
+        value
+
+      %Setting{value: value} when not is_nil(value) ->
+        value
+
+      %Setting{encrypted_value: value} ->
+        value
     end
   end
 
-  @doc "Store (upsert) an encrypted setting."
+  @doc """
+  Get a preference value (plaintext only, never touches encryption).
+  Safe to call even when vault is locked.
+  """
+  def get_preference(key) when is_binary(key) do
+    case Repo.get_by(Setting, key: key) do
+      nil -> nil
+      %Setting{value: value} -> value
+    end
+  end
+
+  @doc """
+  Store (upsert) a setting. Preferences are stored as plaintext in `value`.
+  Secrets are encrypted in `encrypted_value`.
+  """
   def put(key, value, category \\ "secret") when is_binary(key) and is_binary(value) do
+    attrs =
+      case category do
+        "preference" -> %{key: key, value: value, category: category}
+        _ -> %{key: key, encrypted_value: value, category: category}
+      end
+
     case Repo.get_by(Setting, key: key) do
       nil ->
         %Setting{}
-        |> Setting.changeset(%{key: key, encrypted_value: value, category: category})
+        |> Setting.changeset(attrs)
         |> Repo.insert()
 
       existing ->
         existing
-        |> Setting.changeset(%{encrypted_value: value, category: category})
+        |> Setting.changeset(attrs)
         |> Repo.update()
     end
   end
@@ -167,37 +214,43 @@ defmodule Worth.Settings do
     end
   end
 
-  @doc "List all settings in a category. Values are decrypted."
+  @doc "List all settings in a category."
   def all_by_category(category) when is_binary(category) do
-    from(s in Setting, where: s.category == ^category, order_by: s.key)
-    |> Repo.all()
+    Repo.all(from(s in Setting, where: s.category == ^category, order_by: s.key))
   end
 
   @doc "List all setting keys (no decryption needed for keys)."
   def list_keys do
-    from(s in Setting, select: {s.key, s.category}, order_by: s.key)
-    |> Repo.all()
+    Repo.all(from(s in Setting, select: {s.key, s.category}, order_by: s.key))
   end
+
+  # ── Export secrets to process env ────────────────────────────────
 
   # ── Migration helper ────────────────────────────────────────────
 
   @doc """
-  Import plaintext secrets from Worth.Config.Store into the encrypted store.
-  Called once after first unlock to migrate existing secrets.
+  Import plaintext secrets from the legacy config.exs file (if it exists).
+  Called once after first vault setup to migrate existing secrets.
   """
   def import_from_config_store do
-    disk = Worth.Config.Store.load()
+    # Legacy config.exs import has been removed. Users should configure via the settings UI.
+    {:ok, 0}
+  end
 
-    case Map.get(disk, :secrets) do
-      secrets when is_map(secrets) and map_size(secrets) > 0 ->
-        Enum.each(secrets, fn {key, value} when is_binary(key) and is_binary(value) ->
-          put(key, value, "secret")
-        end)
+  # ── Export secrets to process env ────────────────────────────────
 
-        {:ok, map_size(secrets)}
-
-      _ ->
-        {:ok, 0}
+  @doc """
+  Export all secrets from the vault into the process environment so
+  downstream consumers (e.g. AgentEx.LLM.Credentials) can find them.
+  Call after vault unlock.
+  """
+  def export_secrets_to_env do
+    for setting <- all_by_category("secret") do
+      if is_binary(setting.encrypted_value) and setting.encrypted_value != "" do
+        System.put_env(setting.key, setting.encrypted_value)
+      end
     end
+
+    :ok
   end
 end

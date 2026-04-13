@@ -6,12 +6,12 @@ defmodule Worth.Workspace.Scanner do
   to be learned or re-indexed.
   """
 
-  require Logger
-
-  alias Worth.Workspace.IndexEntry
-  alias Worth.Repo
-
   import Ecto.Query
+
+  alias Worth.Repo
+  alias Worth.Workspace.IndexEntry
+
+  require Logger
 
   @doc """
   Scans a workspace and returns a report of what needs indexing.
@@ -85,9 +85,7 @@ defmodule Worth.Workspace.Scanner do
   Returns true if the workspace has never been indexed (is "new").
   """
   def new_workspace?(workspace_name) do
-    count =
-      from(e in IndexEntry, where: e.workspace_name == ^workspace_name)
-      |> Repo.aggregate(:count, :id)
+    count = Repo.aggregate(from(e in IndexEntry, where: e.workspace_name == ^workspace_name), :count, :id)
 
     count == 0
   end
@@ -107,18 +105,17 @@ defmodule Worth.Workspace.Scanner do
         {String.to_atom(type), %{count: count, total_bytes: size || 0}}
       end)
 
-    total_entries =
-      from(e in IndexEntry, where: e.workspace_name == ^workspace_name)
-      |> Repo.aggregate(:count, :id)
+    total_entries = Repo.aggregate(from(e in IndexEntry, where: e.workspace_name == ^workspace_name), :count, :id)
 
     last_indexed =
-      from(e in IndexEntry,
-        where: e.workspace_name == ^workspace_name,
-        order_by: [desc: e.indexed_at],
-        limit: 1,
-        select: e.indexed_at
+      Repo.one(
+        from(e in IndexEntry,
+          where: e.workspace_name == ^workspace_name,
+          order_by: [desc: e.indexed_at],
+          limit: 1,
+          select: e.indexed_at
+        )
       )
-      |> Repo.one()
 
     %{
       workspace: workspace_name,
@@ -262,9 +259,7 @@ defmodule Worth.Workspace.Scanner do
     # Also look for skills in workspace root skills/ directory
     root_skills_dir = Path.join(workspace_path, "skills")
 
-    skill_dirs =
-      [worth_skills_dir, root_skills_dir]
-      |> Enum.filter(&File.dir?/1)
+    skill_dirs = Enum.filter([worth_skills_dir, root_skills_dir], &File.dir?/1)
 
     skill_dirs
     |> Enum.flat_map(fn dir ->
@@ -335,8 +330,7 @@ defmodule Worth.Workspace.Scanner do
   end
 
   defp compare_with_index(discoveries, existing_entries) do
-    discoveries
-    |> Enum.reduce({[], [], []}, fn discovered, {new_acc, modified_acc, unchanged_acc} ->
+    Enum.reduce(discoveries, {[], [], []}, fn discovered, {new_acc, modified_acc, unchanged_acc} ->
       case Map.get(existing_entries, discovered.path) do
         nil ->
           new_item = %{
@@ -350,7 +344,10 @@ defmodule Worth.Workspace.Scanner do
           {[new_item | new_acc], modified_acc, unchanged_acc}
 
         entry ->
-          if entry.content_hash != discovered.hash do
+          if entry.content_hash == discovered.hash do
+            unchanged_item = %{path: discovered.path, type: discovered.type, indexed_at: entry.indexed_at}
+            {new_acc, modified_acc, [unchanged_item | unchanged_acc]}
+          else
             modified_item = %{
               path: discovered.path,
               type: discovered.type,
@@ -362,9 +359,6 @@ defmodule Worth.Workspace.Scanner do
             }
 
             {new_acc, [modified_item | modified_acc], unchanged_acc}
-          else
-            unchanged_item = %{path: discovered.path, type: discovered.type, indexed_at: entry.indexed_at}
-            {new_acc, modified_acc, [unchanged_item | unchanged_acc]}
           end
       end
     end)

@@ -1,4 +1,8 @@
 defmodule Worth.Mcp.Gateway do
+  @moduledoc false
+  alias Hermes.MCP.Response
+  alias Worth.Mcp.ToolIndex
+
   def execute(tool_name, args \\ %{}) do
     case resolve_tool(tool_name) do
       {:mcp, server_name, original_name, _schema} ->
@@ -10,8 +14,8 @@ defmodule Worth.Mcp.Gateway do
   end
 
   def resolve_tool(tool_name) do
-    with {:ok, server} <- Worth.Mcp.ToolIndex.find_server(tool_name),
-         {:ok, schema} <- Worth.Mcp.ToolIndex.get_schema(tool_name) do
+    with {:ok, server} <- ToolIndex.find_server(tool_name),
+         {:ok, schema} <- ToolIndex.get_schema(tool_name) do
       original_name = schema["name"] || schema[:name] || tool_name
       {:mcp, server, original_name, schema}
     else
@@ -20,16 +24,16 @@ defmodule Worth.Mcp.Gateway do
   end
 
   def list_mcp_tools do
-    Worth.Mcp.ToolIndex.all_tools()
+    ToolIndex.all_tools()
   end
 
   def refresh_tools(server_name) do
     case Worth.Mcp.Registry.lookup_client(server_name) do
       {:ok, client_pid} ->
         case Hermes.Client.Base.list_tools(client_pid, timeout: 10_000) do
-          {:ok, %Hermes.MCP.Response{result: %{"tools" => tools}}} ->
-            Worth.Mcp.ToolIndex.unregister_server(server_name)
-            Worth.Mcp.ToolIndex.register_tools(server_name, tools)
+          {:ok, %Response{result: %{"tools" => tools}}} ->
+            ToolIndex.unregister_server(server_name)
+            ToolIndex.register_tools(server_name, tools)
             Worth.Mcp.Registry.update_meta(server_name, %{tool_count: length(tools)})
             {:ok, length(tools)}
 
@@ -85,8 +89,8 @@ defmodule Worth.Mcp.Gateway do
         result = Hermes.Client.Base.call_tool(client_pid, tool_name, args, timeout: 30_000)
 
         case result do
-          {:ok, %Hermes.MCP.Response{} = response} ->
-            if Hermes.MCP.Response.success?(response) do
+          {:ok, %Response{} = response} ->
+            if Response.success?(response) do
               {:ok, format_response(response)}
             else
               {:error, format_response(response)}
@@ -94,9 +98,6 @@ defmodule Worth.Mcp.Gateway do
 
           {:error, %Hermes.MCP.Error{} = error} ->
             {:error, error.message}
-
-          {:error, reason} ->
-            {:error, inspect(reason)}
         end
 
       {:error, :not_found} ->
@@ -104,18 +105,16 @@ defmodule Worth.Mcp.Gateway do
     end
   end
 
-  defp format_response(%Hermes.MCP.Response{} = response) do
-    unwrapped = Hermes.MCP.Response.unwrap(response)
+  defp format_response(%Response{} = response) do
+    unwrapped = Response.unwrap(response)
 
     case unwrapped do
       %{"content" => content} when is_list(content) ->
-        content
-        |> Enum.map(fn
+        Enum.map_join(content, "\n", fn
           %{"text" => text} -> text
           %{"data" => data} -> data
           other -> inspect(other)
         end)
-        |> Enum.join("\n")
 
       other ->
         inspect(other)

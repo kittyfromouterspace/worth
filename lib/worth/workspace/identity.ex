@@ -93,10 +93,8 @@ defmodule Worth.Workspace.Identity do
   Extract the full llm config from a workspace path.
   """
   def llm_config(workspace_path) do
-    case load(workspace_path) do
-      {:ok, %{llm: llm}} -> llm
-      _ -> %{}
-    end
+    {:ok, %{llm: llm}} = load(workspace_path)
+    llm
   end
 
   # ----- parsing -----
@@ -110,7 +108,7 @@ defmodule Worth.Workspace.Identity do
           case Enum.split_while(rest, fn line -> not Regex.match?(@frontmatter_delimiter, line) end) do
             {fm_lines, [_delimiter | body_lines]} ->
               fm = Enum.join(fm_lines, "\n")
-              body = Enum.join(body_lines, "\n") |> String.trim()
+              body = body_lines |> Enum.join("\n") |> String.trim()
               {parse_yaml(fm), body}
 
             {_, []} ->
@@ -126,20 +124,17 @@ defmodule Worth.Workspace.Identity do
   end
 
   defp parse_yaml(yaml_str) when is_binary(yaml_str) do
-    try do
-      case YamlElixir.read_from_string(yaml_str) do
-        {:ok, map} when is_map(map) -> atomize_keys(map)
-        _ -> nil
-      end
-    rescue
-      e ->
-        require Logger
-        Logger.warning("Failed to parse YAML frontmatter: #{Exception.message(e)}")
-        nil
+    case YamlElixir.read_from_string(yaml_str) do
+      {:ok, map} when is_map(map) -> atomize_keys(map)
+      _ -> nil
     end
-  end
+  rescue
+    e ->
+      require Logger
 
-  defp parse_yaml(_), do: nil
+      Logger.warning("Failed to parse YAML frontmatter: #{Exception.message(e)}")
+      nil
+  end
 
   defp atomize_keys(map) when is_map(map) do
     Map.new(map, fn
@@ -173,6 +168,7 @@ defmodule Worth.Workspace.Identity do
     rescue
       e ->
         require Logger
+
         Logger.warning("Failed to validate LLM config: #{Exception.message(e)}")
         config
     end

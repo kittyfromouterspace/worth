@@ -1,4 +1,7 @@
 defmodule Worth.Tools.Mcp do
+  @moduledoc false
+  alias Worth.Mcp.Broker
+
   def definitions do
     [
       %{
@@ -64,11 +67,10 @@ defmodule Worth.Tools.Mcp do
   end
 
   def execute("mcp_list_servers", _args, _workspace) do
-    connections = Worth.Mcp.Broker.list_connections()
+    connections = Broker.list_connections()
 
     lines =
-      connections
-      |> Enum.map(fn c -> "  [#{c.status}] #{c.name} (#{c.tool_count} tools)" end)
+      Enum.map(connections, fn c -> "  [#{c.status}] #{c.name} (#{c.tool_count} tools)" end)
 
     if lines == [] do
       {:ok, "No MCP servers connected."}
@@ -84,8 +86,7 @@ defmodule Worth.Tools.Mcp do
       {:ok, "No tools found for server '#{server}'."}
     else
       lines =
-        tools
-        |> Enum.map(fn t ->
+        Enum.map(tools, fn t ->
           desc = t["description"] || ""
           "  #{t["name"]}: #{String.slice(desc, 0, 80)}"
         end)
@@ -110,7 +111,7 @@ defmodule Worth.Tools.Mcp do
 
     config = build_connect_config(type, args)
 
-    case Worth.Mcp.Broker.connect(name, config) do
+    case Broker.connect(name, config) do
       {:ok, _} -> {:ok, "Connected to MCP server '#{name}'."}
       {:error, :already_connected} -> {:ok, "Already connected to '#{name}'."}
       {:error, reason} -> {:error, "Failed to connect: #{inspect(reason)}"}
@@ -118,7 +119,7 @@ defmodule Worth.Tools.Mcp do
   end
 
   def execute("mcp_disconnect", %{"server" => server}, _workspace) do
-    case Worth.Mcp.Broker.disconnect(server) do
+    case Broker.disconnect(server) do
       :ok -> {:ok, "Disconnected from '#{server}'."}
       {:error, :not_connected} -> {:ok, "Server '#{server}' was not connected."}
     end

@@ -7,9 +7,9 @@ defmodule Worth.Memory.Embeddings.StaleCheck do
   potentially expensive operation that the user should approve.
   """
 
-  require Logger
-
   alias Mneme.Config
+
+  require Logger
 
   @tables ["mneme_chunks", "mneme_entries", "mneme_entities"]
 
@@ -29,8 +29,7 @@ defmodule Worth.Memory.Embeddings.StaleCheck do
 
       if stale != [] do
         details =
-          stale
-          |> Enum.map_join(", ", fn {table, m} -> "#{table}=#{m}" end)
+          Enum.map_join(stale, ", ", fn {table, m} -> "#{table}=#{m}" end)
 
         Logger.info(
           "Worth.Memory: configured embedding model #{inspect(current_model)} differs from stored rows (#{details}). Run `/memory reembed` to migrate."

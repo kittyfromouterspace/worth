@@ -1,6 +1,8 @@
 defmodule Worth.Tools.Memory do
   @moduledoc false
 
+  alias Worth.Memory.Manager
+
   def definitions do
     [
       %{
@@ -61,7 +63,7 @@ defmodule Worth.Tools.Memory do
       limit: args["limit"] || 5
     ]
 
-    case Worth.Memory.Manager.search(query, opts) do
+    case Manager.search(query, opts) do
       {:ok, %{entries: entries}} ->
         formatted = format_entries(entries)
         {:ok, formatted}
@@ -82,7 +84,7 @@ defmodule Worth.Tools.Memory do
       confidence: args["confidence"] || 0.8
     ]
 
-    case Worth.Memory.Manager.remember(content, opts) do
+    case Manager.remember(content, opts) do
       {:ok, _entry} ->
         {:ok, "Fact stored successfully."}
 
@@ -98,7 +100,7 @@ defmodule Worth.Tools.Memory do
       metadata: %{entry_type: "note", role: "working"}
     ]
 
-    case Worth.Memory.Manager.working_push(content, opts) do
+    case Manager.working_push(content, opts) do
       {:ok, _} ->
         {:ok, "Note added to working memory."}
 
@@ -108,12 +110,10 @@ defmodule Worth.Tools.Memory do
   end
 
   def execute("memory_recall", _args, workspace) do
-    case Worth.Memory.Manager.working_read(workspace: workspace) do
+    case Manager.working_read(workspace: workspace) do
       {:ok, entries} when is_list(entries) and entries != [] ->
         formatted =
-          entries
-          |> Enum.map(fn e -> "- [#{Map.get(e, :importance, 0.5)}] #{e.content}" end)
-          |> Enum.join("\n")
+          Enum.map_join(entries, "\n", fn e -> "- [#{Map.get(e, :importance, 0.5)}] #{e.content}" end)
 
         {:ok, formatted}
 
@@ -127,12 +127,10 @@ defmodule Worth.Tools.Memory do
   end
 
   defp format_entries(entries) do
-    entries
-    |> Enum.map(fn e ->
+    Enum.map_join(entries, "\n", fn e ->
       confidence = Float.round(e.confidence || 0.5, 2)
       workspace_tag = get_in(e, [:metadata, :workspace]) || "global"
       "- [#{confidence}] (#{workspace_tag}) #{e.content}"
     end)
-    |> Enum.join("\n")
   end
 end

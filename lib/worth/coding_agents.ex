@@ -102,7 +102,7 @@ defmodule Worth.CodingAgents do
         enabled: true
       }
 
-      Worth.Config.put_setting([:coding_agents], existing ++ [new_agent])
+      Worth.Config.put_setting([:coding_agents], existing ++ [new_agent], persist: false)
       Logger.info("Added coding agent to config: #{display_name}")
     end
   end

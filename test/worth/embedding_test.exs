@@ -13,12 +13,14 @@ defmodule Worth.EmbeddingTest do
 
   use Worth.DataCase, async: false
 
+  alias Mneme.Embedding.Local
+
   @moduletag :embedding
 
   describe "embedding provider configuration" do
     test "Mneme is configured with an embedding provider" do
       provider = Mneme.Config.embedding_provider()
-      assert provider != nil
+      assert provider
     end
 
     test "embedding dimensions are configured" do
@@ -67,7 +69,7 @@ defmodule Worth.EmbeddingTest do
     describe "real local embeddings (requires model download)" do
       @tag :slow
       test "Mneme.Embedding.Local generates 384-dim vectors" do
-        {:ok, vector} = Mneme.Embedding.Local.embed("Hello world", [])
+        {:ok, vector} = Local.embed("Hello world", [])
         assert is_list(vector)
         assert length(vector) == 384
         assert Enum.all?(vector, &is_float/1)
@@ -75,9 +77,9 @@ defmodule Worth.EmbeddingTest do
 
       @tag :slow
       test "similar texts have higher cosine similarity" do
-        {:ok, v1} = Mneme.Embedding.Local.embed("The cat sat on the mat", [])
-        {:ok, v2} = Mneme.Embedding.Local.embed("A cat was sitting on a rug", [])
-        {:ok, v3} = Mneme.Embedding.Local.embed("Quantum mechanics describes particle behavior", [])
+        {:ok, v1} = Local.embed("The cat sat on the mat", [])
+        {:ok, v2} = Local.embed("A cat was sitting on a rug", [])
+        {:ok, v3} = Local.embed("Quantum mechanics describes particle behavior", [])
 
         sim_12 = cosine_similarity(v1, v2)
         sim_13 = cosine_similarity(v1, v3)
@@ -87,9 +89,9 @@ defmodule Worth.EmbeddingTest do
       end
 
       defp cosine_similarity(a, b) do
-        dot = Enum.zip(a, b) |> Enum.map(fn {x, y} -> x * y end) |> Enum.sum()
-        norm_a = :math.sqrt(Enum.map(a, &(&1 * &1)) |> Enum.sum())
-        norm_b = :math.sqrt(Enum.map(b, &(&1 * &1)) |> Enum.sum())
+        dot = a |> Enum.zip(b) |> Enum.map(fn {x, y} -> x * y end) |> Enum.sum()
+        norm_a = a |> Enum.map(&(&1 * &1)) |> Enum.sum() |> :math.sqrt()
+        norm_b = b |> Enum.map(&(&1 * &1)) |> Enum.sum() |> :math.sqrt()
         dot / (norm_a * norm_b)
       end
     end

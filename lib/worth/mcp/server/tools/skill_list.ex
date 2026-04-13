@@ -12,9 +12,7 @@ defmodule Worth.Mcp.Server.Tools.SkillList do
     skills = Worth.Skill.Service.list(opts)
 
     lines =
-      skills
-      |> Enum.map(fn s -> "[#{s.trust_level}] #{s.name}: #{s.description}" end)
-      |> Enum.join("\n")
+      Enum.map_join(skills, "\n", fn s -> "[#{s.trust_level}] #{s.name}: #{s.description}" end)
 
     {:reply, lines, frame}
   rescue

@@ -1,5 +1,9 @@
 defmodule Worth.Application do
+  @moduledoc false
   use Application
+
+  alias Worth.Desktop.Bridge
+  alias Worth.Mcp.Broker
 
   @impl true
   def start(_type, _args) do
@@ -13,14 +17,14 @@ defmodule Worth.Application do
       {Task.Supervisor, name: Worth.TaskSupervisor},
       Worth.Metrics,
       Worth.Agent.Tracker,
-      Worth.Mcp.Broker,
+      Broker,
       Worth.Mcp.ConnectionMonitor,
       Worth.Brain.Supervisor,
       Worth.Learning.TelemetryBridge,
       {Task.Supervisor, name: Worth.SkillInit, max_retries: 0},
       WorthWeb.Telemetry,
       WorthWeb.Endpoint,
-      Worth.Desktop.Bridge
+      Bridge
     ]
 
     case Supervisor.start_link(children, strategy: :one_for_one, name: Worth.Supervisor) do
@@ -34,7 +38,7 @@ defmodule Worth.Application do
         end)
 
         Task.Supervisor.start_child(Worth.SkillInit, fn ->
-          Worth.Mcp.Broker.connect_auto()
+          Broker.connect_auto()
         end)
 
         Task.Supervisor.start_child(Worth.SkillInit, fn ->
@@ -65,7 +69,7 @@ defmodule Worth.Application do
 
   @impl true
   def stop(_state) do
-    Worth.Desktop.Bridge.broadcast_shutdown()
+    Bridge.broadcast_shutdown()
     :ok
   end
 end

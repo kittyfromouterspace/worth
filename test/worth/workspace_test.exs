@@ -3,7 +3,7 @@ defmodule Worth.Workspace.ServiceTest do
 
   alias Worth.Workspace.Service
 
-  @test_dir System.tmp_dir!() |> Path.join("worth-test-ws-#{:rand.uniform(100_000)}")
+  @test_dir Path.join(System.tmp_dir!(), "worth-test-ws-#{:rand.uniform(100_000)}")
 
   setup do
     File.mkdir_p!(@test_dir)

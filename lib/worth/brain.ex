@@ -7,6 +7,21 @@ defmodule Worth.Brain do
   Processes are started on demand by `Worth.Brain.Supervisor.ensure_started/2`.
   """
   use GenServer
+
+  alias Worth.Agent.Tracker
+  alias Worth.Brain.Session
+  alias Worth.Mcp.Broker
+  alias Worth.Mcp.ToolIndex
+  alias Worth.Memory.FactExtractor
+  alias Worth.Memory.Manager
+  alias Worth.Persistence.Transcript
+  alias Worth.Skill.Evaluator
+  alias Worth.Skill.Lifecycle
+  alias Worth.Skill.Refiner
+  alias Worth.Skill.Versioner
+  alias Worth.Tools.Router
+  alias Worth.Workspace.Service
+
   require Logger
 
   defstruct [
@@ -23,6 +38,8 @@ defmodule Worth.Brain do
     :task_pid,
     :task_from
   ]
+
+  @type t :: %__MODULE__{}
 
   @default_tool_permissions %{
     "bash" => :approve,
@@ -89,6 +106,19 @@ defmodule Worth.Brain do
     GenServer.call(pid, {:send_message, text}, :infinity)
   end
 
+  @doc """
+  Fire-and-forget version of send_message — results arrive via PubSub.
+  Use this from LiveView instead of wrapping send_message in a Task.
+  """
+  def cast_message(text, workspace) do
+    Logger.info(
+      "[Brain.External] cast_message called: text=#{String.slice(text, 0, 30)}, workspace=#{inspect(workspace)}"
+    )
+
+    {:ok, pid} = ensure(workspace)
+    GenServer.cast(pid, {:send_message, text})
+  end
+
   def stop(workspace) do
     {:ok, pid} = ensure(workspace)
     GenServer.call(pid, :stop)
@@ -140,10 +170,10 @@ defmodule Worth.Brain do
   end
 
   # These don't need a workspace — they're global services
-  def mcp_connect(name, config), do: Worth.Mcp.Broker.connect(name, config)
-  def mcp_disconnect(name), do: Worth.Mcp.Broker.disconnect(name)
-  def mcp_list, do: Worth.Mcp.Broker.list_connections()
-  def mcp_tools(server_name), do: Worth.Mcp.ToolIndex.tools_for_server(server_name)
+  def mcp_connect(name, config), do: Broker.connect(name, config)
+  def mcp_disconnect(name), do: Broker.disconnect(name)
+  def mcp_list, do: Broker.list_connections()
+  def mcp_tools(server_name), do: ToolIndex.tools_for_server(server_name)
   def list_coding_agents, do: Worth.CodingAgents.discover()
 
   # ── GenServer callbacks ───────────────────────────────────────
@@ -157,7 +187,7 @@ defmodule Worth.Brain do
       current_workspace: workspace,
       workspace_path:
         Keyword.get(opts, :workspace_path) ||
-          Worth.Workspace.Service.resolve_path(workspace),
+          Service.resolve_path(workspace),
       session_id: generate_session_id(),
       history: [],
       config: Worth.Config.get_all(),
@@ -191,34 +221,8 @@ defmodule Worth.Brain do
   end
 
   def handle_call({:send_message, text}, from, state) do
-    workspace = state.current_workspace
-    _workspace_path = state.workspace_path
-    brain_pid = self()
-
-    Worth.Agent.Tracker.register(state.session_id,
-      workspace: workspace,
-      mode: state.profile,
-      label: "main agent"
-    )
-
-    {:ok, pid} =
-      Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-        result = execute_agent_loop(text, state, brain_pid)
-
-        # Broadcast the result to UI subscribers so ChatLive can display it
-        done_event =
-          case result do
-            {:ok, response} -> {:done, response}
-            {:error, reason} -> {:error, reason}
-          end
-
-        broadcast_workspace(workspace, {:agent_event, done_event})
-        send(brain_pid, {:agent_event_internal, done_event})
-        GenServer.reply(from, result)
-      end)
-
-    Process.monitor(pid)
-    {:noreply, %{state | status: :running, task_pid: pid, task_from: from}}
+    state = start_agent_task(text, state, from)
+    {:noreply, state}
   end
 
   def handle_call(:stop, _from, %{status: :running, task_pid: pid} = state) when is_pid(pid) do
@@ -227,7 +231,7 @@ defmodule Worth.Brain do
       Process.exit(pid, :kill)
     end
 
-    Worth.Agent.Tracker.unregister(state.session_id)
+    Tracker.unregister(state.session_id)
     if state.task_from, do: GenServer.reply(state.task_from, {:error, :stopped})
 
     Logger.info("[Brain] Agent execution stopped by user")
@@ -262,7 +266,7 @@ defmodule Worth.Brain do
     workspace = state.current_workspace
 
     Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-      result = Worth.Brain.Session.resume(session_id, state.workspace_path, workspace, state.config)
+      result = Session.resume(session_id, state.workspace_path, workspace, state.config)
       broadcast_workspace(workspace, {:agent_event, {:session_resumed, result}})
     end)
 
@@ -270,17 +274,17 @@ defmodule Worth.Brain do
   end
 
   def handle_call(:list_sessions, _from, state) do
-    sessions = Worth.Brain.Session.list_sessions(state.workspace_path)
+    sessions = Session.list_sessions(state.workspace_path)
     {:reply, sessions, state}
   end
 
   def handle_call({:skill_history, name}, _from, state) do
-    result = Worth.Skill.Versioner.list_versions(name)
+    result = Versioner.list_versions(name)
     {:reply, result, state}
   end
 
   def handle_call({:skill_rollback, name, version}, _from, state) do
-    result = Worth.Skill.Versioner.rollback(name, version)
+    result = Versioner.rollback(name, version)
     {:reply, result, state}
   end
 
@@ -289,16 +293,16 @@ defmodule Worth.Brain do
       Worth.LLM.chat_tier(%{messages: messages}, :lightweight, state.config)
     end
 
-    result = Worth.Skill.Refiner.refine(name, llm_fn: llm_fn)
+    result = Refiner.refine(name, llm_fn: llm_fn)
     {:reply, result, state}
   end
 
   def handle_call({:skill_promote, name}, _from, state) do
-    result = Worth.Skill.Lifecycle.promote(name)
+    result = Lifecycle.promote(name)
 
     case result do
       {:ok, :needs_user_approval, target} ->
-        case Worth.Skill.Lifecycle.execute_promotion(name, target) do
+        case Lifecycle.execute_promotion(name, target) do
           {:ok, _} = success -> {:reply, success, state}
           error -> {:reply, error, state}
         end
@@ -309,10 +313,19 @@ defmodule Worth.Brain do
   end
 
   @impl true
+  def handle_cast({:send_message, text}, state) do
+    state = start_agent_task(text, state, nil)
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info({:DOWN, _ref, :process, pid, reason}, %{task_pid: pid} = state) do
     Logger.warning("[Brain] Agent task #{inspect(pid)} exited: #{inspect(reason)}")
+    Tracker.unregister(state.session_id)
 
     if reason != :normal do
+      if state.task_from, do: GenServer.reply(state.task_from, {:error, reason})
+
       broadcast_workspace(
         state.current_workspace,
         {:agent_event, {:error, "Agent task crashed: #{inspect(reason)}"}}
@@ -361,75 +374,105 @@ defmodule Worth.Brain do
     {:noreply, state}
   end
 
+  # ── Agent task dispatch ──────────────────────────────────────
+
+  defp start_agent_task(text, state, from) do
+    workspace = state.current_workspace
+    brain_pid = self()
+
+    Tracker.register(state.session_id,
+      workspace: workspace,
+      mode: state.profile,
+      label: "main agent"
+    )
+
+    {:ok, pid} =
+      Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
+        result = execute_agent_loop(text, state, brain_pid)
+
+        done_event =
+          case result do
+            {:ok, response} -> {:done, response}
+            {:error, reason} -> {:error, reason}
+          end
+
+        broadcast_workspace(workspace, {:agent_event, done_event})
+        send(brain_pid, {:agent_event_internal, done_event})
+        if from, do: GenServer.reply(from, result)
+      end)
+
+    Process.monitor(pid)
+    %{state | status: :running, task_pid: pid, task_from: from}
+  end
+
   # ── Agent loop ────────────────────────────────────────────────
 
   defp execute_agent_loop(text, state, brain_pid) do
     callbacks = build_callbacks(state, brain_pid)
 
     workspace_path =
-      state.workspace_path || Worth.Workspace.Service.resolve_path(state.current_workspace)
+      state.workspace_path || Service.resolve_path(state.current_workspace)
 
-    try do
-      Worth.Persistence.Transcript.append(
-        state.session_id,
-        %{role: "user", text: text},
-        workspace_path
-      )
+    Transcript.append(
+      state.session_id,
+      %{role: "user", text: text},
+      workspace_path
+    )
 
-      context_opts = [workspace: state.current_workspace, user_message: text]
+    context_opts = [workspace: state.current_workspace, user_message: text]
 
-      system_prompt =
-        case Worth.Workspace.Context.build_system_prompt(workspace_path, context_opts) do
-          {:ok, prompt} when is_binary(prompt) and prompt != "" -> prompt
-          _ -> nil
-        end
+    Logger.info("[Brain] Building system prompt...")
 
-      Worth.Memory.Manager.working_push(text,
-        workspace: state.current_workspace,
-        importance: 0.3,
-        metadata: %{entry_type: "conversation_turn", role: "user"}
-      )
-
-      run_opts = [
-        prompt: text,
-        workspace: workspace_path,
-        callbacks: callbacks,
-        profile: state.profile,
-        mode: mode_to_agent_mode(state.mode),
-        session_id: state.session_id,
-        caller: brain_pid,
-        cost_limit: state.config[:cost_limit] || 5.0,
-        history: state.history,
-        tool_permissions: state.tool_permissions
-      ]
-
-      run_opts = if system_prompt, do: Keyword.put(run_opts, :system_prompt, system_prompt), else: run_opts
-      run_opts = apply_model_routing(run_opts)
-
-      Worth.Agent.Tracker.register(state.session_id,
-        mode: state.mode,
-        workspace: state.current_workspace,
-        label: "main agent"
-      )
-
-      result = AgentEx.run(run_opts)
-
-      case result do
-        {:ok, response} ->
-          store_outcome_feedback(response)
-          {:ok, response}
-
-        {:error, reason} ->
-          {:error, reason}
+    system_prompt =
+      case Worth.Workspace.Context.build_system_prompt(workspace_path, context_opts) do
+        {:ok, prompt} when is_binary(prompt) and prompt != "" -> prompt
+        _ -> nil
       end
-    rescue
-      e ->
-        {:error, Exception.message(e)}
+
+    Logger.info("[Brain] System prompt ready (#{if system_prompt, do: byte_size(system_prompt), else: 0} bytes)")
+
+    Manager.working_push(text,
+      workspace: state.current_workspace,
+      importance: 0.3,
+      metadata: %{entry_type: "conversation_turn", role: "user"}
+    )
+
+    run_opts = [
+      prompt: text,
+      workspace: workspace_path,
+      callbacks: callbacks,
+      profile: state.profile,
+      mode: mode_to_agent_mode(state.mode),
+      session_id: state.session_id,
+      caller: brain_pid,
+      cost_limit: state.config[:cost_limit] || 5.0,
+      history: state.history,
+      tool_permissions: state.tool_permissions
+    ]
+
+    run_opts = if system_prompt, do: Keyword.put(run_opts, :system_prompt, system_prompt), else: run_opts
+    run_opts = apply_model_routing(run_opts)
+
+    Tracker.register(state.session_id,
+      mode: state.mode,
+      workspace: state.current_workspace,
+      label: "main agent"
+    )
+
+    Logger.info("[Brain] Calling AgentEx.run (profile=#{state.profile})")
+
+    case AgentEx.run(run_opts) do
+      {:ok, response} ->
+        store_outcome_feedback(response)
+        {:ok, response}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
   defp store_outcome_feedback(%{text: text}) when is_binary(text) and text != "" do
-    Worth.Memory.Manager.outcome_good()
+    Manager.outcome_good()
   end
 
   defp store_outcome_feedback(_), do: :ok
@@ -465,7 +508,7 @@ defmodule Worth.Brain do
       end,
       knowledge_search: fn query, opts ->
         merged_opts = Keyword.merge(memory_opts, opts)
-        Worth.Memory.Manager.search(query, merged_opts)
+        Manager.search(query, merged_opts)
       end,
       knowledge_create: fn params ->
         content = params[:content]
@@ -477,13 +520,13 @@ defmodule Worth.Brain do
             metadata: Map.put(params[:metadata] || %{}, :workspace, workspace)
           )
 
-        Worth.Memory.Manager.remember(content, create_opts)
+        Manager.remember(content, create_opts)
       end,
       knowledge_recent: fn _scope_id ->
-        Worth.Memory.Manager.recent(memory_opts)
+        Manager.recent(memory_opts)
       end,
       on_persist_turn: fn ctx, text ->
-        Worth.Persistence.Transcript.append(
+        Transcript.append(
           ctx.session_id || state.session_id,
           %{role: "assistant", text: text},
           workspace_path
@@ -501,7 +544,7 @@ defmodule Worth.Brain do
         ]
 
         Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-          Worth.Memory.FactExtractor.extract_and_store(text, extraction_opts)
+          FactExtractor.extract_and_store(text, extraction_opts)
         end)
 
         :ok
@@ -520,14 +563,14 @@ defmodule Worth.Brain do
           ]
 
           Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-            Worth.Memory.FactExtractor.extract_and_store(result_text, extraction_opts)
+            FactExtractor.extract_and_store(result_text, extraction_opts)
           end)
         end
 
         :ok
       end,
       search_tools: fn query, _opts ->
-        Worth.Tools.Router.all_definitions()
+        Router.all_definitions()
         |> Enum.filter(fn d ->
           name = d[:name] || d["name"] || ""
           desc = d[:description] || d["description"] || ""
@@ -536,15 +579,15 @@ defmodule Worth.Brain do
         |> Enum.map(fn d -> d[:name] || d["name"] end)
       end,
       execute_external_tool: fn name, args, _ctx ->
-        result = Worth.Tools.Router.execute(name, args, workspace)
+        result = Router.execute(name, args, workspace)
         track_skill_tool_usage(name, args, result)
         result
       end,
       get_tool_schema: fn name ->
-        case Worth.Tools.Router.get_schema(name) do
+        case Router.get_schema(name) do
           nil ->
             if String.contains?(name, ":") do
-              case Worth.Mcp.ToolIndex.get_schema(name) do
+              case ToolIndex.get_schema(name) do
                 {:ok, schema} -> {:ok, schema}
                 {:error, _} -> {:error, :not_found}
               end
@@ -567,11 +610,11 @@ defmodule Worth.Brain do
   defp mode_to_profile(_), do: :agentic
 
   defp apply_model_routing(opts) do
-    case Application.get_env(:worth, :model_routing) do
+    case Worth.Config.get([:model_routing]) do
       %{mode: "auto", preference: pref, filter: filter} ->
         opts
         |> Keyword.put(:model_selection_mode, :auto)
-        |> Keyword.put(:model_preference, String.to_atom(pref))
+        |> Keyword.put(:model_preference, safe_to_existing_atom(pref))
         |> maybe_put_filter(filter)
 
       %{mode: "manual", filter: filter} ->
@@ -584,11 +627,19 @@ defmodule Worth.Brain do
     end
   end
 
+  defp safe_to_existing_atom(str) when is_binary(str) do
+    String.to_existing_atom(str)
+  rescue
+    ArgumentError -> :optimize_price
+  end
+
+  defp safe_to_existing_atom(other), do: other
+
   defp maybe_put_filter(opts, "free_only"), do: Keyword.put(opts, :model_filter, :free_only)
   defp maybe_put_filter(opts, _), do: opts
 
   defp maybe_inject_manual_model(params) when is_map(params) do
-    case Application.get_env(:worth, :model_routing) do
+    case Worth.Config.get([:model_routing]) do
       %{mode: "manual", manual_model: %{provider: p, model_id: m}} ->
         Map.put(params, "_route", %{provider_name: p, model_id: m})
 
@@ -606,7 +657,7 @@ defmodule Worth.Brain do
   defp mode_to_agent_mode(_), do: :agentic
 
   defp generate_session_id do
-    "worth-#{:rand.uniform(1_000_000) |> Integer.to_string() |> String.pad_leading(6, "0")}"
+    "worth-#{1_000_000 |> :rand.uniform() |> Integer.to_string() |> String.pad_leading(6, "0")}"
   end
 
   defp track_skill_tool_usage("skill_read", %{"name" => skill_name}, result) do
@@ -621,7 +672,7 @@ defmodule Worth.Brain do
   defp track_skill_tool_usage(_tool, _args, _result), do: :ok
 
   defp maybe_suggest_promotion(skill_name) do
-    case Worth.Skill.Evaluator.should_promote?(skill_name) do
+    case Evaluator.should_promote?(skill_name) do
       {:promote, target} ->
         Phoenix.PubSub.broadcast(
           Worth.PubSub,
@@ -640,15 +691,15 @@ defmodule Worth.Brain do
   end
 
   defp maybe_trigger_refinement(tool_name, state) do
-    skill_name = tool_name |> String.replace_prefix("skill_", "")
+    skill_name = String.replace_prefix(tool_name, "skill_", "")
 
-    if Worth.Skill.Evaluator.should_refine?(skill_name) do
+    if Evaluator.should_refine?(skill_name) do
       llm_fn = fn messages ->
         Worth.LLM.chat_tier(%{messages: messages}, :lightweight, state.config)
       end
 
       Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-        Worth.Skill.Refiner.refine(skill_name, llm_fn: llm_fn)
+        Refiner.refine(skill_name, llm_fn: llm_fn)
       end)
     end
   end
@@ -660,7 +711,7 @@ defmodule Worth.Brain do
       Worth.Skill.Registry.all()
       |> Enum.filter(&(&1.trust_level == :learned))
       |> Enum.each(fn skill ->
-        case Worth.Skill.Refiner.proactive_review(skill.name) do
+        case Refiner.proactive_review(skill.name) do
           {:ok, :review_needed, info} ->
             broadcast_workspace(
               workspace,

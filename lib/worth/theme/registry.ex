@@ -3,19 +3,23 @@ defmodule Worth.Theme.Registry do
   Theme registry - manages available themes and lookups.
   """
 
-  alias Worth.Theme.{Standard, Cyberdeck, FifthElement}
+  alias Worth.Theme.Cyberdeck
+  alias Worth.Theme.Daylight
+  alias Worth.Theme.FifthElement
+  alias Worth.Theme.Standard
 
   @setting_key "theme"
 
   @doc """
   Returns all available themes
   """
-  def list, do: [Standard, Cyberdeck, FifthElement]
+  def list, do: [Standard, Daylight, Cyberdeck, FifthElement]
 
   @doc """
   Get a theme module by name
   """
   def get("standard"), do: {:ok, Standard}
+  def get("daylight"), do: {:ok, Daylight}
   def get("cyberdeck"), do: {:ok, Cyberdeck}
   def get("fifth_element"), do: {:ok, FifthElement}
   def get(_), do: {:error, :not_found}
@@ -51,21 +55,20 @@ defmodule Worth.Theme.Registry do
   end
 
   defp try_get_settings_theme do
-    try do
-      if function_exported?(Worth.Settings, :locked?, 0) do
-        if not Worth.Settings.locked?() do
-          Worth.Settings.get(@setting_key)
-        end
+    if function_exported?(Worth.Settings, :locked?, 0) do
+      if not Worth.Settings.locked?() do
+        Worth.Settings.get(@setting_key)
       end
-    rescue
-      _ -> nil
-    catch
-      :exit, _ -> nil
     end
+  rescue
+    _ -> nil
+  catch
+    :exit, _ -> nil
   end
 
   defp app_config_theme do
-    Application.get_env(:worth, :theme, "standard")
+    :theme
+    |> Worth.Config.get("standard")
     |> to_string()
   end
 end

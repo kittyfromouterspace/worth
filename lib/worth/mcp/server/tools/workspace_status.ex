@@ -7,7 +7,7 @@ defmodule Worth.Mcp.Server.Tools.WorkspaceStatus do
 
   @impl true
   def execute(_params, frame) do
-    workspace = Application.get_env(:worth, :current_workspace, "personal")
+    workspace = Worth.Config.get(:current_workspace, "personal")
     status = Worth.Brain.get_status(workspace)
 
     text =
@@ -19,7 +19,8 @@ defmodule Worth.Mcp.Server.Tools.WorkspaceStatus do
         "Status: #{status.status}"
 
     {:reply, text, frame}
-  rescue
-    e -> {:error, Exception.message(e), frame}
+  catch
+    :exit, reason ->
+      {:error, "Brain unavailable: #{inspect(reason)}", frame}
   end
 end

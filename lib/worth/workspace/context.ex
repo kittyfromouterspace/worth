@@ -1,4 +1,7 @@
 defmodule Worth.Workspace.Context do
+  @moduledoc false
+  alias Worth.Memory.Manager
+
   @system_prompt_path Path.join(:code.priv_dir(:worth), "prompts/system.md")
 
   @memory_section_header "\n\n## Memory Context\n\nRelevant knowledge from previous sessions:\n"
@@ -50,7 +53,7 @@ defmodule Worth.Workspace.Context do
   end
 
   defp load_memory_context(workspace, user_message) do
-    case Worth.Memory.Manager.build_memory_context(user_message, workspace: workspace) do
+    case Manager.build_memory_context(user_message, workspace: workspace) do
       {:ok, nil} ->
         load_recent_memory(workspace)
 
@@ -63,12 +66,10 @@ defmodule Worth.Workspace.Context do
   end
 
   defp load_recent_memory(workspace) do
-    case Worth.Memory.Manager.recent(workspace: workspace, limit: 5) do
+    case Manager.recent(workspace: workspace, limit: 5) do
       {:ok, entries} when is_list(entries) and entries != [] ->
         lines =
-          entries
-          |> Enum.map(fn e -> "- #{e.content}" end)
-          |> Enum.join("\n")
+          Enum.map_join(entries, "\n", fn e -> "- #{e.content}" end)
 
         truncate(@memory_section_header <> lines, @max_memory_chars)
 
@@ -78,12 +79,10 @@ defmodule Worth.Workspace.Context do
   end
 
   defp load_working_memory(workspace) do
-    case Worth.Memory.Manager.working_read(workspace: workspace) do
+    case Manager.working_read(workspace: workspace) do
       {:ok, entries} when is_list(entries) and entries != [] ->
         lines =
-          entries
-          |> Enum.map(fn e -> "- #{e.content}" end)
-          |> Enum.join("\n")
+          Enum.map_join(entries, "\n", fn e -> "- #{e.content}" end)
 
         @working_memory_header <> lines
 

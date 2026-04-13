@@ -1,4 +1,5 @@
 defmodule Worth.Memory.Manager do
+  @moduledoc false
   @scope_uuid "00000000-0000-0000-0000-000000000001"
 
   def search(query, opts \\ []) do
@@ -13,19 +14,21 @@ defmodule Worth.Memory.Manager do
   def remember(content, opts \\ []) do
     unless_disabled(opts, fn ->
       merged =
-        [
-          scope_id: @scope_uuid,
-          entry_type: opts[:entry_type] || "note",
-          source: opts[:source] || "agent",
-          confidence: opts[:confidence],
-          half_life_days: opts[:half_life_days],
-          pinned: opts[:pinned],
-          emotional_valence: opts[:emotional_valence],
-          metadata: build_metadata(opts),
-          context_hints: build_context_hints(opts),
-          tags: opts[:tags]
-        ]
-        |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+        Enum.reject(
+          [
+            scope_id: @scope_uuid,
+            entry_type: opts[:entry_type] || "note",
+            source: opts[:source] || "agent",
+            confidence: opts[:confidence],
+            half_life_days: opts[:half_life_days],
+            pinned: opts[:pinned],
+            emotional_valence: opts[:emotional_valence],
+            metadata: build_metadata(opts),
+            context_hints: build_context_hints(opts),
+            tags: opts[:tags]
+          ],
+          fn {_k, v} -> is_nil(v) end
+        )
 
       Mneme.remember(content, merged)
     end)
@@ -103,10 +106,10 @@ defmodule Worth.Memory.Manager do
       {:ok, context_pack} ->
         text = Mneme.Search.ContextFormatter.format(context_pack)
 
-        if text != "" do
-          {:ok, text}
-        else
+        if text == "" do
           {:ok, nil}
+        else
+          {:ok, text}
         end
 
       error ->

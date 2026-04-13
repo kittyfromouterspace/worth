@@ -1,6 +1,8 @@
 defmodule Worth.Skill.VersionerTest do
   use ExUnit.Case, async: false
 
+  alias Worth.Skill.Versioner
+
   setup do
     tmp_dir = System.tmp_dir!()
     skill_dir = Path.join(tmp_dir, "versioner-test-skill")
@@ -30,7 +32,7 @@ defmodule Worth.Skill.VersionerTest do
     ws_path = Worth.Workspace.Service.resolve_path("personal")
     File.mkdir_p!(Path.join(ws_path, ".worth/skills"))
 
-    unless File.exists?(Path.join(ws_path, "IDENTITY.md")) do
+    if !File.exists?(Path.join(ws_path, "IDENTITY.md")) do
       File.write!(Path.join(ws_path, "IDENTITY.md"), "# personal\n")
     end
 
@@ -54,27 +56,27 @@ defmodule Worth.Skill.VersionerTest do
 
   describe "save_version/1" do
     test "saves current version to history" do
-      assert {:ok, _path} = Worth.Skill.Versioner.save_version("versioner-test-skill")
+      assert {:ok, _path} = Versioner.save_version("versioner-test-skill")
     end
 
     test "returns already_saved for duplicate save" do
-      Worth.Skill.Versioner.save_version("versioner-test-skill")
-      assert {:ok, :already_saved} = Worth.Skill.Versioner.save_version("versioner-test-skill")
+      Versioner.save_version("versioner-test-skill")
+      assert {:ok, :already_saved} = Versioner.save_version("versioner-test-skill")
     end
 
     test "returns error for nonexistent skill" do
-      assert {:error, _} = Worth.Skill.Versioner.save_version("nonexistent-skill-xyz")
+      assert {:error, _} = Versioner.save_version("nonexistent-skill-xyz")
     end
   end
 
   describe "list_versions/1" do
     test "returns empty list when no history" do
-      assert {:ok, []} = Worth.Skill.Versioner.list_versions("versioner-test-skill")
+      assert {:ok, []} = Versioner.list_versions("versioner-test-skill")
     end
 
     test "lists saved versions" do
-      Worth.Skill.Versioner.save_version("versioner-test-skill")
-      assert {:ok, [{1, %{path: _}}]} = Worth.Skill.Versioner.list_versions("versioner-test-skill")
+      Versioner.save_version("versioner-test-skill")
+      assert {:ok, [{1, %{path: _}}]} = Versioner.list_versions("versioner-test-skill")
     end
   end
 end

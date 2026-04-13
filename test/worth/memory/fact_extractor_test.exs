@@ -1,10 +1,12 @@
 defmodule Worth.Memory.FactExtractorTest do
   use ExUnit.Case
 
+  alias Worth.Memory.FactExtractor
+
   describe "extract_facts/2" do
     test "extracts facts deterministically for preference patterns" do
       {:ok, facts} =
-        Worth.Memory.FactExtractor.extract_facts(
+        FactExtractor.extract_facts(
           "I always use conventional commits with scope prefix",
           enabled: true
         )
@@ -15,7 +17,7 @@ defmodule Worth.Memory.FactExtractorTest do
 
     test "returns empty list when no patterns match" do
       {:ok, facts} =
-        Worth.Memory.FactExtractor.extract_facts(
+        FactExtractor.extract_facts(
           "The weather is nice today.",
           enabled: true
         )
@@ -25,7 +27,7 @@ defmodule Worth.Memory.FactExtractorTest do
 
     test "returns empty list when disabled" do
       {:ok, facts} =
-        Worth.Memory.FactExtractor.extract_facts(
+        FactExtractor.extract_facts(
           "I prefer tabs over spaces",
           enabled: false
         )
@@ -37,7 +39,7 @@ defmodule Worth.Memory.FactExtractorTest do
       response = ~s(["User prefers conventional commits", "Project uses Ecto 3.12"])
 
       assert {:ok, facts} =
-               Worth.Memory.FactExtractor.extract_facts("test",
+               FactExtractor.extract_facts("test",
                  llm_fn: fn _messages ->
                    {:ok, %{"content" => response}}
                  end
@@ -47,10 +49,10 @@ defmodule Worth.Memory.FactExtractorTest do
     end
 
     test "handles markdown-wrapped JSON" do
-      response = "```json\n[\"Fact one\", \"Fact two\"]\n```"
+      response = ~s(```json\n["Fact one", "Fact two"]\n```)
 
       assert {:ok, facts} =
-               Worth.Memory.FactExtractor.extract_facts("test",
+               FactExtractor.extract_facts("test",
                  llm_fn: fn _messages ->
                    {:ok, %{content: response}}
                  end
@@ -61,7 +63,7 @@ defmodule Worth.Memory.FactExtractorTest do
 
     test "handles invalid JSON gracefully" do
       assert {:ok, facts} =
-               Worth.Memory.FactExtractor.extract_facts("test",
+               FactExtractor.extract_facts("test",
                  llm_fn: fn _messages ->
                    {:ok, %{"content" => "not json at all"}}
                  end
@@ -72,7 +74,7 @@ defmodule Worth.Memory.FactExtractorTest do
 
     test "handles LLM errors gracefully" do
       assert {:ok, facts} =
-               Worth.Memory.FactExtractor.extract_facts("test",
+               FactExtractor.extract_facts("test",
                  llm_fn: fn _messages ->
                    {:error, "api error"}
                  end
@@ -85,7 +87,7 @@ defmodule Worth.Memory.FactExtractorTest do
   describe "extract_and_store/2" do
     test "returns empty list when disabled" do
       results =
-        Worth.Memory.FactExtractor.extract_and_store(
+        FactExtractor.extract_and_store(
           "I prefer conventional commits",
           enabled: false
         )

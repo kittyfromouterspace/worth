@@ -1,4 +1,5 @@
 defmodule Worth.BrainCase do
+  @moduledoc false
   use ExUnit.CaseTemplate
 
   using do

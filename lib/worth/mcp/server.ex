@@ -1,4 +1,5 @@
 defmodule Worth.Mcp.Server do
+  @moduledoc false
   use Hermes.Server,
     name: "worth",
     version: "0.1.0",

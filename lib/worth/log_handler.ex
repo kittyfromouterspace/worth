@@ -38,7 +38,7 @@ defmodule Worth.LogHandler do
   defp with_rotation(base_path) do
     case rotation_mode() do
       :daily ->
-        date_str = DateTime.utc_now() |> Date.to_iso8601()
+        date_str = Date.to_iso8601(DateTime.utc_now())
         ext = Path.extname(base_path)
         basename = Path.rootname(base_path)
         "#{basename}-#{date_str}#{ext}"
@@ -48,8 +48,10 @@ defmodule Worth.LogHandler do
     end
   end
 
+  @log_config Application.compile_env(:worth, :log, nil)
+
   defp rotation_mode do
-    case Application.get_env(:worth, :log) do
+    case @log_config do
       nil -> nil
       opts when is_list(opts) -> Keyword.get(opts, :rotation, nil)
       _ -> nil
@@ -87,7 +89,8 @@ defmodule Worth.LogHandler do
   end
 
   defp format_msg({:report, report}, %{report_cb: cb}) when is_function(cb, 2) do
-    cb.(report, %{depth: :unlimited, chars_limit: :unlimited, single_line: false})
+    report
+    |> cb.(%{depth: :unlimited, chars_limit: :unlimited, single_line: false})
     |> IO.chardata_to_string()
     |> String.trim_trailing()
   end

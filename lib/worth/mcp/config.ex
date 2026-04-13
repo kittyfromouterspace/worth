@@ -1,18 +1,27 @@
 defmodule Worth.Mcp.Config do
+  @moduledoc """
+  MCP server configuration.
+
+  Global servers are stored in `~/.worth/mcp.json` (inside the data directory).
+  Per-workspace servers come from `<workspace>/.worth/mcp.json`.
+  """
+
   def load(workspace_path \\ nil) do
     global = load_global()
     workspace = load_workspace(workspace_path)
     Map.merge(global, workspace)
   end
 
-  defp global_config_path, do: Worth.Config.Store.path()
+  defp global_config_path do
+    Path.join(Worth.Paths.data_dir(), "mcp.json")
+  end
 
   def server_names(workspace_path \\ nil) do
-    load(workspace_path) |> Map.keys()
+    workspace_path |> load() |> Map.keys()
   end
 
   def get_server(name, workspace_path \\ nil) do
-    load(workspace_path) |> Map.get(to_string(name))
+    workspace_path |> load() |> Map.get(to_string(name))
   end
 
   def add_server(name, config) do
@@ -33,7 +42,7 @@ defmodule Worth.Mcp.Config do
 
   def build_transport_opts(server_config) do
     raw_type = server_config["type"] || server_config[:type] || "stdio"
-    type = if is_binary(raw_type), do: String.to_atom(raw_type), else: raw_type
+    type = if is_binary(raw_type), do: safe_to_existing_atom(raw_type), else: raw_type
 
     case type do
       :stdio ->
@@ -41,7 +50,7 @@ defmodule Worth.Mcp.Config do
         args = server_config["args"] || server_config[:args] || []
         env = resolve_env(server_config["env"] || server_config[:env] || %{})
 
-        {:stdio, [command: command, args: args] ++ if(env != %{}, do: [env: env], else: [])}
+        {:stdio, [command: command, args: args] ++ if(env == %{}, do: [], else: [env: env])}
 
       :streamable_http ->
         url = server_config["url"] || server_config[:url]
@@ -50,7 +59,7 @@ defmodule Worth.Mcp.Config do
 
         {:streamable_http,
          [url: url, mcp_path: mcp_path] ++
-           if(headers != %{}, do: [headers: headers], else: [])}
+           if(headers == %{}, do: [], else: [headers: headers])}
 
       :sse ->
         base_url = server_config["url"] || server_config["base_url"]
@@ -62,7 +71,8 @@ defmodule Worth.Mcp.Config do
   end
 
   def autoconnect_servers(workspace_path \\ nil) do
-    load(workspace_path)
+    workspace_path
+    |> load()
     |> Enum.filter(fn {_name, config} ->
       config["autoconnect"] || config[:autoconnect] || false
     end)
@@ -73,24 +83,21 @@ defmodule Worth.Mcp.Config do
     path = global_config_path()
 
     if File.exists?(path) do
-      try do
-        {result, _binding} = Code.eval_file(path)
+      case File.read(path) do
+        {:ok, json} ->
+          case Jason.decode(json) do
+            {:ok, %{"mcpServers" => servers}} when is_map(servers) ->
+              stringify_keys(servers)
 
-        case result do
-          %{mcp: %{servers: servers}} when is_map(servers) ->
-            stringify_keys(servers)
+            {:ok, servers} when is_map(servers) ->
+              stringify_keys(servers)
 
-          %{mcp: %{"servers" => servers}} when is_map(servers) ->
-            stringify_keys(servers)
+            _ ->
+              %{}
+          end
 
-          %{"mcp" => %{"servers" => servers}} when is_map(servers) ->
-            stringify_keys(servers)
-
-          _ ->
-            %{}
-        end
-      rescue
-        _ -> %{}
+        _ ->
+          %{}
       end
     else
       %{}
@@ -118,23 +125,10 @@ defmodule Worth.Mcp.Config do
   end
 
   defp save_global(servers) do
-    dir = Path.dirname(global_config_path())
-    File.mkdir_p!(dir)
-
-    existing =
-      if File.exists?(global_config_path()) do
-        try do
-          {result, _} = Code.eval_file(global_config_path())
-          if is_map(result), do: result, else: %{}
-        rescue
-          _ -> %{}
-        end
-      else
-        %{}
-      end
-
-    updated = put_in(existing, [Access.key(:mcp, %{}), Access.key(:servers, %{})], servers)
-    File.write!(global_config_path(), inspect(updated, pretty: true, limit: :infinity))
+    path = global_config_path()
+    File.mkdir_p!(Path.dirname(path))
+    json = Jason.encode!(%{"mcpServers" => servers}, pretty: true)
+    File.write!(path, json)
     :ok
   end
 
@@ -154,4 +148,12 @@ defmodule Worth.Mcp.Config do
       {key, v}
     end)
   end
+
+  defp safe_to_existing_atom(str) when is_binary(str) do
+    String.to_existing_atom(str)
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp safe_to_existing_atom(other), do: other
 end

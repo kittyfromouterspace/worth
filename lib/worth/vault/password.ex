@@ -29,8 +29,7 @@ defmodule Worth.Vault.Password do
   Derive a 32-byte AES key from a password and salt using PBKDF2.
   This key is used to configure the Cloak Vault cipher.
   """
-  def derive_key(password, salt)
-      when is_binary(password) and is_binary(salt) do
+  def derive_key(password, salt) when is_binary(password) and is_binary(salt) do
     :crypto.pbkdf2_hmac(@pbkdf2_hash, password, salt, @pbkdf2_iterations, @key_length)
   end
 end

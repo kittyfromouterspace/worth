@@ -1,4 +1,5 @@
 defmodule Worth.Persistence.Transcript do
+  @moduledoc false
   @behaviour AgentEx.Persistence.Transcript
 
   require Logger
