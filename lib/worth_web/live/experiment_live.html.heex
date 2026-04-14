@@ -1,0 +1,130 @@
+<div class={"min-h-screen #{color(:background)} #{color(:text)} p-8"}>
+  <div class="max-w-6xl mx-auto">
+    <h1 class="text-2xl font-bold mb-6">Orchestration Experiments</h1>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2">
+        <div class={"#{color(:surface)} rounded-lg border #{color(:border)} p-6 mb-6"}>
+          <h2 class="text-lg font-semibold mb-4">Create Experiment</h2>
+          <form phx-submit="create">
+            <div class="space-y-4">
+              <div>
+                <label class={"block text-sm #{color(:text_muted)} mb-1"}>Name</label>
+                <input type="text" name="experiment[name]" value={@form.name}
+                  class={"w-full #{color(:surface_elevated)} border #{color(:border)} rounded px-3 py-2 #{color(:text)} focus:border-blue-500"} />
+              </div>
+              <div>
+                <label class={"block text-sm #{color(:text_muted)} mb-1"}>Description</label>
+                <input type="text" name="experiment[description]" value={@form.description}
+                  class={"w-full #{color(:surface_elevated)} border #{color(:border)} rounded px-3 py-2 #{color(:text)} focus:border-blue-500"} />
+              </div>
+              <div>
+                <label class={"block text-sm #{color(:text_muted)} mb-1"}>Strategies (comma-separated)</label>
+                <input type="text" name="experiment[strategies]" value={@form.strategies}
+                  placeholder="default,stigmergy,holonic"
+                  class={"w-full #{color(:surface_elevated)} border #{color(:border)} rounded px-3 py-2 #{color(:text)} focus:border-blue-500"} />
+              </div>
+              <div>
+                <label class={"block text-sm #{color(:text_muted)} mb-1"}>Prompts (one per line)</label>
+                <textarea name="experiment[prompts]" rows="4"
+                  placeholder="Refactor the auth module&#10;Add pagination to API&#10;Extract validation logic"
+                  class={"w-full #{color(:surface_elevated)} border #{color(:border)} rounded px-3 py-2 #{color(:text)} focus:border-blue-500"}></textarea>
+              </div>
+              <div>
+                <label class={"block text-sm #{color(:text_muted)} mb-1"}>Repetitions</label>
+                <input type="number" name="experiment[repetitions]" value={@form.repetitions} min="1"
+                  class={"w-24 #{color(:surface_elevated)} border #{color(:border)} rounded px-3 py-2 #{color(:text)} focus:border-blue-500"} />
+              </div>
+              <button type="submit"
+                class={"#{color(:button_primary)} text-white px-4 py-2 rounded font-medium"}>
+                Create Experiment
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <%= if @selected_experiment do %>
+          <div class={"#{color(:surface)} rounded-lg border #{color(:border)} p-6 mb-6"}>
+            <div class="flex justify-between items-start mb-4">
+              <div>
+                <h2 class="text-lg font-semibold"><%= @selected_experiment.name %></h2>
+                <p class={"#{color(:text_muted)} text-sm"}><%= @selected_experiment.description %></p>
+              </div>
+              <span class={"px-2 py-1 rounded text-xs font-medium " <> status_class(@selected_experiment.status)}>
+                <%= @selected_experiment.status %>
+              </span>
+            </div>
+            <div class={"text-sm #{color(:text_muted)} mb-4"}>
+              <span>Strategies: <%= inspect(@selected_experiment.strategies) %></span>
+              <span class="ml-4">Repetitions: <%= @selected_experiment.repetitions %></span>
+            </div>
+
+            <%= if @comparison && @comparison != [] do %>
+              <h3 class="font-medium mb-2">Comparison</h3>
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead>
+                    <tr class={"border-b #{color(:border)}"}>
+                      <th class="text-left py-2 px-2">Strategy</th>
+                      <th class="text-right py-2 px-2">Runs</th>
+                      <th class="text-right py-2 px-2">Success %</th>
+                      <th class="text-right py-2 px-2">Avg Cost</th>
+                      <th class="text-right py-2 px-2">Avg Turns</th>
+                      <th class="text-right py-2 px-2">Avg Duration</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <%= for c <- @comparison do %>
+                      <tr class={"border-b #{color(:border)}"}>
+                        <td class="py-2 px-2 font-medium"><%= c.strategy %></td>
+                        <td class="text-right py-2 px-2"><%= c.run_count %></td>
+                        <td class="text-right py-2 px-2"><%= Float.round(c.success_rate * 100, 1) %>%</td>
+                        <td class="text-right py-2 px-2">$<%= Float.round(c.avg_cost, 4) %></td>
+                        <td class="text-right py-2 px-2"><%= Float.round(c.avg_tool_calls, 1) %></td>
+                        <td class="text-right py-2 px-2"><%= Float.round(c.avg_duration_ms, 0) %>ms</td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
+      </div>
+
+      <div>
+        <div class={"#{color(:surface)} rounded-lg border #{color(:border)} p-6"}>
+          <h2 class="text-lg font-semibold mb-4">History</h2>
+          <div class="space-y-2">
+            <%= for experiment <- @experiments do %>
+              <div class={"w-full text-left p-3 rounded border " <>
+                if(@selected_experiment && @selected_experiment.id == experiment.id,
+                  do: "#{color(:primary)} #{color(:surface)}",
+                  else: "#{color(:border)} hover:border-gray-600")}>
+                <button phx-click="select" phx-value-id={experiment.id} class="w-full text-left">
+                  <div class="flex justify-between items-center">
+                    <span class="font-medium text-sm"><%= experiment.name %></span>
+                    <span class={"px-1.5 py-0.5 rounded text-xs " <> status_class(experiment.status)}>
+                      <%= experiment.status %>
+                    </span>
+                  </div>
+                  <div class={"text-xs #{color(:text_muted)} mt-1"}>
+                    <%= Enum.join(experiment.strategies, ", ") %> &middot;
+                    <%= length(experiment.prompts) %> prompts &middot;
+                    <%= experiment.repetitions %>x
+                  </div>
+                </button>
+                <%= if experiment.status in ["pending", "running"] do %>
+                  <button phx-click="run" phx-value-id={experiment.id}
+                    class={"mt-2 text-xs #{color(:button_primary)} text-white px-2 py-1 rounded"}>
+                    Run
+                  </button>
+                <% end %>
+              </div>
+            <% end %>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
