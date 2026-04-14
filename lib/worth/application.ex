@@ -33,20 +33,12 @@ defmodule Worth.Application do
           Worth.Boot.run_migrations!()
         end
 
-        start_init_task(fn -> Worth.Skill.Registry.init() end)
-        start_init_task(fn -> Broker.connect_auto() end)
-        start_init_task(fn -> Worth.Memory.Embeddings.StaleCheck.run() end)
-
-        # AgentEx.LLM.Catalog runs its first refresh ~100ms after agent_ex
-        # boots — that races Worth.Config.start_link/1, which is the only
-        # thing that exports user-saved provider keys (e.g. OPENROUTER_API_KEY)
-        # into the process env. The refresh wins the race, every provider
-        # resolves as :no_creds, the static fallback is persisted to
-        # ~/.worth/catalog.json, and the next scheduled refresh isn't for
-        # 10 minutes. Force one more refresh now that Worth.Config is up.
-        start_init_task(fn -> Worth.CodingAgents.auto_register() end)
-        start_init_task(fn -> AgentEx.LLM.Catalog.refresh() end)
-        start_init_task(fn -> register_strategies() end)
+        _ = start_init_task(:skill_registry_init, &Worth.Skill.Registry.init/0)
+        _ = start_init_task(:mcp_auto_connect, &Broker.connect_auto/0)
+        _ = start_init_task(:embeddings_stale_check, &Worth.Memory.Embeddings.StaleCheck.run/0)
+        _ = start_init_task(:coding_agents_register, &Worth.CodingAgents.auto_register/0)
+        _ = start_init_task(:catalog_refresh, &AgentEx.LLM.Catalog.refresh/0)
+        _ = start_init_task(:strategy_registration, &register_strategies/0)
 
         {:ok, pid}
 
@@ -61,15 +53,28 @@ defmodule Worth.Application do
     :ok
   end
 
-  defp start_init_task(fun) do
-    Task.Supervisor.start_child(Worth.SkillInit, fun)
+  defp start_init_task(name, fun) do
+    {:ok, _pid} =
+      Task.Supervisor.start_child(Worth.SkillInit, fn ->
+        try do
+          fun.()
+        rescue
+          e ->
+            require Logger
+
+            Logger.error("[Application] Init task #{name} failed: #{inspect(e)}")
+            reraise e, __STACKTRACE__
+        catch
+          kind, reason ->
+            require Logger
+
+            Logger.error("[Application] Init task #{name} crashed: #{kind} #{inspect(reason)}")
+            :ok
+        end
+      end)
   end
 
   defp register_strategies do
     AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Stigmergy)
-    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Holonic)
-    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Evolutionary)
-    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Swarm)
-    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Ecosystem)
   end
 end
