@@ -14,10 +14,10 @@ defmodule Worth.Orchestration.Experiment do
     field(:name, :string)
     field(:description, :string)
     field(:strategies, {:array, :string})
-    field(:prompts, {:array, :text})
+    field(:prompts, {:array, :string})
     field(:repetitions, :integer, default: 1)
     field(:base_opts, :map)
-    field(:results, :map)
+    field(:results, {:array, :map})
     field(:comparison, :map)
     field(:status, :string, default: "pending")
 

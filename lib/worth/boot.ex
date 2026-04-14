@@ -32,7 +32,10 @@ defmodule Worth.Boot do
     Worth.Brain.switch_mode(workspace, mode)
 
     if strategy = Keyword.get(opts, :strategy) do
-      Worth.Brain.switch_strategy(workspace, String.to_atom(strategy))
+      case safe_to_existing_atom(strategy) do
+        {:ok, atom} -> Worth.Brain.switch_strategy(workspace, atom)
+        {:error, _} -> IO.puts("Unknown strategy: #{strategy}")
+      end
     end
 
     url()
@@ -70,6 +73,12 @@ defmodule Worth.Boot do
   defp parse_mode("planned"), do: :planned
   defp parse_mode("turn_by_turn"), do: :turn_by_turn
   defp parse_mode(_), do: :code
+
+  defp safe_to_existing_atom(str) when is_binary(str) do
+    {:ok, String.to_existing_atom(str)}
+  rescue
+    ArgumentError -> {:error, :unknown_atom}
+  end
 
   defp ensure_directories! do
     Worth.Paths.ensure_data_dir!()

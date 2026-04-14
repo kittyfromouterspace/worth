@@ -87,6 +87,7 @@ defmodule Worth.Orchestration.Strategies.Evolutionary do
     end
   end
 
+  @impl true
   def handle_result({:error, reason}, _opts, state) do
     new_results = [{state.current_candidate, {:error, reason}} | state.results]
     next_candidate = state.current_candidate + 1
@@ -117,7 +118,7 @@ defmodule Worth.Orchestration.Strategies.Evolutionary do
     end
   end
 
-  defp evolve_population(results, _old_population, opts) do
+  defp evolve_population(results, old_population, opts) do
     base = opts[:prompt] || ""
 
     successes =
@@ -149,7 +150,7 @@ defmodule Worth.Orchestration.Strategies.Evolutionary do
     |> List.first()
     |> case do
       nil -> %{text: "No successful solution found", cost: 0, tokens: 0, steps: 0}
-      {_idx, result} -> result
+      {_idx, {:ok, result}} -> result
     end
   end
 

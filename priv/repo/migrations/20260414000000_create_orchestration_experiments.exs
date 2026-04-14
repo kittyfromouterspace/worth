@@ -10,7 +10,7 @@ defmodule Worth.Repo.Migrations.CreateOrchestrationExperiments do
       add(:prompts, {:array, :text}, null: false)
       add(:repetitions, :integer, default: 1)
       add(:base_opts, :map)
-      add(:results, :map)
+      add(:results, {:array, :map})
       add(:comparison, :map)
       add(:status, :string, default: "pending")
 

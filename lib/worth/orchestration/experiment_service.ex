@@ -9,8 +9,8 @@ defmodule Worth.Orchestration.ExperimentService do
   alias Worth.Repo
 
   def list do
-    Repo.all(Experiment)
-    |> Enum.sort_by(& &1.inserted_at, {:desc, NaiveDateTime})
+    from(e in Experiment, order_by: [desc: e.inserted_at])
+    |> Repo.all()
   end
 
   def get!(id), do: Repo.get!(Experiment, id)
@@ -28,22 +28,35 @@ defmodule Worth.Orchestration.ExperimentService do
       Repo.update!(Experiment.changeset(experiment, %{status: "running"}))
 
     Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
-      agent_experiment = build_agent_experiment(experiment)
+      try do
+        agent_experiment = build_agent_experiment(experiment)
 
-      result = AgentEx.Strategy.Experiment.run(agent_experiment)
-      comparison = AgentEx.Strategy.Experiment.compare(result)
+        result = AgentEx.Strategy.Experiment.run(agent_experiment)
+        comparison = AgentEx.Strategy.Experiment.compare(result)
 
-      Repo.update!(Experiment.changeset(experiment, %{
-        status: "complete",
-        results: serialize_results(result.results),
-        comparison: comparison
-      }))
+        Repo.update!(Experiment.changeset(experiment, %{
+          status: "complete",
+          results: serialize_results(result.results),
+          comparison: comparison
+        }))
 
-      Phoenix.PubSub.broadcast(
-        Worth.PubSub,
-        "experiments",
-        {:experiment_complete, experiment.id}
-      )
+        Phoenix.PubSub.broadcast(
+          Worth.PubSub,
+          "experiments",
+          {:experiment_complete, experiment.id}
+        )
+      rescue
+        e ->
+          Repo.update!(Experiment.changeset(experiment, %{status: "error"}))
+
+          Phoenix.PubSub.broadcast(
+            Worth.PubSub,
+            "experiments",
+            {:experiment_complete, experiment.id}
+          )
+
+          reraise e, __STACKTRACE__
+      end
     end)
 
     {:ok, experiment}
@@ -54,7 +67,7 @@ defmodule Worth.Orchestration.ExperimentService do
       id: experiment.id,
       name: experiment.name,
       description: experiment.description,
-      strategies: Enum.map(experiment.strategies, &String.to_atom/1),
+      strategies: Enum.map(experiment.strategies, &String.to_existing_atom/1),
       prompts: experiment.prompts,
       repetitions: experiment.repetitions,
       base_opts: experiment.base_opts || [],

@@ -5,6 +5,8 @@ defmodule WorthWeb.ExperimentLive do
 
   use WorthWeb, :live_view
 
+  import WorthWeb.ThemeHelper, only: [color: 1]
+
   alias Worth.Orchestration.ExperimentService
 
   @impl true
@@ -27,6 +29,7 @@ defmodule WorthWeb.ExperimentLive do
     {:noreply, assign(socket, :experiments, ExperimentService.list())}
   end
 
+  @impl true
   def handle_event("create", %{"experiment" => params}, socket) do
     strategies =
       params["strategies"]
@@ -60,6 +63,7 @@ defmodule WorthWeb.ExperimentLive do
     end
   end
 
+  @impl true
   def handle_event("run", %{"id" => id}, socket) do
     case ExperimentService.run_experiment(id) do
       {:ok, _} ->
@@ -73,6 +77,7 @@ defmodule WorthWeb.ExperimentLive do
     end
   end
 
+  @impl true
   def handle_event("select", %{"id" => id}, socket) do
     experiment = ExperimentService.get!(id)
     comparison = experiment.comparison || []
@@ -91,6 +96,7 @@ defmodule WorthWeb.ExperimentLive do
     {:noreply, assign(socket, :experiments, ExperimentService.list())}
   end
 
+  @impl true
   def handle_info({:experiment_complete, id}, socket) do
     experiments = ExperimentService.list()
 
@@ -111,9 +117,9 @@ defmodule WorthWeb.ExperimentLive do
     {:noreply, socket}
   end
 
-  defp status_class("complete"), do: "bg-green-900 text-green-300"
-  defp status_class("running"), do: "bg-yellow-900 text-yellow-300"
-  defp status_class("pending"), do: "bg-gray-800 text-gray-400"
-  defp status_class("error"), do: "bg-red-900 text-red-300"
-  defp status_class(_), do: "bg-gray-800 text-gray-400"
+  defp status_class("complete"), do: color(:success)
+  defp status_class("running"), do: color(:warning)
+  defp status_class("pending"), do: "#{color(:surface_elevated)} #{color(:text_muted)}"
+  defp status_class("error"), do: color(:error)
+  defp status_class(_), do: "#{color(:surface_elevated)} #{color(:text_muted)}"
 end
