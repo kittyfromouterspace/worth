@@ -63,7 +63,8 @@ Determine the new version numbers for each repo. Update them in order:
 | mneme | `mix.exs` `version:` field | |
 | agent_ex | `mix.exs` `version:` field | |
 | worth | `mix.exs` `version:` field | Semver OK (e.g. `0.2.1-alpha.5`) |
-| worth | `rel/desktop/src-tauri/tauri.conf.json` `version` field | **Must be numeric-only 4-part version** (e.g. `0.2.1.5`) — MSI/WiX rejects pre-release identifiers |
+| worth | `rel/desktop/src-tauri/tauri.conf.json` `version` field | Must be valid semver (e.g. `0.2.1-alpha.5`) |
+| worth | `rel/desktop/src-tauri/tauri.conf.json` `bundle.windows.wix.version` | Must be numeric-only 4-part (e.g. `0.2.1.5`) — MSI/WiX rejects pre-release identifiers. Map: strip `-alpha.N` → `.N`, strip `-beta.N` → `.N`, stable → `.0` |
 
 ### Step 2 — Commit and tag mneme
 
