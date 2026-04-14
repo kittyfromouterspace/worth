@@ -33,7 +33,7 @@ defmodule WorthWeb.ChatLive do
   @impl true
   def mount(_params, _session, socket) do
     workspace = Worth.Config.get(:current_workspace, "personal")
-    mode = Worth.Config.get(:current_mode, :code)
+    mode = Worth.Config.get(:current_mode, :turn_by_turn)
 
     if connected?(socket) do
       topic = "workspace:#{workspace}"
@@ -84,7 +84,8 @@ defmodule WorthWeb.ChatLive do
        desktop_mode: System.get_env("WORTH_DESKTOP") == "1",
        learning_step_shown: nil,
        xray: false,
-       xray_events: []
+       xray_events: [],
+       last_tool_call_id: nil
      )}
   end
 
@@ -558,11 +559,12 @@ defmodule WorthWeb.ChatLive do
 
       {:model_selected, info} ->
         tier = Map.get(info, :tier, :primary)
+        display_tier = if tier == :auto, do: :primary, else: tier
         label = Map.get(info, :label) || Map.get(info, :model_id) || "?"
         provider = Map.get(info, :provider_name, "?")
         source = Map.get(info, :source, :unknown)
         slot = %{label: label, source: "#{source}/#{provider}"}
-        models = Map.put(socket.assigns.models, tier, slot)
+        models = Map.put(socket.assigns.models, display_tier, slot)
         assign(socket, models: models)
 
       {:tool_use, name, _ws} when is_binary(name) ->
@@ -573,8 +575,12 @@ defmodule WorthWeb.ChatLive do
             socket
           end
 
-        stream_insert(socket, :messages, %{
-          id: msg_id(),
+        tool_id = msg_id()
+
+        socket
+        |> assign(last_tool_call_id: tool_id)
+        |> stream_insert(:messages, %{
+          id: tool_id,
           type: :tool_call,
           content: %{name: name, input: %{}, status: :running}
         })
@@ -593,7 +599,9 @@ defmodule WorthWeb.ChatLive do
             socket
           end
 
-        stream_insert(socket, :messages, %{
+        socket
+        |> maybe_delete_tool_call()
+        |> stream_insert(:messages, %{
           id: msg_id(),
           type: :tool_result,
           content: %{name: name, output: output_str, status: status}
@@ -607,8 +615,12 @@ defmodule WorthWeb.ChatLive do
             socket
           end
 
-        stream_insert(socket, :messages, %{
-          id: msg_id(),
+        tool_id = msg_id()
+
+        socket
+        |> assign(last_tool_call_id: tool_id)
+        |> stream_insert(:messages, %{
+          id: tool_id,
           type: :tool_call,
           content: %{name: name, input: input}
         })
@@ -621,7 +633,9 @@ defmodule WorthWeb.ChatLive do
             socket
           end
 
-        stream_insert(socket, :messages, %{
+        socket
+        |> maybe_delete_tool_call()
+        |> stream_insert(:messages, %{
           id: msg_id(),
           type: :tool_result,
           content: %{name: name, output: output}
@@ -720,15 +734,23 @@ defmodule WorthWeb.ChatLive do
   end
 
   defp poll_resolved_model(socket) do
-    primary = AgentEx.ModelRouter.resolve(:primary)
-    lightweight = AgentEx.ModelRouter.resolve(:lightweight)
-
-    models = %{
-      primary: format_model_slot(primary),
-      lightweight: format_model_slot(lightweight)
-    }
-
+    current_models = socket.assigns.models
     routing = current_routing()
+
+    resolved =
+      if routing[:filter] == "free_only" do
+        resolve_free_models()
+      else
+        %{
+          primary: format_model_slot(AgentEx.ModelRouter.resolve(:primary)),
+          lightweight: format_model_slot(AgentEx.ModelRouter.resolve(:lightweight))
+        }
+      end
+
+    models =
+      Map.merge(resolved, current_models, fn _k, resolved_val, current_val ->
+        if current_val.label && current_val.label != "", do: current_val, else: resolved_val
+      end)
 
     assign(socket, models: models, model_routing: routing)
   rescue
@@ -751,6 +773,44 @@ defmodule WorthWeb.ChatLive do
   end
 
   defp format_model_slot(_), do: %{label: nil, source: nil}
+
+  defp resolve_free_models do
+    free = Catalog.find(has: [:free, :chat], tier: :primary)
+
+    primary =
+      free
+      |> Enum.filter(&MapSet.member?(&1.capabilities, :tools))
+      |> Enum.sort_by(& &1.context_window, :desc)
+      |> List.first()
+
+    lightweight =
+      Catalog.find(has: [:free, :chat], tier: :lightweight)
+      |> Enum.sort_by(& &1.context_window, :desc)
+      |> List.first()
+
+    %{
+      primary: format_catalog_model(primary),
+      lightweight: format_catalog_model(lightweight || primary)
+    }
+  end
+
+  defp maybe_delete_tool_call(%{assigns: %{last_tool_call_id: id}} = socket) when is_binary(id) do
+    socket
+    |> stream_delete_by_dom_id(:messages, id)
+    |> assign(last_tool_call_id: nil)
+  end
+
+  defp maybe_delete_tool_call(socket), do: socket
+
+  defp format_catalog_model(nil), do: %{label: nil, source: nil}
+
+  defp format_catalog_model(%{} = m) do
+    %{
+      label: m.label || m.id,
+      source: "#{m.source}/#{m.provider}",
+      context_window: m.context_window
+    }
+  end
 
   def append_system_message(socket, msg) do
     socket
@@ -794,7 +854,7 @@ defmodule WorthWeb.ChatLive do
     # Set personal as the current workspace
     workspace = "personal"
     Worth.Config.put(:current_workspace, workspace)
-    Worth.Config.put(:current_mode, :code)
+    Worth.Config.put(:current_mode, :turn_by_turn)
 
     # Start the Brain for this workspace
     Worth.Brain.ensure(workspace)
@@ -811,7 +871,7 @@ defmodule WorthWeb.ChatLive do
        view: :chat,
        onboarding_step: 1,
        workspace: workspace,
-       mode: :code,
+       mode: :turn_by_turn,
        workspaces: list_workspaces()
      )
      |> load_settings_form()
@@ -1034,10 +1094,13 @@ defmodule WorthWeb.ChatLive do
   end
 
   defp export_secrets_to_env do
-    # Migrate any plaintext secrets to encrypted vault storage
     Worth.Config.export_vault_secrets()
 
-    # Refresh catalog so provider availability is up to date
+    for setting <- Worth.Settings.all_by_category("secret"),
+        is_binary(setting.encrypted_value) and setting.encrypted_value != "" do
+      AgentEx.LLM.Credentials.put(setting.key, setting.encrypted_value)
+    end
+
     Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
       Catalog.refresh()
     end)
@@ -1246,6 +1309,21 @@ defmodule WorthWeb.ChatLive do
     case MDEx.to_html(text) do
       {:ok, html} -> Phoenix.HTML.raw(html)
       _ -> text
+    end
+  end
+
+  defp split_streaming_thinking(text) do
+    cond do
+      String.contains?(text, "</think>") ->
+        [thinking, rest] = String.split(text, "</think>", parts: 2)
+        thinking = String.replace_prefix(thinking, "<think>", "") |> String.trim()
+        {thinking, String.trim(rest)}
+
+      String.starts_with?(text, "<think>") ->
+        {String.replace_prefix(text, "<think>", "") |> String.trim(), ""}
+
+      true ->
+        {"", text}
     end
   end
 

@@ -4,7 +4,7 @@ defmodule Worth.MixProject do
   def project do
     [
       app: :worth,
-      version: "0.2.1-alpha.3",
+      version: "0.2.1-alpha.5",
       elixir: "~> 1.19",
       description: "An AI assistant built on Elixir/BEAM",
       package: [
@@ -56,11 +56,23 @@ defmodule Worth.MixProject do
   defp elixirc_paths(_), do: ["lib"]
 
   defp deps do
-    [
-      {:tidewave, "~> 0.5", only: [:dev]},
-      {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.4.2"},
+    worth_deps_mode = System.get_env("WORTH_DEPS_MODE", "dev")
 
-      {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.6"},
+    internal_deps =
+      if worth_deps_mode == "prod" do
+        [
+          {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.4.3", override: true},
+          {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.7"}
+        ]
+      else
+        [
+          {:mneme, path: "../mneme"},
+          {:agent_ex, path: "../agent_ex"}
+        ]
+      end
+
+    other_deps = [
+      {:tidewave, "~> 0.5", only: [:dev]},
 
       # Phoenix
       {:phoenix, "~> 1.8.5"},
@@ -107,6 +119,8 @@ defmodule Worth.MixProject do
       {:styler, ">= 0.11.0", only: [:dev, :test], runtime: false},
       {:lazy_html, ">= 0.1.0", only: :test}
     ]
+
+    internal_deps ++ other_deps
   end
 
   defp aliases do

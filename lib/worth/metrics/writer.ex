@@ -112,6 +112,7 @@ defmodule Worth.Metrics.Writer do
         %{
           strategy: to_string(metadata[:strategy] || "default"),
           mode: to_string(metadata[:mode] || "agentic"),
+          workspace: to_string(metadata[:workspace] || "unknown"),
           started_at: DateTime.utc_now()
         }}}
     )
@@ -174,6 +175,7 @@ defmodule Worth.Metrics.Writer do
       session_id: session_id,
       strategy: data.strategy,
       mode: data.mode,
+      workspace: data.workspace,
       status: "running",
       started_at: data.started_at
     })
@@ -215,9 +217,8 @@ defmodule Worth.Metrics.Writer do
       turn_number: data.turn_number,
       started_at: data.started_at,
       stop_reason: to_string(data.stop_reason),
-      strategy: data.strategy,
-      mode: data.mode,
-      phase: data.phase
+      model_id: data[:model_id],
+      phase: data[:phase]
     })
     |> Repo.insert()
   rescue
@@ -228,6 +229,7 @@ defmodule Worth.Metrics.Writer do
     %ToolCallMetric{}
     |> Ecto.Changeset.change(%{
       session_id: session_id,
+      turn_number: data[:turn_number] || 0,
       tool_name: data.tool_name,
       called_at: data.called_at,
       duration_ms: data.duration_ms,

@@ -75,8 +75,14 @@
           <div :if={@streaming_text != ""} class="py-2 px-3">
             <div class="flex gap-2">
               <span class="text-ctp-blue font-bold shrink-0">ai</span>
-              <div class="markdown-content flex-1 min-w-0">
-                {render_streaming(@streaming_text)}
+              <div class="flex-1 min-w-0">
+                <% {thinking, visible} = split_streaming_thinking(@streaming_text) %>
+                <div :if={thinking != ""} class="text-xs italic mb-2 pl-3 border-l-2 border-ctp-overlay0 text-ctp-overlay1">
+                  {thinking}
+                </div>
+                <div :if={visible != ""} class="markdown-content">
+                  {render_streaming(visible)}
+                </div>
                 <span class="text-ctp-blue animate-pulse">▍</span>
               </div>
             </div>

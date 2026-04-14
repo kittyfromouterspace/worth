@@ -12,7 +12,7 @@ defmodule Worth.Boot do
     ensure_directories!()
 
     workspace = Keyword.get(opts, :workspace, "personal")
-    mode = parse_mode(Keyword.get(opts, :mode, "code"))
+    mode = parse_mode(Keyword.get(opts, :mode, "turn_by_turn"))
 
     workspace_path = Service.resolve_path(workspace)
 
@@ -100,7 +100,7 @@ defmodule Worth.Boot do
   defp parse_mode("research"), do: :research
   defp parse_mode("planned"), do: :planned
   defp parse_mode("turn_by_turn"), do: :turn_by_turn
-  defp parse_mode(_), do: :code
+  defp parse_mode(_), do: :turn_by_turn
 
   defp safe_to_existing_atom(str) when is_binary(str) do
     {:ok, String.to_existing_atom(str)}

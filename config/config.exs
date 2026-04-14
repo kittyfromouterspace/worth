@@ -103,7 +103,7 @@ config :worth,
     providers: %{
       openrouter: [
         api_key: {:env, "OPENROUTER_API_KEY"},
-        default_model: "google/gemini-2.5-flash"
+        default_model: "minimax/minimax-m2.5:free"
       ],
       anthropic: [
         api_key: {:env, "ANTHROPIC_API_KEY"},

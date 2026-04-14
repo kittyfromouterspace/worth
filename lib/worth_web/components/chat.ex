@@ -164,9 +164,19 @@ defmodule WorthWeb.Components.Chat do
           </div>
           <div :if={@model_routing[:mode] != "manual" or !@model_routing[:manual_model]}>
             <div class={color(:primary)}>primary</div>
-            <div class={color(:text_muted)}>{model_short(@models, :primary)}</div>
+            <div class={color(:text_muted)}>
+              <%= case model_short(@models, :primary) do %>
+                <% nil -> %><span class="spinner"></span>
+                <% label -> %>{label}
+              <% end %>
+            </div>
             <div class={"#{color(:primary)} mt-1"}>light</div>
-            <div class={color(:text_muted)}>{model_short(@models, :lightweight)}</div>
+            <div class={color(:text_muted)}>
+              <%= case model_short(@models, :lightweight) do %>
+                <% nil -> %><span class="spinner"></span>
+                <% label -> %>{label}
+              <% end %>
+            </div>
             <div class={"#{color(:text_dim)} text-[10px] mt-1"}>{routing_mode_label(@model_routing)}</div>
           </div>
         </div>
@@ -518,7 +528,7 @@ defmodule WorthWeb.Components.Chat do
       # Strip provider prefix like "Anthropic: " for brevity
       String.replace(label, ~r/^[A-Za-z]+:\s*/, "")
     else
-      "..."
+      nil
     end
   end
 

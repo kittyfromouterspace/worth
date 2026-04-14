@@ -90,7 +90,19 @@ defmodule Worth.Memory.FactExtractor do
     {:ok, facts}
   end
 
-  defp parse_json_array(text) do
+  defp parse_json_array(content) when is_list(content) do
+    text =
+      Enum.map_join(content, "\n", fn
+        %{text: t} -> t
+        %{"text" => t} -> t
+        t when is_binary(t) -> t
+        _ -> ""
+      end)
+
+    parse_json_array(text)
+  end
+
+  defp parse_json_array(text) when is_binary(text) do
     cleaned =
       text
       |> String.replace(~r/```json\s*/, "")

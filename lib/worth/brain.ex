@@ -190,7 +190,7 @@ defmodule Worth.Brain do
   @impl true
   def init(opts) do
     workspace = Keyword.get(opts, :workspace, "personal")
-    mode = Keyword.get(opts, :mode, :code)
+    mode = Keyword.get(opts, :mode, :turn_by_turn)
 
     state = %__MODULE__{
       current_workspace: workspace,
@@ -556,8 +556,8 @@ defmodule Worth.Brain do
 
         create_opts =
           Keyword.merge(memory_opts,
-            entry_type: params[:entry_type] || "fact",
-            source: params[:source] || "agent",
+            entry_type: to_string(params[:entry_type] || "fact"),
+            source: to_string(params[:source] || "agent"),
             metadata: Map.put(params[:metadata] || %{}, :workspace, workspace)
           )
 
@@ -655,24 +655,51 @@ defmodule Worth.Brain do
 
   defp mode_to_profile(:code), do: :agentic
   defp mode_to_profile(:research), do: :conversational
+  defp mode_to_profile(:planned), do: :agentic_planned
+  defp mode_to_profile(:turn_by_turn), do: :turn_by_turn
   defp mode_to_profile(:coding_agent), do: :claude_code
   defp mode_to_profile(_), do: :agentic
 
   defp apply_model_routing(opts) do
-    case Worth.Config.get([:model_routing]) do
-      %{mode: "auto", preference: pref, filter: filter} ->
-        opts
-        |> Keyword.put(:model_selection_mode, :auto)
-        |> Keyword.put(:model_preference, safe_to_existing_atom(pref))
-        |> maybe_put_filter(filter)
+    base_opts =
+      case Worth.Config.get([:model_routing]) do
+        %{mode: "auto", preference: pref, filter: filter} ->
+          opts
+          |> Keyword.put(:model_selection_mode, :auto)
+          |> Keyword.put(:model_preference, safe_to_existing_atom(pref))
+          |> maybe_put_filter(filter)
 
-      %{mode: "manual", filter: filter} ->
-        opts
-        |> Keyword.put(:model_selection_mode, :manual)
-        |> maybe_put_filter(filter)
+        %{mode: "manual", filter: filter} ->
+          opts
+          |> Keyword.put(:model_selection_mode, :manual)
+          |> maybe_put_filter(filter)
 
-      _ ->
-        opts
+        _ ->
+          opts
+      end
+
+    base_opts =
+      if Keyword.get(opts, :mode) == :turn_by_turn do
+        Keyword.put(base_opts, :model_selection_mode, :manual)
+      else
+        base_opts
+      end
+
+    case default_model_override() do
+      nil -> base_opts
+      override -> Keyword.put(base_opts, :tier_overrides, override)
+    end
+  end
+
+  defp default_model_override do
+    default_provider = Worth.Config.get([:llm, :default_provider])
+    default_model = Worth.Config.get([:llm, :providers, default_provider, :default_model])
+
+    with provider when not is_nil(provider) <- default_provider,
+         model when not is_nil(model) <- default_model do
+      %{primary: "#{provider}/#{model}"}
+    else
+      _ -> nil
     end
   end
 
