@@ -116,7 +116,6 @@ defmodule Worth.Orchestration.Strategies.Ecosystem do
     end
   end
 
-  @impl true
   def handle_event(_event, state), do: {:ok, state}
 
   @impl true
