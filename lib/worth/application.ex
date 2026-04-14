@@ -79,5 +79,9 @@ defmodule Worth.Application do
 
   defp register_strategies do
     AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Stigmergy)
+    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Holonic)
+    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Evolutionary)
+    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Swarm)
+    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Ecosystem)
   end
 end
