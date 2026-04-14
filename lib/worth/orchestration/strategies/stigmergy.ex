@@ -65,9 +65,10 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
     {:done, result, new_state}
   end
 
+  @impl true
   def handle_result({:error, reason}, _opts, state) do
     deposit_failure_pheromone(reason, state.workspace)
-    {:error, reason}
+    {:done, {:error, reason}, state}
   end
 
   @impl true

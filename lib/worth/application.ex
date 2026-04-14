@@ -33,17 +33,9 @@ defmodule Worth.Application do
           Worth.Boot.run_migrations!()
         end
 
-        Task.Supervisor.start_child(Worth.SkillInit, fn ->
-          Worth.Skill.Registry.init()
-        end)
-
-        Task.Supervisor.start_child(Worth.SkillInit, fn ->
-          Broker.connect_auto()
-        end)
-
-        Task.Supervisor.start_child(Worth.SkillInit, fn ->
-          Worth.Memory.Embeddings.StaleCheck.run()
-        end)
+        start_init_task(fn -> Worth.Skill.Registry.init() end)
+        start_init_task(fn -> Broker.connect_auto() end)
+        start_init_task(fn -> Worth.Memory.Embeddings.StaleCheck.run() end)
 
         # AgentEx.LLM.Catalog runs its first refresh ~100ms after agent_ex
         # boots — that races Worth.Config.start_link/1, which is the only
@@ -52,17 +44,9 @@ defmodule Worth.Application do
         # resolves as :no_creds, the static fallback is persisted to
         # ~/.worth/catalog.json, and the next scheduled refresh isn't for
         # 10 minutes. Force one more refresh now that Worth.Config is up.
-        Task.Supervisor.start_child(Worth.SkillInit, fn ->
-          Worth.CodingAgents.auto_register()
-        end)
-
-        Task.Supervisor.start_child(Worth.SkillInit, fn ->
-          AgentEx.LLM.Catalog.refresh()
-        end)
-
-        Task.Supervisor.start_child(Worth.SkillInit, fn ->
-          register_strategies()
-        end)
+        start_init_task(fn -> Worth.CodingAgents.auto_register() end)
+        start_init_task(fn -> AgentEx.LLM.Catalog.refresh() end)
+        start_init_task(fn -> register_strategies() end)
 
         {:ok, pid}
 
@@ -75,6 +59,10 @@ defmodule Worth.Application do
   def stop(_state) do
     Bridge.broadcast_shutdown()
     :ok
+  end
+
+  defp start_init_task(fun) do
+    Task.Supervisor.start_child(Worth.SkillInit, fun)
   end
 
   defp register_strategies do

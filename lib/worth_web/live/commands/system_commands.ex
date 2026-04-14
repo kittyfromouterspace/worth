@@ -39,17 +39,26 @@ defmodule WorthWeb.Commands.SystemCommands do
   end
 
   def handle({:strategy, {:switch, name}}, socket) do
-    strategy_id = String.to_atom(name)
+    strategy_id =
+      try do
+        String.to_existing_atom(name)
+      rescue
+        ArgumentError -> nil
+      end
 
-    case Worth.Brain.switch_strategy(socket.assigns.workspace, strategy_id) do
-      :ok ->
-        append_system(assign(socket, strategy: strategy_id), "Switched to #{name} strategy")
+    if is_nil(strategy_id) do
+      append_system(socket, "Unknown strategy: #{name}. Type /strategy to list available strategies.")
+    else
+      case Worth.Brain.switch_strategy(socket.assigns.workspace, strategy_id) do
+        :ok ->
+          append_system(assign(socket, strategy: strategy_id), "Switched to #{name} strategy")
 
-      {:error, :unknown_strategy} ->
-        append_system(socket, "Unknown strategy: #{name}. Type /strategy to list available strategies.")
+        {:error, :unknown_strategy} ->
+          append_system(socket, "Unknown strategy: #{name}. Type /strategy to list available strategies.")
 
-      {:error, reason} ->
-        append_system(socket, "Failed to switch strategy: #{inspect(reason)}")
+        {:error, reason} ->
+          append_system(socket, "Failed to switch strategy: #{inspect(reason)}")
+      end
     end
   end
 

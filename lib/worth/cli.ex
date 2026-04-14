@@ -1,26 +1,26 @@
 defmodule Worth.CLI do
   @moduledoc false
   def main(args \\ []) do
-      {opts, _rest} =
-        OptionParser.parse!(args,
-          strict: [
-            workspace: :string,
-            mode: :string,
-            strategy: :string,
-            help: :boolean,
-            version: :boolean,
-            init: :string,
-            setup: :boolean,
-            no_open: :boolean
-          ],
-          aliases: [
-            w: :workspace,
-            m: :mode,
-            h: :help,
-            v: :version,
-            n: :no_open
-          ]
-        )
+    {opts, _rest} =
+      OptionParser.parse!(args,
+        strict: [
+          workspace: :string,
+          mode: :string,
+          strategy: :string,
+          help: :boolean,
+          version: :boolean,
+          init: :string,
+          setup: :boolean,
+          no_open: :boolean
+        ],
+        aliases: [
+          w: :workspace,
+          m: :mode,
+          h: :help,
+          v: :version,
+          n: :no_open
+        ]
+      )
 
     cond do
       opts[:help] ->

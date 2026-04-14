@@ -50,9 +50,10 @@ defmodule Worth.Orchestration.Strategies.Holonic do
     {:done, result, new_state}
   end
 
+  @impl true
   def handle_result({:error, reason}, _opts, state) do
     new_state = %{state | active_holons: max(state.active_holons - 1, 0)}
-    {:error, reason}
+    {:done, {:error, reason}, new_state}
   end
 
   @impl true

@@ -104,6 +104,7 @@ defmodule Worth.Orchestration.Strategies.Ecosystem do
     end
   end
 
+  @impl true
   def handle_result({:error, reason}, _opts, state) do
     case state.role do
       :builder ->
@@ -129,7 +130,7 @@ defmodule Worth.Orchestration.Strategies.Ecosystem do
       "Learn from previous feedback to improve."
   end
 
-  defp build_predator_overlay(state, builder_text) do
+  defp build_predator_overlay(_state, builder_text) do
     text_preview = String.slice(builder_text, 0, 500)
 
     "\n\n## Ecosystem Mode — Predator\n" <>

@@ -13,7 +13,7 @@ defmodule Worth.Orchestration.Strategies.Swarm do
     :workspace,
     :base_prompt,
     particles: [],
-    personal_bests: [],
+    personal_bests: %{},
     global_best: nil,
     global_best_cost: nil,
     inertia: 0.7,
@@ -128,7 +128,8 @@ defmodule Worth.Orchestration.Strategies.Swarm do
     end
   end
 
-  def handle_result({:error, reason}, _opts, state) do
+  @impl true
+  def handle_result({:error, _reason}, _opts, state) do
     next_particle = state.current_particle + 1
 
     if next_particle < length(state.particles) do
@@ -154,7 +155,7 @@ defmodule Worth.Orchestration.Strategies.Swarm do
     ]
 
     for i <- 0..(count - 1) do
-      base <> Enum.at(variants, i) || ""
+      base <> Enum.at(variants, i, "")
     end
   end
 
