@@ -71,13 +71,11 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
     {:done, {:error, reason}, state}
   end
 
-  @impl true
   def handle_event({:tool_use, name, _workspace_id}, state) when is_binary(name) do
     deposit_intention_pheromone(name, state.workspace)
     {:ok, state}
   end
 
-  @impl true
   def handle_event(_event, state), do: {:ok, state}
 
   @impl true

@@ -56,13 +56,11 @@ defmodule Worth.Orchestration.Strategies.Holonic do
     {:done, {:error, reason}, new_state}
   end
 
-  @impl true
   def handle_event({:tool_use, "delegate_task", _workspace_id}, state) do
     new_active = min(state.active_holons + 1, state.holon_capacity)
     {:ok, %{state | active_holons: new_active}}
   end
 
-  @impl true
   def handle_event(_event, state), do: {:ok, state}
 
   @impl true
