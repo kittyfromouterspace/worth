@@ -4,6 +4,7 @@ defmodule Worth.Metrics.Schema do
   """
 
   defmodule SessionMetric do
+    @moduledoc false
     use Ecto.Schema
 
     @primary_key {:id, :binary_id, autogenerate: true}
@@ -29,6 +30,7 @@ defmodule Worth.Metrics.Schema do
   end
 
   defmodule TurnMetric do
+    @moduledoc false
     use Ecto.Schema
 
     @primary_key {:id, :binary_id, autogenerate: true}
@@ -49,6 +51,7 @@ defmodule Worth.Metrics.Schema do
   end
 
   defmodule ToolCallMetric do
+    @moduledoc false
     use Ecto.Schema
 
     @primary_key {:id, :binary_id, autogenerate: true}
@@ -67,6 +70,7 @@ defmodule Worth.Metrics.Schema do
   end
 
   defmodule StrategyMetric do
+    @moduledoc false
     use Ecto.Schema
 
     @primary_key {:id, :binary_id, autogenerate: true}

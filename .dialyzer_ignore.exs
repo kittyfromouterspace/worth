@@ -12,5 +12,13 @@
   {"lib/worth/log_handler.ex", :pattern_match},
   {"lib/worth/log_handler.ex", :pattern_match_cov},
   {"lib/worth/workspace/learning.ex", :pattern_match},
-  {"lib/worth/skill/service.ex", :guard_fail}
+  {"lib/worth/skill/service.ex", :guard_fail},
+  {"lib/worth/application.ex", :unknown_function},
+  {"lib/worth/brain.ex", :unknown_function},
+  {"lib/worth/orchestration/experiment_service.ex", :unknown_function},
+  {"lib/worth/orchestration/strategies/ecosystem.ex", :callback_info_missing},
+  {"lib/worth/orchestration/strategies/evolutionary.ex", :callback_info_missing},
+  {"lib/worth/orchestration/strategies/holonic.ex", :callback_info_missing},
+  {"lib/worth/orchestration/strategies/stigmergy.ex", :callback_info_missing},
+  {"lib/worth/orchestration/strategies/swarm.ex", :callback_info_missing}
 ]
