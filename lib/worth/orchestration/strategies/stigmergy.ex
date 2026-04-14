@@ -94,7 +94,7 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
     end
   end
 
-  defp deposit_completion_pheromone(result, nil), do: %{content: "", metadata: %{}}
+  defp deposit_completion_pheromone(_result, nil), do: %{content: "", metadata: %{}}
 
   defp deposit_completion_pheromone(result, workspace) do
     text = result[:text] || ""
