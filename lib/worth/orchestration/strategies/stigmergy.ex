@@ -14,6 +14,8 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
 
   @behaviour AgentEx.Strategy
 
+  alias Worth.Memory.Manager
+
   defstruct [
     :workspace,
     active_trails: [],
@@ -29,8 +31,7 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
   def display_name, do: "Stigmergy (Ant Colony)"
 
   @impl true
-  def description,
-    do: "Coordinates through environmental signals deposited in the knowledge store"
+  def description, do: "Coordinates through environmental signals deposited in the knowledge store"
 
   @impl true
   def init(opts) do
@@ -59,7 +60,7 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
 
     new_state = %{
       state
-      | deposited_pheromones: [pheromone | state.deposited_pheromones] |> Enum.take(50)
+      | deposited_pheromones: Enum.take([pheromone | state.deposited_pheromones], 50)
     }
 
     {:done, result, new_state}
@@ -86,9 +87,14 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
   defp fetch_pheromones(nil, _limit), do: []
 
   defp fetch_pheromones(workspace, limit) do
-    case Worth.Memory.Manager.search(
-           "pheromone type:intention scope:#{workspace}",
-           limit: limit
+    # Search for pheromone entries scoped to this workspace.
+    # We include "pheromone" in the query text for semantic matching and pass
+    # entry_type as a search opt so downstream filters can narrow results
+    # if the store supports structured filtering.
+    case Manager.search(
+           "pheromone workspace:#{workspace}",
+           limit: limit,
+           entry_type: "pheromone"
          ) do
       {:ok, %{entries: entries}} when is_list(entries) -> entries
       _ -> []
@@ -107,20 +113,23 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
         text
       end
 
-    Worth.Memory.Manager.remember("pheromone completion: #{preview}",
-      entry_type: "pheromone_completion",
-      metadata: %{
-        signal: :completion,
-        cost: result[:cost],
-        workspace: workspace
-      }
-    )
+    case Manager.remember("pheromone completion: #{preview}",
+           entry_type: "pheromone_completion",
+           metadata: %{
+             signal: :completion,
+             cost: result[:cost],
+             workspace: workspace
+           }
+         ) do
+      {:ok, entry} -> entry
+      _ -> %{content: preview, metadata: %{signal: :completion, workspace: workspace}}
+    end
   end
 
   defp deposit_failure_pheromone(_reason, nil), do: :ok
 
   defp deposit_failure_pheromone(reason, workspace) do
-    Worth.Memory.Manager.remember("pheromone failure: #{inspect(reason)}",
+    Manager.remember("pheromone failure: #{inspect(reason)}",
       entry_type: "pheromone_failure",
       metadata: %{signal: :failure, workspace: workspace}
     )
@@ -129,20 +138,22 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
   defp deposit_intention_pheromone(_tool_name, nil), do: :ok
 
   defp deposit_intention_pheromone(tool_name, workspace) do
-    Worth.Memory.Manager.remember("pheromone intention: #{tool_name}",
+    Manager.remember("pheromone intention: #{tool_name}",
       entry_type: "pheromone_intention",
       metadata: %{signal: :intention, tool: tool_name, workspace: workspace}
     )
   end
 
-  defp build_pheromone_overlay([]), do: ""
+  @doc false
+  def build_pheromone_overlay([]), do: ""
 
-  defp build_pheromone_overlay(pheromones) do
+  def build_pheromone_overlay(pheromones) do
     trails =
       Enum.map_join(pheromones, "\n", fn p ->
-        meta = p.metadata || %{}
-        signal = meta[:signal] || "unknown"
-        "- #{signal}: #{p.content}"
+        meta = Map.get(p, :metadata) || Map.get(p, "metadata") || %{}
+        signal = meta[:signal] || meta["signal"] || "unknown"
+        content = Map.get(p, :content) || Map.get(p, "content") || ""
+        "- #{signal}: #{content}"
       end)
 
     "\n\n## Active Pheromone Trails\nOther agents have left these coordination signals:\n#{trails}\nConsider these trails when choosing your approach."

@@ -129,7 +129,7 @@ defmodule Worth.Orchestration.Strategies.Swarm do
   end
 
   @impl true
-  def handle_result({:error, reason}, _opts, state) do
+  def handle_result({:error, _reason}, _opts, state) do
     next_particle = state.current_particle + 1
 
     if next_particle < length(state.particles) do

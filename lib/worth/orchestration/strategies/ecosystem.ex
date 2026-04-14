@@ -129,7 +129,7 @@ defmodule Worth.Orchestration.Strategies.Ecosystem do
       "Learn from previous feedback to improve."
   end
 
-  defp build_predator_overlay(state, builder_text) do
+  defp build_predator_overlay(_state, builder_text) do
     text_preview = String.slice(builder_text, 0, 500)
 
     "\n\n## Ecosystem Mode — Predator\n" <>

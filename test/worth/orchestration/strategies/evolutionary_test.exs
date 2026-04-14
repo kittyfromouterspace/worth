@@ -14,7 +14,9 @@ defmodule Worth.Orchestration.Strategies.EvolutionaryTest do
     end
 
     test "accepts custom population_size and max_generations" do
-      assert {:ok, state} = Evolutionary.init(workspace: "test", population_size: 5, max_generations: 4)
+      assert {:ok, state} =
+               Evolutionary.init(workspace: "test", population_size: 5, max_generations: 4)
+
       assert state.population_size == 5
       assert state.max_generations == 4
     end

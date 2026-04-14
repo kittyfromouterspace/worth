@@ -70,7 +70,7 @@ defmodule Worth.Orchestration.Strategies.Evolutionary do
 
   @impl true
   def handle_result({:ok, result}, opts, state) do
-    new_results = [{state.current_candidate, result} | state.results]
+    new_results = [{state.current_candidate, {:ok, result}} | state.results]
     next_candidate = state.current_candidate + 1
 
     cond do

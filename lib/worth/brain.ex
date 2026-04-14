@@ -38,7 +38,6 @@ defmodule Worth.Brain do
     :task_pid,
     :task_from,
     strategy: :default,
-    strategy_state: nil,
     strategy_opts: []
   ]
 
@@ -177,6 +176,8 @@ defmodule Worth.Brain do
     GenServer.call(pid, {:switch_to_coding_agent, protocol})
   end
 
+  def list_strategies, do: AgentEx.Strategy.Registry.all()
+
   # These don't need a workspace — they're global services
   def mcp_connect(name, config), do: Broker.connect(name, config)
   def mcp_disconnect(name), do: Broker.disconnect(name)
@@ -256,25 +257,14 @@ defmodule Worth.Brain do
   end
 
   def handle_call({:switch_strategy, strategy_id, opts}, _from, state) do
+    # Validation only — AgentEx.run handles strategy init to avoid double-init
     case AgentEx.Strategy.Registry.fetch(strategy_id) do
       nil ->
         {:reply, {:error, :unknown_strategy}, state}
 
-      mod ->
-        case mod.init(opts) do
-          {:ok, strategy_state} ->
-            new_state = %{
-              state
-              | strategy: strategy_id,
-                strategy_state: strategy_state,
-                strategy_opts: opts
-            }
-
-            {:reply, :ok, new_state}
-
-          {:error, reason} ->
-            {:reply, {:error, reason}, state}
-        end
+      _mod ->
+        new_state = %{state | strategy: strategy_id, strategy_opts: opts}
+        {:reply, :ok, new_state}
     end
   end
 

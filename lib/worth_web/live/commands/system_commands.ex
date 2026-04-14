@@ -31,7 +31,7 @@ defmodule WorthWeb.Commands.SystemCommands do
 
   def handle({:strategy, :list}, socket) do
     strategies =
-      AgentEx.Strategy.Registry.all()
+      Worth.Brain.list_strategies()
       |> Enum.map(fn {id, mod} -> "  #{id} — #{mod.display_name()}" end)
       |> Enum.join("\n")
 
@@ -66,7 +66,7 @@ defmodule WorthWeb.Commands.SystemCommands do
     status = Worth.Brain.get_status(socket.assigns.workspace)
 
     msg =
-      "Mode: #{status.mode} | Profile: #{status.profile} | Workspace: #{status.workspace} | Cost: $#{Float.round(status.cost, 3)}"
+      "Mode: #{status.mode} | Profile: #{status.profile} | Strategy: #{status.strategy} | Workspace: #{status.workspace} | Cost: $#{Float.round(status.cost, 3)}"
 
     append_system(socket, msg)
   end

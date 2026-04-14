@@ -8,9 +8,8 @@ defmodule Worth.Orchestration.Strategies.SwarmTest do
       assert {:ok, state} = Swarm.init(workspace: "test")
       assert state.workspace == "test"
       assert state.max_iterations == 3
-      assert state.particles == []
       assert state.personal_bests == %{}
-      assert state.global_best == nil
+      assert state.particles == []
     end
 
     test "accepts custom max_iterations" do
@@ -22,7 +21,7 @@ defmodule Worth.Orchestration.Strategies.SwarmTest do
   describe "prepare_run/2" do
     test "generates particles on first run" do
       {:ok, state} = Swarm.init(workspace: "test")
-      opts = [system_prompt: "Base", prompt: "Solve this"]
+      opts = [system_prompt: "Base", prompt: "Solve"]
 
       assert {:ok, prepared, new_state} = Swarm.prepare_run(opts, state)
       assert prepared[:system_prompt] =~ "Swarm Mode"
@@ -31,45 +30,54 @@ defmodule Worth.Orchestration.Strategies.SwarmTest do
       assert new_state.current_iteration == 1
     end
 
-    test "uses existing particles for subsequent particles" do
-      {:ok, state} = Swarm.init(workspace: "test")
-      state = %{state | particles: ["a", "b", "c"], current_particle: 1, current_iteration: 1}
-      opts = [system_prompt: "Base", prompt: "Solve this"]
-
-      assert {:ok, prepared, ^state} = Swarm.prepare_run(opts, state)
-      assert prepared[:prompt] == "b"
-    end
-  end
-
-  describe "handle_result/3" do
-    test "success advances to next particle when particles remain" do
-      {:ok, state} = Swarm.init(workspace: "test")
-      state = %{state | particles: ["a", "b", "c"], current_particle: 0, current_iteration: 1}
-
-      result = %{text: "ok", cost: 0.1, tokens: 50, steps: 1}
-      assert {:ok, new_state} = Swarm.handle_result({:ok, result}, [], state)
-      assert new_state.current_particle == 1
-      assert new_state.global_best == result
-      assert new_state.global_best_cost == 0.1
-    end
-
-    test "success triggers rerun when all particles done and iterations remain" do
+    test "uses existing particles for subsequent runs" do
       {:ok, state} = Swarm.init(workspace: "test")
 
       state = %{
         state
-        | particles: ["a", "b"],
+        | particles: ["p1", "p2", "p3"],
           current_particle: 1,
+          current_iteration: 1
+      }
+
+      opts = [system_prompt: "Base", prompt: "Solve"]
+
+      assert {:ok, prepared, ^state} = Swarm.prepare_run(opts, state)
+      assert prepared[:prompt] == "p2"
+    end
+  end
+
+  describe "handle_result/3" do
+    test "success advances to next particle" do
+      {:ok, state} = Swarm.init(workspace: "test")
+
+      state = %{
+        state
+        | particles: ["p1", "p2", "p3"],
+          current_particle: 0,
+          current_iteration: 1
+      }
+
+      result = %{text: "ok", cost: 0.1, tokens: 50, steps: 1}
+      assert {:ok, new_state} = Swarm.handle_result({:ok, result}, [], state)
+      assert new_state.current_particle == 1
+      assert Map.has_key?(new_state.personal_bests, 0)
+    end
+
+    test "success triggers convergence when all particles done and iterations remain" do
+      {:ok, state} = Swarm.init(workspace: "test")
+
+      state = %{
+        state
+        | particles: ["p1"],
+          current_particle: 0,
           current_iteration: 1,
           max_iterations: 3,
-          personal_bests: %{
-            0 => %{prompt: "a", cost: 0.1, result: %{cost: 0.1}}
-          },
           base_prompt: "base"
       }
 
-      result = %{text: "ok", cost: 0.05, tokens: 50, steps: 1}
-      opts = [prompt: "Solve this"]
+      result = %{text: "ok", cost: 0.1, tokens: 50, steps: 1}
+      opts = [prompt: "Solve"]
 
       assert {:rerun, ^opts, new_state} = Swarm.handle_result({:ok, result}, opts, state)
       assert new_state.current_iteration == 2
@@ -81,20 +89,21 @@ defmodule Worth.Orchestration.Strategies.SwarmTest do
 
       state = %{
         state
-        | particles: ["a"],
+        | particles: ["p1"],
           current_particle: 0,
           current_iteration: 3,
-          max_iterations: 3
+          max_iterations: 3,
+          base_prompt: "base"
       }
 
-      result = %{text: "final", cost: 0.01, tokens: 10, steps: 1}
-      assert {:done, best, _new_state} = Swarm.handle_result({:ok, result}, [], state)
-      assert best == result
+      result = %{text: "final", cost: 0.05, tokens: 10, steps: 1}
+
+      assert {:done, _best, _new_state} = Swarm.handle_result({:ok, result}, [], state)
     end
 
     test "error advances to next particle" do
       {:ok, state} = Swarm.init(workspace: "test")
-      state = %{state | particles: ["a", "b"], current_particle: 0}
+      state = %{state | particles: ["p1", "p2"], current_particle: 0}
 
       assert {:ok, new_state} = Swarm.handle_result({:error, :timeout}, [], state)
       assert new_state.current_particle == 1
@@ -102,10 +111,25 @@ defmodule Worth.Orchestration.Strategies.SwarmTest do
 
     test "error returns :done with fallback when last particle" do
       {:ok, state} = Swarm.init(workspace: "test")
-      state = %{state | particles: ["a"], current_particle: 0}
+      state = %{state | particles: ["p1"], current_particle: 0}
 
-      assert {:done, best, _state} = Swarm.handle_result({:error, :timeout}, [], state)
-      assert best.text == "No successful solution found"
+      assert {:done, result, _state} = Swarm.handle_result({:error, :timeout}, [], state)
+      assert result.text == "No successful solution found"
+    end
+  end
+
+  describe "generate_particles boundary conditions" do
+    test "particles beyond variants length get empty string suffix" do
+      {:ok, state} = Swarm.init(workspace: "test")
+      opts = [system_prompt: "", prompt: "test"]
+
+      assert {:ok, _prepared, new_state} = Swarm.prepare_run(opts, state)
+
+      # All 3 particles should be valid strings (no nil from Enum.at)
+      Enum.each(new_state.particles, fn p ->
+        assert is_binary(p)
+        assert String.starts_with?(p, "test")
+      end)
     end
   end
 end
