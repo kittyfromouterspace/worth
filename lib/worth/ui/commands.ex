@@ -19,6 +19,8 @@ defmodule Worth.UI.Commands do
       ["/setup"] -> {:command, {:setup, :show}}
       ["/setup" | rest] -> parse_setup(Enum.join(rest, " "))
       ["/mode", mode] -> parse_mode(mode)
+      ["/strategy"] -> {:command, {:strategy, :list}}
+      ["/strategy", name] -> {:command, {:strategy, {:switch, name}}}
       # Workspace
       ["/workspace", "list"] -> {:command, {:workspace, :list}}
       ["/workspace", "switch", name] -> {:command, {:workspace, {:switch, name}}}
@@ -107,6 +109,8 @@ defmodule Worth.UI.Commands do
       /cost                Show session cost and turn count
       /status              Show current status
       /mode <mode>         Switch mode: code | research | planned | turn_by_turn
+      /strategy            List available strategies
+      /strategy <name>     Switch orchestration strategy
       /workspace list      List workspaces
       /workspace new <n>   Create workspace
       /workspace switch    Switch workspace
