@@ -60,6 +60,10 @@ defmodule Worth.Application do
           AgentEx.LLM.Catalog.refresh()
         end)
 
+        Task.Supervisor.start_child(Worth.SkillInit, fn ->
+          register_strategies()
+        end)
+
         {:ok, pid}
 
       error ->
@@ -71,5 +75,13 @@ defmodule Worth.Application do
   def stop(_state) do
     Bridge.broadcast_shutdown()
     :ok
+  end
+
+  defp register_strategies do
+    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Stigmergy)
+    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Holonic)
+    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Evolutionary)
+    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Swarm)
+    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Ecosystem)
   end
 end
