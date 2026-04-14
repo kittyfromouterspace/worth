@@ -51,11 +51,11 @@ defmodule Worth.Learning.ProjectMapping do
   end
 
   def discover do
-    coding_agent_providers()
-    |> Enum.filter(& &1.available?())
-    |> Enum.map(fn provider ->
-      projects = discover_projects(provider)
-      {provider.agent_name(), projects}
+    Worth.Learning.AgentConfig.provider_configs_for_mneme()
+    |> Enum.filter(fn {mod, config} -> mod.available?(config) end)
+    |> Enum.map(fn {mod, config} ->
+      projects = discover_projects(mod, config)
+      {mod.agent_name(), projects}
     end)
     |> Enum.reject(fn {_, projects} -> projects == [] end)
     |> Map.new()
@@ -88,15 +88,11 @@ defmodule Worth.Learning.ProjectMapping do
     end
   end
 
-  defp discover_projects(provider) do
-    provider.fetch_events()
+  defp discover_projects(provider, config) do
+    provider.fetch_events(config)
     |> Enum.map(&Map.get(&1, :project))
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
     |> Enum.sort()
-  end
-
-  defp coding_agent_providers do
-    Mneme.Learner.CodingAgent.providers()
   end
 end

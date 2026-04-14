@@ -144,10 +144,13 @@ defmodule Worth.Workspace.Learning do
       Permissions.check(provider.agent_name()) == :granted
     end
 
+    agent_configs = Worth.Learning.AgentConfig.build_provider_configs()
+
     {:ok, events} =
       coding_agent_module().fetch_authorized_events(filter_fn,
         projects: project_mapping,
-        since: agent_checkpoints
+        since: agent_checkpoints,
+        agent_configs: agent_configs
       )
 
     {:ok, run_result} =

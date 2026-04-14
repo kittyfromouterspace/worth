@@ -67,7 +67,6 @@ defmodule WorthWeb.ChatLive do
        turn: 0,
        streaming_text: "",
        sidebar_visible: true,
-       selected_tab: :status,
        active_agents: [],
        workspace_files: [],
        input_history: [],
@@ -81,7 +80,8 @@ defmodule WorthWeb.ChatLive do
        workspaces: list_workspaces(),
        memory_stats: fetch_memory_stats(workspace),
        strategy: :default,
-       desktop_mode: System.get_env("WORTH_DESKTOP") == "1"
+       desktop_mode: System.get_env("WORTH_DESKTOP") == "1",
+       learning_step_shown: nil
      )}
   end
 
@@ -171,8 +171,8 @@ defmodule WorthWeb.ChatLive do
     {:noreply, append_system_message(socket, msg)}
   end
 
-  def handle_info({:apply_theme, bg_class, css}, socket) do
-    {:noreply, push_event(socket, "apply_theme", %{bg_class: bg_class, css: css})}
+  def handle_info({:apply_theme, _bg_class, _css}, socket) do
+    {:noreply, push_navigate(socket, to: "/")}
   end
 
   def handle_info({:refresh_settings_form}, socket) do
@@ -255,6 +255,20 @@ defmodule WorthWeb.ChatLive do
     {:noreply, append_system_message(socket, "Switched to workspace: #{name}")}
   end
 
+  # ── Learning flow events (sequential) ─────────────────────────
+
+  def handle_event("enable_learning", _params, socket) do
+    Permissions.enable_learning()
+    socket = socket |> assign(learning_step_shown: nil) |> append_system_message("Learning enabled.")
+    send(self(), {:check_learning, socket.assigns.workspace})
+    {:noreply, socket}
+  end
+
+  def handle_event("disable_learning", _params, socket) do
+    Permissions.disable_learning()
+    {:noreply, append_system_message(socket, "Learning disabled. You can enable it later in settings.")}
+  end
+
   def handle_event("approve_learning", %{"workspace" => workspace}, socket) do
     # Start the learning ingestion process
     Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
@@ -280,28 +294,34 @@ defmodule WorthWeb.ChatLive do
   end
 
   def handle_event("decline_learning", %{"workspace" => _workspace}, socket) do
-    {:noreply, append_system_message(socket, "Learning declined. You can start it later with /learn")}
+    {:noreply, append_system_message(socket, "Skipped for now. You can start learning later with /learn")}
   end
 
   def handle_event("grant_agent_permission", %{"agent" => agent_str}, socket) do
     agent = String.to_existing_atom(agent_str)
     Permissions.grant(agent)
-
-    {:noreply,
-     append_system_message(socket, "Granted access to #{agent} data. It will be included in the next learning run.")}
+    socket = assign(socket, learning_step_shown: nil) |> append_system_message("Granted access to #{agent} data.")
+    send(self(), {:check_learning, socket.assigns.workspace})
+    {:noreply, socket}
   end
 
   def handle_event("deny_agent_permission", %{"agent" => agent_str}, socket) do
     agent = String.to_existing_atom(agent_str)
     Permissions.deny(agent)
-    {:noreply, append_system_message(socket, "Denied access to #{agent} data.")}
+    socket = assign(socket, learning_step_shown: nil) |> append_system_message("Denied access to #{agent} data.")
+    if Permissions.unasked_agents() == [] do
+      send(self(), {:check_learning, socket.assigns.workspace})
+    end
+    {:noreply, socket}
   end
 
   def handle_event("grant_all_agents", _params, socket) do
     unasked = Permissions.unasked_agents()
     Enum.each(unasked, &Permissions.grant(&1.agent))
     names = Enum.map_join(unasked, ", ", & &1.agent)
-    {:noreply, append_system_message(socket, "Granted access to: #{names}")}
+    socket = assign(socket, learning_step_shown: nil) |> append_system_message("Granted access to: #{names}")
+    send(self(), {:check_learning, socket.assigns.workspace})
+    {:noreply, socket}
   end
 
   def handle_event(
@@ -314,7 +334,11 @@ defmodule WorthWeb.ChatLive do
     case Jason.decode(projects_json) do
       {:ok, projects} when is_list(projects) ->
         ProjectMapping.set(workspace, agent, projects)
-        {:noreply, append_system_message(socket, "Mapped #{length(projects)} projects for #{agent}.")}
+        socket = assign(socket, learning_step_shown: nil) |> append_system_message("Mapped #{length(projects)} projects for #{agent}.")
+        unless ProjectMapping.needs_mapping?(workspace) do
+          send(self(), {:check_learning, workspace})
+        end
+        {:noreply, socket}
 
       _ ->
         {:noreply, append_system_message(socket, "Invalid project selection.")}
@@ -325,7 +349,9 @@ defmodule WorthWeb.ChatLive do
     discovered = ProjectMapping.discover()
     ProjectMapping.set_all(workspace, discovered)
     total = discovered |> Map.values() |> List.flatten() |> length()
-    {:noreply, append_system_message(socket, "Mapped all #{total} discovered projects.")}
+    socket = assign(socket, learning_step_shown: nil) |> append_system_message("Mapped all #{total} discovered projects.")
+    send(self(), {:check_learning, workspace})
+    {:noreply, socket}
   end
 
   def handle_event("memory_query", %{"workspace" => workspace}, socket) do
@@ -367,11 +393,7 @@ defmodule WorthWeb.ChatLive do
     {:noreply, update(socket, :sidebar_visible, &(!&1))}
   end
 
-  def handle_event("select_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, selected_tab: String.to_existing_atom(tab))}
-  end
-
-  def handle_event("keydown", %{"key" => "Escape"}, socket) do
+def handle_event("keydown", %{"key" => "Escape"}, socket) do
     if socket.assigns.view == :settings do
       {:noreply, assign(socket, view: :chat)}
     else
@@ -571,38 +593,7 @@ defmodule WorthWeb.ChatLive do
 
       {:learning_opportunity, report} ->
         Logger.info("[ChatLive] Received learning opportunity for #{report.workspace}")
-
-        socket =
-          if report.unasked_agents == [] do
-            socket
-          else
-            prompt = build_permission_prompt(report.unasked_agents)
-
-            stream_insert(socket, :messages, %{
-              id: msg_id(),
-              type: :system,
-              content: prompt,
-              permission_agents: report.unasked_agents
-            })
-          end
-
-        socket =
-          if report[:needs_project_mapping] and report[:discovered_projects] != %{} do
-            prompt = build_project_mapping_prompt(report.workspace, report.discovered_projects)
-
-            stream_insert(socket, :messages, %{
-              id: msg_id(),
-              type: :system,
-              content: prompt,
-              project_mapping: report.discovered_projects,
-              mapping_workspace: report.workspace
-            })
-          else
-            socket
-          end
-
-        prompt = build_learning_prompt(report)
-        stream_insert(socket, :messages, %{id: msg_id(), type: :system, content: prompt, learning_report: report})
+        show_next_learning_step(socket, report)
 
       {:learning_progress, details} ->
         msg = format_learning_progress(details)
@@ -956,6 +947,98 @@ defmodule WorthWeb.ChatLive do
   @eom_tokens ~w(<|eom|> <|eot_id|> <|end|> <|endoftext|>)
   defp strip_eom_tokens(text) do
     Enum.reduce(@eom_tokens, text, fn token, acc -> String.replace(acc, token, "") end)
+  end
+
+  # ── Sequential learning flow ──────────────────────────────────
+  #
+  # Each step only shows if the previous gate has been answered:
+  #   1. Global consent ("Would you like Worth to learn?")
+  #   2. Agent permissions (grant/deny per coding agent)
+  #   3. Project mapping (select which projects per agent)
+  #   4. Content ingestion prompt ("learn from this workspace?")
+
+  defp show_next_learning_step(socket, report) do
+    step = learning_step_for(report)
+
+    # Don't re-show the same step
+    if step == socket.assigns.learning_step_shown do
+      socket
+    else
+      do_show_learning_step(socket, step, report)
+    end
+  end
+
+  defp learning_step_for(report) do
+    case Permissions.learning_consent() do
+      :unasked -> :consent
+      :denied -> nil
+      :granted ->
+        cond do
+          report.unasked_agents != [] -> :agent_permissions
+          report[:needs_project_mapping] and report[:discovered_projects] != %{} -> :project_mapping
+          report.has_learning_opportunity -> :ingest
+          true -> nil
+        end
+    end
+  end
+
+  defp do_show_learning_step(socket, nil, _report), do: socket
+
+  defp do_show_learning_step(socket, :consent, _report) do
+    socket
+    |> assign(has_history: true, learning_step_shown: :consent)
+    |> stream_insert(:messages, %{
+      id: msg_id(),
+      type: :system,
+      content: """
+      Would you like Worth to learn from your coding history and workspace content?
+
+      Worth can read git history, documentation, and data from other coding agents \
+      (like Claude Code, Codex, Gemini) to build a memory of your projects. \
+      You'll be asked before anything is read — nothing happens without your permission.
+      """,
+      learning_consent: true
+    })
+  end
+
+  defp do_show_learning_step(socket, :agent_permissions, report) do
+    prompt = build_permission_prompt(report.unasked_agents)
+
+    socket
+    |> assign(has_history: true, learning_step_shown: :agent_permissions)
+    |> stream_insert(:messages, %{
+      id: msg_id(),
+      type: :system,
+      content: prompt,
+      permission_agents: report.unasked_agents
+    })
+  end
+
+  defp do_show_learning_step(socket, :project_mapping, report) do
+    prompt = build_project_mapping_prompt(report.workspace, report.discovered_projects)
+
+    socket
+    |> assign(has_history: true, learning_step_shown: :project_mapping)
+    |> stream_insert(:messages, %{
+      id: msg_id(),
+      type: :system,
+      content: prompt,
+      project_mapping: report.discovered_projects,
+      mapping_workspace: report.workspace
+    })
+  end
+
+  defp do_show_learning_step(socket, :ingest, report) do
+    prompt = build_learning_prompt(report)
+
+    socket
+    |> assign(has_history: true, learning_step_shown: :ingest)
+    |> stream_insert(:messages, %{
+      id: msg_id(),
+      type: :system,
+      content: prompt,
+      learning_report: report
+    })
   end
 
   defp build_learning_prompt(report) do

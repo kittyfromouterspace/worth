@@ -8,39 +8,40 @@ defmodule Worth.CodingAgents do
 
   require Logger
 
-  @known_agents [
-    %{cli_name: "claude", protocol: :claude_code, display_name: "Claude Code"},
-    %{cli_name: "opencode", protocol: :opencode, display_name: "OpenCode"}
-  ]
+  alias AgentEx.Protocol.ACP.Discovery
 
   @doc "Discover all available coding agents on the system."
   def discover do
-    @known_agents
-    |> Enum.filter(fn agent ->
-      System.find_executable(agent.cli_name) != nil
-    end)
-    |> Enum.map(fn agent ->
-      Map.put(agent, :available, true)
+    Discovery.known_agents()
+    |> Enum.filter(fn entry -> System.find_executable(entry.command) != nil end)
+    |> Enum.map(fn entry ->
+      %{
+        cli_name: entry.command,
+        protocol: entry.name,
+        display_name: entry.display,
+        available: true
+      }
     end)
   end
 
   @doc "Check if a specific coding agent is available."
   def available?(protocol) do
-    case protocol_config(protocol) do
+    case Discovery.lookup_known(protocol) do
       nil -> false
-      config -> System.find_executable(config.cli_name) != nil
+      entry -> System.find_executable(entry.command) != nil
     end
   end
 
   @doc "Get the protocol config for a given protocol atom."
-  def protocol_config(:claude_code), do: Enum.find(@known_agents, &(&1.protocol == :claude_code))
-  def protocol_config(:opencode), do: Enum.find(@known_agents, &(&1.protocol == :opencode))
-  def protocol_config(_), do: nil
+  def protocol_config(protocol) do
+    case Discovery.lookup_known(protocol) do
+      nil -> nil
+      entry -> %{cli_name: entry.command, protocol: entry.name, display_name: entry.display}
+    end
+  end
 
   @doc "Get the AgentEx profile atom for a coding agent."
-  def profile_for(:claude_code), do: :claude_code
-  def profile_for(:opencode), do: :opencode
-  def profile_for(_), do: nil
+  def profile_for(protocol), do: protocol
 
   @doc "List all registered protocol names (from AgentEx Registry)."
   def list_registered do
@@ -108,8 +109,12 @@ defmodule Worth.CodingAgents do
   end
 
   @doc "Convert a protocol atom to a display-friendly name."
-  def display_name(:claude_code), do: "Claude Code"
-  def display_name(:opencode), do: "OpenCode"
-  def display_name(atom) when is_atom(atom), do: Atom.to_string(atom)
+  def display_name(protocol) when is_atom(protocol) do
+    case Discovery.lookup_known(protocol) do
+      nil -> Atom.to_string(protocol)
+      entry -> entry.display
+    end
+  end
+
   def display_name(other), do: inspect(other)
 end
