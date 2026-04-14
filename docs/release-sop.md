@@ -58,12 +58,12 @@ Note: `mix.lock` tracks resolved deps. Always `rm -rf deps _build` when switchin
 
 Determine the new version numbers for each repo. Update them in order:
 
-| Repo | File to update |
-|------|---------------|
-| mneme | `mix.exs` `version:` field |
-| agent_ex | `mix.exs` `version:` field |
-| worth | `mix.exs` `version:` field |
-| worth | `rel/desktop/src-tauri/tauri.conf.json` `version` field |
+| Repo | File to update | Notes |
+|------|---------------|-------|
+| mneme | `mix.exs` `version:` field | |
+| agent_ex | `mix.exs` `version:` field | |
+| worth | `mix.exs` `version:` field | Semver OK (e.g. `0.2.1-alpha.5`) |
+| worth | `rel/desktop/src-tauri/tauri.conf.json` `version` field | **Must be numeric-only 4-part version** (e.g. `0.2.1.5`) — MSI/WiX rejects pre-release identifiers |
 
 ### Step 2 — Commit and tag mneme
 
