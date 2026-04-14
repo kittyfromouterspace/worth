@@ -27,6 +27,7 @@ defmodule WorthWeb.CommandHandler do
   # Namespaced commands
   defp dispatch({:mode, _} = cmd, socket), do: SystemCommands.handle(cmd, socket)
   defp dispatch({:status, _} = cmd, socket), do: SystemCommands.handle(cmd, socket)
+  defp dispatch({:strategy, _} = cmd, socket), do: SystemCommands.handle(cmd, socket)
   defp dispatch({:unknown, _} = cmd, socket), do: SystemCommands.handle(cmd, socket)
 
   defp dispatch({:model, _} = cmd, socket), do: ModelCommands.handle(cmd, socket)

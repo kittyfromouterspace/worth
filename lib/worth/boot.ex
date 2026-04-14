@@ -31,6 +31,10 @@ defmodule Worth.Boot do
     Worth.Brain.ensure(workspace)
     Worth.Brain.switch_mode(workspace, mode)
 
+    if strategy = Keyword.get(opts, :strategy) do
+      Worth.Brain.switch_strategy(workspace, String.to_atom(strategy))
+    end
+
     url()
   end
 

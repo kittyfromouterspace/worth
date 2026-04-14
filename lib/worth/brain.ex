@@ -36,7 +36,10 @@ defmodule Worth.Brain do
     :tool_permissions,
     :active_tools,
     :task_pid,
-    :task_from
+    :task_from,
+    strategy: :default,
+    strategy_state: nil,
+    strategy_opts: []
   ]
 
   @type t :: %__MODULE__{}
@@ -134,6 +137,11 @@ defmodule Worth.Brain do
     GenServer.call(pid, {:switch_mode, mode})
   end
 
+  def switch_strategy(workspace, strategy_id, opts \\ []) do
+    {:ok, pid} = ensure(workspace)
+    GenServer.call(pid, {:switch_strategy, strategy_id, opts})
+  end
+
   def resume_session(workspace, session_id) do
     {:ok, pid} = ensure(workspace)
     GenServer.call(pid, {:resume_session, session_id})
@@ -214,7 +222,8 @@ defmodule Worth.Brain do
       mode: state.mode,
       profile: state.profile,
       session_id: state.session_id,
-      active_tools: state.active_tools
+      active_tools: state.active_tools,
+      strategy: state.strategy
     }
 
     {:reply, status, state}
@@ -244,6 +253,29 @@ defmodule Worth.Brain do
 
   def handle_call({:switch_mode, mode}, _from, state) do
     {:reply, :ok, %{state | mode: mode, profile: mode_to_profile(mode)}}
+  end
+
+  def handle_call({:switch_strategy, strategy_id, opts}, _from, state) do
+    case AgentEx.Strategy.Registry.fetch(strategy_id) do
+      nil ->
+        {:reply, {:error, :unknown_strategy}, state}
+
+      mod ->
+        case mod.init(opts) do
+          {:ok, strategy_state} ->
+            new_state = %{
+              state
+              | strategy: strategy_id,
+                strategy_state: strategy_state,
+                strategy_opts: opts
+            }
+
+            {:reply, :ok, new_state}
+
+          {:error, reason} ->
+            {:reply, {:error, reason}, state}
+        end
+    end
   end
 
   def handle_call({:switch_to_coding_agent, protocol}, _from, state) do
@@ -447,7 +479,9 @@ defmodule Worth.Brain do
       caller: brain_pid,
       cost_limit: state.config[:cost_limit] || 5.0,
       history: state.history,
-      tool_permissions: state.tool_permissions
+      tool_permissions: state.tool_permissions,
+      strategy: state.strategy,
+      strategy_opts: state.strategy_opts
     ]
 
     run_opts = if system_prompt, do: Keyword.put(run_opts, :system_prompt, system_prompt), else: run_opts

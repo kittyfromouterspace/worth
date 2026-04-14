@@ -18,5 +18,6 @@ defmodule WorthWeb.Router do
     pipe_through :browser
 
     live "/", ChatLive, :index
+    live "/experiments", ExperimentLive, :index
   end
 end
