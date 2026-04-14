@@ -15,6 +15,7 @@ permissions:
   contents: write
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   ELIXIR_VERSION: "1.19.5"
   OTP_VERSION: "28.0"
   RUST_VERSION: "stable"
