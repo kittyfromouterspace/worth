@@ -80,6 +80,7 @@ defmodule WorthWeb.ChatLive do
        theme_module: Worth.Theme.Registry.resolve(),
        workspaces: list_workspaces(),
        memory_stats: fetch_memory_stats(workspace),
+       strategy: :default,
        desktop_mode: System.get_env("WORTH_DESKTOP") == "1"
      )}
   end

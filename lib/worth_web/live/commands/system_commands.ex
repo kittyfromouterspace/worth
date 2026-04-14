@@ -29,11 +29,44 @@ defmodule WorthWeb.Commands.SystemCommands do
     append_system(assign(socket, mode: mode), "Switched to #{mode} mode")
   end
 
+  def handle({:strategy, :list}, socket) do
+    strategies =
+      Worth.Brain.list_strategies()
+      |> Enum.map(fn {id, mod} -> "  #{id} — #{mod.display_name()}" end)
+      |> Enum.join("\n")
+
+    append_system(socket, "Available strategies:\n#{strategies}")
+  end
+
+  def handle({:strategy, {:switch, name}}, socket) do
+    strategy_id =
+      try do
+        String.to_existing_atom(name)
+      rescue
+        ArgumentError -> nil
+      end
+
+    if is_nil(strategy_id) do
+      append_system(socket, "Unknown strategy: #{name}. Type /strategy to list available strategies.")
+    else
+      case Worth.Brain.switch_strategy(socket.assigns.workspace, strategy_id) do
+        :ok ->
+          append_system(assign(socket, strategy: strategy_id), "Switched to #{name} strategy")
+
+        {:error, :unknown_strategy} ->
+          append_system(socket, "Unknown strategy: #{name}. Type /strategy to list available strategies.")
+
+        {:error, reason} ->
+          append_system(socket, "Failed to switch strategy: #{inspect(reason)}")
+      end
+    end
+  end
+
   def handle({:status, _}, socket) do
     status = Worth.Brain.get_status(socket.assigns.workspace)
 
     msg =
-      "Mode: #{status.mode} | Profile: #{status.profile} | Workspace: #{status.workspace} | Cost: $#{Float.round(status.cost, 3)}"
+      "Mode: #{status.mode} | Profile: #{status.profile} | Strategy: #{status.strategy} | Workspace: #{status.workspace} | Cost: $#{Float.round(status.cost, 3)}"
 
     append_system(socket, msg)
   end

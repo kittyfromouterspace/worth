@@ -6,6 +6,7 @@ defmodule Worth.CLI do
         strict: [
           workspace: :string,
           mode: :string,
+          strategy: :string,
           help: :boolean,
           version: :boolean,
           init: :string,
@@ -43,7 +44,8 @@ defmodule Worth.CLI do
     url =
       Worth.Boot.run(
         workspace: opts[:workspace],
-        mode: opts[:mode]
+        mode: opts[:mode],
+        strategy: opts[:strategy]
       )
 
     if !opts[:no_open] do
@@ -87,6 +89,7 @@ defmodule Worth.CLI do
     Options:
       -w, --workspace <name>   Open a specific workspace (default: personal)
       -m, --mode <mode>        Execution mode: code | research | planned | turn_by_turn
+      --strategy <name>        Orchestration strategy: default | stigmergy | holonic | evolutionary | swarm | ecosystem
       -n, --no-open            Don't open the browser (for desktop/Tauri use)
       --init <name>            Create a new workspace and exit
       --setup                  Run the setup wizard and exit
