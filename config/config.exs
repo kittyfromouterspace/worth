@@ -1,6 +1,7 @@
 import Config
 
 alias Ecto.Adapters.SQLite3
+alias Worth.Memory.Embeddings.Adapter
 alias Worth.Metrics.Repo
 
 # --- Data directory (OS-conventional, auto-detected) ---
@@ -41,8 +42,9 @@ config :mneme,
 
 config :mneme,
   embedding: [
-    provider: Worth.Memory.Embeddings.Adapter,
-    tier: :embeddings
+    provider: Adapter,
+    tier: :embeddings,
+    credentials_fn: &Adapter.credentials/0
   ],
   working_memory: [max_entries_per_scope: 50],
   outcome_feedback: [positive_half_life_delta: 5, negative_half_life_delta: 3]
@@ -102,11 +104,9 @@ config :worth,
     default_provider: :openrouter,
     providers: %{
       openrouter: [
-        api_key: {:env, "OPENROUTER_API_KEY"},
         default_model: "minimax/minimax-m2.5:free"
       ],
       anthropic: [
-        api_key: {:env, "ANTHROPIC_API_KEY"},
         default_model: "claude-sonnet-4-20250514"
       ]
     }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicknisi/dotfiles/main/config/tauri/tauri.conf.schema.json",
   "productName": "Worth",
-  "version": "0.2.1-alpha.5",
+  "version": "0.2.1-alpha.6",
   "identifier": "com.worth.desktop",
   "build": {
     "frontendDist": "dist",
@@ -47,7 +47,7 @@
     },
     "windows": {
       "wix": {
-        "version": "0.2.1.5"
+        "version": "0.2.1.6"
       },
       "nsis": {
         "installMode": "currentUser"

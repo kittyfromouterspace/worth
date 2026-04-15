@@ -109,6 +109,7 @@ defmodule WorthWeb.Components.Chat do
   attr :workspaces, :list, default: []
   attr :files, :list, default: []
   attr :agents, :list, default: []
+  attr :status, :atom, default: :idle
   attr :memory_stats, :map, default: %{}
   attr :mode, :atom, required: true
   attr :models, :map, required: true
@@ -148,7 +149,10 @@ defmodule WorthWeb.Components.Chat do
       <%!-- Agents --%>
       <div class="px-3 py-2">
         <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Agents</div>
-        <div :if={@agents == []} class={"text-xs #{color(:text_dim)}"}>o idle</div>
+        <div :if={@agents == [] && @status == :running} class={"text-xs #{color(:info)}"}>
+          <span class="spinner"></span> working…
+        </div>
+        <div :if={@agents == [] && @status != :running} class={"text-xs #{color(:text_dim)}"}>o idle</div>
         <div :for={agent <- @agents} class="text-xs py-px">
           <.agent_row agent={agent} />
         </div>
@@ -158,11 +162,19 @@ defmodule WorthWeb.Components.Chat do
       <div class="px-3 py-2">
         <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Model</div>
         <div class={"text-xs space-y-0.5 #{color(:text_muted)}"}>
-          <div :if={@model_routing[:mode] == "manual" and @model_routing[:manual_model]}>
-            <span class={color(:primary)}>{manual_model_label(@model_routing.manual_model)}</span>
+          <div :if={@model_routing[:coding_agent]}>
+            <span class={color(:primary)}>{@model_routing.coding_agent[:name]}</span>
+            <div class={"#{color(:text_dim)} text-[10px]"}>coding agent · /model auto to switch back</div>
+          </div>
+          <div :if={@model_routing[:mode] == "manual" and not is_nil(@model_routing[:manual_model]) and is_nil(@model_routing[:coding_agent])}>
+            <% actual = model_short(@models, :primary)
+               configured = manual_model_label(@model_routing.manual_model)
+               fallback = actual && actual != configured && actual %>
+            <span class={color(:primary)}>{configured}</span>
+            <div :if={fallback} class={"#{color(:info)} text-[10px]"}>→ {fallback}</div>
             <div class={"#{color(:text_dim)} text-[10px]"}>manual · /model auto to switch</div>
           </div>
-          <div :if={@model_routing[:mode] != "manual" or !@model_routing[:manual_model]}>
+          <div :if={(@model_routing[:mode] != "manual" or is_nil(@model_routing[:manual_model])) and is_nil(@model_routing[:coding_agent])}>
             <div class={color(:primary)}>primary</div>
             <div class={color(:text_muted)}>
               <%= case model_short(@models, :primary) do %>

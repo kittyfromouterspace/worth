@@ -41,7 +41,30 @@ defmodule Worth.CodingAgents do
   end
 
   @doc "Get the AgentEx profile atom for a coding agent."
-  def profile_for(protocol), do: protocol
+  def profile_for(protocol) do
+    case protocol do
+      :claude -> :claude_code
+      :claude_code -> :claude_code
+      :opencode -> :opencode
+      :codex -> :codex
+      _ -> :acp
+    end
+  end
+
+  @doc "Get the backend config for ACP-based coding agents."
+  def backend_config(protocol, workspace \\ File.cwd!()) do
+    case Discovery.lookup_known(protocol) do
+      nil ->
+        %{workspace: workspace}
+
+      entry ->
+        %{
+          command: entry.command,
+          args: entry.args || ["acp"],
+          workspace: workspace
+        }
+    end
+  end
 
   @doc "List all registered protocol names (from AgentEx Registry)."
   def list_registered do
@@ -55,14 +78,16 @@ defmodule Worth.CodingAgents do
 
   @doc "Register a protocol with AgentEx.Registry."
   def register_protocol(protocol_module, protocol_atom) do
+    name = inspect(protocol_atom)
+
     case AgentEx.Protocol.Registry.lookup(protocol_atom) do
       {:ok, _} ->
-        Logger.info("Protocol #{protocol_atom} already registered")
+        Logger.info("Protocol #{name} already registered")
         :ok
 
       :error ->
         AgentEx.Protocol.Registry.register(protocol_atom, protocol_module)
-        Logger.info("Registered coding agent protocol: #{protocol_atom}")
+        Logger.info("Registered coding agent protocol: #{name}")
     end
   end
 
@@ -70,8 +95,15 @@ defmodule Worth.CodingAgents do
   def auto_register do
     discovered = discover()
 
+    # Ensure generic ACP protocol is registered
+    register_protocol(AgentEx.Protocol.ACP, {:acp, :generic})
+
     for agent <- discovered do
       case agent.protocol do
+        :claude ->
+          register_protocol(AgentEx.Protocol.ClaudeCode, :claude_code)
+          add_to_config(:claude_code, "Claude Code")
+
         :claude_code ->
           register_protocol(AgentEx.Protocol.ClaudeCode, :claude_code)
           add_to_config(:claude_code, "Claude Code")
@@ -80,8 +112,14 @@ defmodule Worth.CodingAgents do
           register_protocol(AgentEx.Protocol.OpenCode, :opencode)
           add_to_config(:opencode, "OpenCode")
 
-        _ ->
-          Logger.warning("Unknown coding agent protocol: #{inspect(agent.protocol)}")
+        :codex ->
+          register_protocol(AgentEx.Protocol.Codex, :codex)
+          add_to_config(:codex, "Codex CLI")
+
+        protocol ->
+          # Register ACP-based agents under {:acp, protocol}
+          register_protocol(AgentEx.Protocol.ACP, {:acp, protocol})
+          add_to_config(protocol, agent.display_name)
       end
     end
 

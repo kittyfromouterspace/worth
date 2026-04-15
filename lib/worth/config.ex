@@ -96,9 +96,8 @@ defmodule Worth.Config do
   end
 
   @doc """
-  Store a secret keyed by its env-var name. Goes to the encrypted
-  Settings DB if vault is unlocked, otherwise stored as plaintext
-  preference (migrated to encrypted on next vault unlock).
+  Store a secret keyed by its env-var name. Requires the vault to be
+  unlocked — returns `{:error, :vault_locked}` if the vault is locked.
   """
   def put_secret(env_var, value) when is_binary(env_var) and is_binary(value) do
     if vault_available?() do
@@ -108,40 +107,8 @@ defmodule Worth.Config do
         error -> error
       end
     else
-      # Vault locked — store as plaintext so it survives restart.
-      safe_persist_preference(env_var, value)
+      {:error, :vault_locked}
     end
-  end
-
-  @doc """
-  Called after vault unlock to migrate plaintext secrets to encrypted
-  storage and refresh the LLM catalog.
-  """
-  def export_vault_secrets do
-    migrate_plaintext_to_vault()
-  end
-
-  @secret_env_vars ["OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]
-
-  defp migrate_plaintext_to_vault do
-    for key <- @secret_env_vars do
-      case safe_get_preference(key) do
-        val when is_binary(val) and val != "" ->
-          case Worth.Settings.put(key, val, "secret") do
-            {:ok, _} ->
-              # Clear the plaintext copy by setting it to empty
-              safe_persist_preference(key, "")
-
-            _ ->
-              :ok
-          end
-
-        _ ->
-          :ok
-      end
-    end
-
-    :ok
   end
 
   @doc """
@@ -161,7 +128,6 @@ defmodule Worth.Config do
     :worth
     |> Application.get_all_env()
     |> Map.new()
-    |> resolve_env_values()
   end
 
   defp load_settings_overrides do
@@ -207,6 +173,38 @@ defmodule Worth.Config do
     :exit, _ -> :ok
   end
 
+  @doc """
+  Persist model routing config to both the in-memory Agent and the Settings DB.
+
+  Accepts a map with keys like `%{mode: "auto" | "manual", preference: "...",
+  filter: "...", manual_model: %{provider: "...", model_id: "..."}}`.
+  """
+  def save_routing(routing) when is_map(routing) do
+    Agent.update(__MODULE__, fn state ->
+      %{state | merged: put_in_path(state.merged, [:model_routing], routing)}
+    end)
+
+    persist_routing_preferences(routing)
+  end
+
+  defp persist_routing_preferences(routing) do
+    safe_persist_preference("model_routing_mode", Map.get(routing, :mode, "auto"))
+
+    pref = Map.get(routing, :preference)
+    if pref, do: safe_persist_preference("model_routing_preference", pref)
+
+    filter = Map.get(routing, :filter)
+    if filter, do: safe_persist_preference("model_routing_filter", filter)
+
+    case Map.get(routing, :manual_model) do
+      %{provider: p, model_id: m} ->
+        safe_persist_preference("model_routing_manual_model", "#{p}/#{m}")
+
+      _ ->
+        safe_persist_preference("model_routing_manual_model", "")
+    end
+  end
+
   defp path_to_settings_key([:workspace_directory]), do: "workspace_directory"
   defp path_to_settings_key([:memory, :enabled]), do: "memory_enabled"
   defp path_to_settings_key([:memory, :decay_days]), do: "memory_decay_days"
@@ -241,29 +239,6 @@ defmodule Worth.Config do
   end
 
   defp deep_merge(_a, b), do: b
-
-  defp resolve_env_values(%_{} = struct), do: struct
-
-  defp resolve_env_values(map) when is_map(map) do
-    Map.new(map, fn {k, v} -> {k, resolve_env_values(v)} end)
-  end
-
-  defp resolve_env_values(list) when is_list(list) do
-    Enum.map(list, &resolve_env_values/1)
-  end
-
-  defp resolve_env_values({:env, var}) do
-    case System.get_env(var) do
-      nil -> nil
-      val -> val
-    end
-  end
-
-  defp resolve_env_values({k, v}) when is_atom(k) do
-    {k, resolve_env_values(v)}
-  end
-
-  defp resolve_env_values(other), do: other
 
   defp serialize_value(val) when is_binary(val), do: val
   defp serialize_value(val) when is_boolean(val), do: to_string(val)

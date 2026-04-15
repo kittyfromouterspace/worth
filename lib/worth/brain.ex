@@ -269,18 +269,12 @@ defmodule Worth.Brain do
   end
 
   def handle_call({:switch_to_coding_agent, protocol}, _from, state) do
-    profile = Worth.CodingAgents.profile_for(protocol)
-
-    cond do
-      profile == nil ->
-        {:reply, {:error, :unknown_protocol}, state}
-
-      not Worth.CodingAgents.available?(protocol) ->
-        {:reply, {:error, :not_available}, state}
-
-      true ->
-        new_state = %{state | profile: profile, mode: :coding_agent}
-        {:reply, :ok, new_state}
+    if Worth.CodingAgents.available?(protocol) do
+      profile = Worth.CodingAgents.profile_for(protocol)
+      new_state = %{state | profile: profile, mode: :coding_agent}
+      {:reply, :ok, new_state}
+    else
+      {:reply, {:error, :not_available}, state}
     end
   end
 
@@ -312,7 +306,7 @@ defmodule Worth.Brain do
 
   def handle_call({:skill_refine, name}, _from, state) do
     llm_fn = fn messages ->
-      Worth.LLM.chat_tier(%{messages: messages}, :lightweight, state.config)
+      Worth.LLM.chat_tier(%{messages: messages}, :lightweight)
     end
 
     result = Refiner.refine(name, llm_fn: llm_fn)
@@ -484,6 +478,14 @@ defmodule Worth.Brain do
       strategy_opts: state.strategy_opts
     ]
 
+    run_opts =
+      if state.mode == :coding_agent and state.profile == :acp do
+        backend_config = Worth.CodingAgents.backend_config(coding_agent_protocol(state), workspace_path)
+        Keyword.put(run_opts, :backend_config, backend_config)
+      else
+        run_opts
+      end
+
     run_opts = if system_prompt, do: Keyword.put(run_opts, :system_prompt, system_prompt), else: run_opts
     run_opts = apply_model_routing(run_opts)
 
@@ -518,18 +520,16 @@ defmodule Worth.Brain do
 
     %{
       llm_chat: fn params ->
-        # Internal calls (e.g., model router classification) should not stream to UI
-        if params["internal"] do
-          params = maybe_inject_manual_model(params)
-          Worth.LLM.stream_chat(params, state.config, fn _chunk -> :ok end)
-        else
-          on_chunk = fn text_delta ->
-            broadcast_workspace(workspace, {:agent_event, {:text_chunk, text_delta}})
+        on_chunk =
+          if params["internal"] do
+            fn _chunk -> :ok end
+          else
+            fn text_delta ->
+              broadcast_workspace(workspace, {:agent_event, {:text_chunk, text_delta}})
+            end
           end
 
-          params = maybe_inject_manual_model(params)
-          Worth.LLM.stream_chat(params, state.config, on_chunk)
-        end
+        Worth.LLM.stream_chat(params, on_chunk)
       end,
       on_event: fn event, _ctx ->
         broadcast_workspace(workspace, {:agent_event, event})
@@ -588,7 +588,7 @@ defmodule Worth.Brain do
           workspace: workspace,
           source_type: "response",
           llm_fn: fn messages ->
-            Worth.LLM.chat_tier(%{messages: messages}, :lightweight, state.config)
+            Worth.LLM.chat_tier(%{messages: messages}, :lightweight)
           end
         ]
 
@@ -607,7 +607,7 @@ defmodule Worth.Brain do
             source_type: "tool:#{name}",
             turn: turn,
             llm_fn: fn messages ->
-              Worth.LLM.chat_tier(%{messages: messages}, :lightweight, state.config)
+              Worth.LLM.chat_tier(%{messages: messages}, :lightweight)
             end
           ]
 
@@ -660,6 +660,13 @@ defmodule Worth.Brain do
   defp mode_to_profile(:coding_agent), do: :claude_code
   defp mode_to_profile(_), do: :agentic
 
+  defp coding_agent_protocol(_state) do
+    case Worth.Config.get([:model_routing, :coding_agent, :protocol]) do
+      nil -> :claude_code
+      protocol -> protocol
+    end
+  end
+
   defp apply_model_routing(opts) do
     base_opts =
       case Worth.Config.get([:model_routing]) do
@@ -668,6 +675,14 @@ defmodule Worth.Brain do
           |> Keyword.put(:model_selection_mode, :auto)
           |> Keyword.put(:model_preference, safe_to_existing_atom(pref))
           |> maybe_put_filter(filter)
+
+        %{mode: "manual", manual_model: %{provider: provider, model_id: model_id}} = routing ->
+          override = %{primary: "#{provider}/#{model_id}"}
+
+          opts
+          |> Keyword.put(:model_selection_mode, :manual)
+          |> Keyword.put(:tier_overrides, override)
+          |> maybe_put_filter(Map.get(routing, :filter))
 
         %{mode: "manual", filter: filter} ->
           opts
@@ -685,9 +700,15 @@ defmodule Worth.Brain do
         base_opts
       end
 
-    case default_model_override() do
-      nil -> base_opts
-      override -> Keyword.put(base_opts, :tier_overrides, override)
+    case Keyword.get(base_opts, :tier_overrides) do
+      nil ->
+        case default_model_override() do
+          nil -> base_opts
+          override -> Keyword.put(base_opts, :tier_overrides, override)
+        end
+
+      _already_set ->
+        base_opts
     end
   end
 
@@ -713,18 +734,6 @@ defmodule Worth.Brain do
 
   defp maybe_put_filter(opts, "free_only"), do: Keyword.put(opts, :model_filter, :free_only)
   defp maybe_put_filter(opts, _), do: opts
-
-  defp maybe_inject_manual_model(params) when is_map(params) do
-    case Worth.Config.get([:model_routing]) do
-      %{mode: "manual", manual_model: %{provider: p, model_id: m}} ->
-        Map.put(params, "_route", %{provider_name: p, model_id: m})
-
-      _ ->
-        params
-    end
-  end
-
-  defp maybe_inject_manual_model(params), do: params
 
   defp mode_to_agent_mode(:code), do: :agentic
   defp mode_to_agent_mode(:research), do: :conversational
@@ -766,12 +775,12 @@ defmodule Worth.Brain do
     Phoenix.PubSub.broadcast(Worth.PubSub, "workspace:#{workspace}", message)
   end
 
-  defp maybe_trigger_refinement(tool_name, state) do
+  defp maybe_trigger_refinement(tool_name, _state) do
     skill_name = String.replace_prefix(tool_name, "skill_", "")
 
     if Evaluator.should_refine?(skill_name) do
       llm_fn = fn messages ->
-        Worth.LLM.chat_tier(%{messages: messages}, :lightweight, state.config)
+        Worth.LLM.chat_tier(%{messages: messages}, :lightweight)
       end
 
       Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->

@@ -5,7 +5,7 @@ defmodule Worth.Brain.Session do
   alias Worth.Tools.Router
 
   def resume(session_id, workspace_path, workspace, config) do
-    callbacks = build_resume_callbacks(workspace, workspace_path, config)
+    callbacks = build_resume_callbacks(workspace, workspace_path)
 
     opts = [
       session_id: session_id,
@@ -15,7 +15,10 @@ defmodule Worth.Brain.Session do
       mode: :agentic,
       caller: self(),
       cost_limit: config[:cost_limit] || 5.0,
-      transcript_backend: Transcript
+      transcript_backend: Transcript,
+      model_selection_mode: (config[:model_routing] || %{}) |> Map.get(:mode, "manual") |> String.to_existing_atom(),
+      model_preference:
+        (config[:model_routing] || %{}) |> Map.get(:preference, "optimize_price") |> String.to_existing_atom()
     ]
 
     AgentEx.resume(opts)
@@ -25,10 +28,10 @@ defmodule Worth.Brain.Session do
     Transcript.list_sessions(workspace_path, [])
   end
 
-  defp build_resume_callbacks(workspace, workspace_path, config) do
+  defp build_resume_callbacks(workspace, workspace_path) do
     %{
       llm_chat: fn params ->
-        Worth.LLM.chat(params, config)
+        Worth.LLM.chat(params)
       end,
       on_event: fn event, _ctx ->
         Phoenix.PubSub.broadcast(Worth.PubSub, "workspace:#{workspace}", {:agent_event, event})

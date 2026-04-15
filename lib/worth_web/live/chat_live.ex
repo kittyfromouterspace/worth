@@ -34,6 +34,8 @@ defmodule WorthWeb.ChatLive do
   def mount(_params, _session, socket) do
     workspace = Worth.Config.get(:current_workspace, "personal")
     mode = Worth.Config.get(:current_mode, :turn_by_turn)
+    routing = current_routing()
+    mode = if routing[:coding_agent], do: :coding_agent, else: mode
 
     if connected?(socket) do
       topic = "workspace:#{workspace}"
@@ -64,7 +66,7 @@ defmodule WorthWeb.ChatLive do
        workspace: workspace,
        mode: mode,
        models: %{primary: %{label: nil, source: nil}, lightweight: %{label: nil, source: nil}},
-       model_routing: current_routing(),
+       model_routing: routing,
        turn: 0,
        streaming_text: "",
        sidebar_visible: true,
@@ -115,6 +117,14 @@ defmodule WorthWeb.ChatLive do
   def handle_info({:mcp_event, event}, socket) do
     if socket.assigns.xray do
       {:noreply, push_xray_event(socket, {:mcp, event})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:xray_telemetry, event}, socket) do
+    if socket.assigns.xray do
+      {:noreply, push_xray_event(socket, event)}
     else
       {:noreply, socket}
     end
@@ -195,8 +205,8 @@ defmodule WorthWeb.ChatLive do
     {:noreply, assign(socket, settings_form: default_settings_form())}
   end
 
-  def handle_info({:export_secrets_to_env}, socket) do
-    export_secrets_to_env()
+  def handle_info({:populate_credentials}, socket) do
+    populate_credentials_from_vault()
     {:noreply, socket}
   end
 
@@ -423,9 +433,11 @@ defmodule WorthWeb.ChatLive do
     socket =
       if xray do
         Phoenix.PubSub.subscribe(Worth.PubSub, "mcp:events")
+        Phoenix.PubSub.subscribe(Worth.PubSub, "xray:events")
         assign(socket, xray: true, xray_events: [])
       else
         Phoenix.PubSub.unsubscribe(Worth.PubSub, "mcp:events")
+        Phoenix.PubSub.unsubscribe(Worth.PubSub, "xray:events")
         assign(socket, xray: false, xray_events: [])
       end
 
@@ -475,8 +487,7 @@ defmodule WorthWeb.ChatLive do
       true ->
         case Worth.Settings.setup_password(password) do
           :ok ->
-            # Migrate any secrets stored on disk during earlier onboarding steps
-            Worth.Settings.import_from_config_store()
+            populate_credentials_from_vault()
             {:noreply, assign(socket, onboarding_step: 3)}
 
           {:error, :already_set} ->
@@ -519,7 +530,7 @@ defmodule WorthWeb.ChatLive do
   def handle_event("vault_unlock", %{"password" => password}, socket) do
     case Worth.Settings.unlock(password) do
       :ok ->
-        export_secrets_to_env()
+        populate_credentials_from_vault()
 
         {:noreply,
          socket
@@ -565,7 +576,30 @@ defmodule WorthWeb.ChatLive do
         source = Map.get(info, :source, :unknown)
         slot = %{label: label, source: "#{source}/#{provider}"}
         models = Map.put(socket.assigns.models, display_tier, slot)
-        assign(socket, models: models)
+
+        socket = assign(socket, models: models)
+
+        # Emit a system message when a manual model falls back to a different model
+        socket =
+          if socket.assigns.model_routing[:mode] == "manual" and
+               socket.assigns.model_routing[:manual_model] do
+            configured_id = socket.assigns.model_routing.manual_model[:model_id]
+
+            if configured_id && configured_id != info[:model_id] do
+              stream_insert(socket, :messages, %{
+                id: msg_id(),
+                type: :system,
+                content:
+                  "Model fallback: '#{configured_id}' failed, using '#{info[:model_id]}' instead"
+              })
+            else
+              socket
+            end
+          else
+            socket
+          end
+
+        socket
 
       {:tool_use, name, _ws} when is_binary(name) ->
         socket =
@@ -722,7 +756,7 @@ defmodule WorthWeb.ChatLive do
 
   defp push_xray_event(socket, {type, data}) do
     timestamp = System.system_time(:millisecond)
-    entry = Map.merge(data, %{type: type, timestamp: timestamp})
+    entry = {type, Map.put(data, :timestamp, timestamp)}
     current = socket.assigns.xray_events
     updated = Enum.take(current ++ [entry], -100)
     assign(socket, xray_events: updated)
@@ -784,7 +818,8 @@ defmodule WorthWeb.ChatLive do
       |> List.first()
 
     lightweight =
-      Catalog.find(has: [:free, :chat], tier: :lightweight)
+      [has: [:free, :chat], tier: :lightweight]
+      |> Catalog.find()
       |> Enum.sort_by(& &1.context_window, :desc)
       |> List.first()
 
@@ -846,7 +881,7 @@ defmodule WorthWeb.ChatLive do
     routing = %{mode: "auto", preference: "optimize_price", filter: "free_only"}
     Worth.Config.put([:model_routing], routing)
 
-    export_secrets_to_env()
+    populate_credentials_from_vault()
 
     # Create the personal workspace
     {:ok, _path} = Service.create_personal(profile)
@@ -1050,8 +1085,8 @@ defmodule WorthWeb.ChatLive do
 
   defp current_routing do
     case Worth.Config.get([:model_routing]) do
-      %{mode: mode, preference: pref, filter: filter} ->
-        %{mode: mode, preference: pref, filter: filter}
+      %{mode: _mode} = routing ->
+        routing
 
       _ ->
         %{mode: "auto", preference: "optimize_price", filter: "free_only"}
@@ -1093,9 +1128,7 @@ defmodule WorthWeb.ChatLive do
     :exit, _ -> []
   end
 
-  defp export_secrets_to_env do
-    Worth.Config.export_vault_secrets()
-
+  defp populate_credentials_from_vault do
     for setting <- Worth.Settings.all_by_category("secret"),
         is_binary(setting.encrypted_value) and setting.encrypted_value != "" do
       AgentEx.LLM.Credentials.put(setting.key, setting.encrypted_value)
@@ -1316,11 +1349,11 @@ defmodule WorthWeb.ChatLive do
     cond do
       String.contains?(text, "</think>") ->
         [thinking, rest] = String.split(text, "</think>", parts: 2)
-        thinking = String.replace_prefix(thinking, "<think>", "") |> String.trim()
+        thinking = thinking |> String.replace_prefix("<think>", "") |> String.trim()
         {thinking, String.trim(rest)}
 
       String.starts_with?(text, "<think>") ->
-        {String.replace_prefix(text, "<think>", "") |> String.trim(), ""}
+        {text |> String.replace_prefix("<think>", "") |> String.trim(), ""}
 
       true ->
         {"", text}

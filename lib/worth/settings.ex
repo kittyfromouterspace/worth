@@ -138,9 +138,20 @@ defmodule Worth.Settings do
 
   def change_password(_, _), do: {:error, :empty_password}
 
-  @doc "Lock the vault, clearing the cipher key from memory."
+  @doc "Lock the vault, clearing the cipher key from memory and purging cached credentials."
   def lock do
     Vault.lock()
+    clear_credentials()
+  end
+
+  defp clear_credentials do
+    for {key, "secret"} <- list_keys() do
+      AgentEx.LLM.Credentials.delete(key)
+    end
+  rescue
+    _ -> :ok
+  catch
+    :exit, _ -> :ok
   end
 
   # ── Settings CRUD ───────────────────────────────────────────────
@@ -222,35 +233,5 @@ defmodule Worth.Settings do
   @doc "List all setting keys (no decryption needed for keys)."
   def list_keys do
     Repo.all(from(s in Setting, select: {s.key, s.category}, order_by: s.key))
-  end
-
-  # ── Export secrets to process env ────────────────────────────────
-
-  # ── Migration helper ────────────────────────────────────────────
-
-  @doc """
-  Import plaintext secrets from the legacy config.exs file (if it exists).
-  Called once after first vault setup to migrate existing secrets.
-  """
-  def import_from_config_store do
-    # Legacy config.exs import has been removed. Users should configure via the settings UI.
-    {:ok, 0}
-  end
-
-  # ── Export secrets to process env ────────────────────────────────
-
-  @doc """
-  Export all secrets from the vault into the process environment so
-  downstream consumers (e.g. AgentEx.LLM.Credentials) can find them.
-  Call after vault unlock.
-  """
-  def export_secrets_to_env do
-    for setting <- all_by_category("secret") do
-      if is_binary(setting.encrypted_value) and setting.encrypted_value != "" do
-        System.put_env(setting.key, setting.encrypted_value)
-      end
-    end
-
-    :ok
   end
 end

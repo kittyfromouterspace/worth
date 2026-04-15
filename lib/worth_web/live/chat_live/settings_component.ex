@@ -31,7 +31,7 @@ defmodule WorthWeb.ChatLive.SettingsComponent do
   def handle_event("settings_setup_password", %{"password" => password}, socket) do
     case Worth.Settings.setup_password(password) do
       :ok ->
-        Worth.Settings.import_from_config_store()
+        send(self(), {:populate_credentials})
         send(self(), {:refresh_settings_form})
         send(self(), {:append_system_message, "Master password set and vault unlocked."})
         {:noreply, socket}
@@ -53,7 +53,7 @@ defmodule WorthWeb.ChatLive.SettingsComponent do
   def handle_event("settings_unlock", %{"password" => password}, socket) do
     case Worth.Settings.unlock(password) do
       :ok ->
-        send(self(), {:export_secrets_to_env})
+        send(self(), {:populate_credentials})
         send(self(), {:refresh_settings_form})
         send(self(), {:append_system_message, "Vault unlocked."})
         {:noreply, socket}
@@ -75,32 +75,50 @@ defmodule WorthWeb.ChatLive.SettingsComponent do
   end
 
   def handle_event("settings_save", params, socket) do
-    saved =
+    locked = safe_vault_locked?()
+
+    {saved, blocked} =
       params
       |> Map.drop(["_target", "_csrf_token"])
       |> Enum.reject(fn {_k, v} -> v == "" end)
-      |> Enum.map(fn {key, value} ->
-        category =
-          if String.contains?(key, "API_KEY") or String.contains?(key, "SECRET"), do: "secret", else: "preference"
+      |> Enum.reduce({[], []}, fn {key, value}, {ok, blocked} ->
+        is_secret = String.contains?(key, "API_KEY") or String.contains?(key, "SECRET")
 
-        Worth.Settings.put(key, value, category)
-        key
+        if is_secret and locked do
+          {ok, [key | blocked]}
+        else
+          Worth.Settings.put(key, value, if(is_secret, do: "secret", else: "preference"))
+          {[key | ok], blocked}
+        end
       end)
 
     if saved != [] do
-      send(self(), {:export_secrets_to_env})
+      send(self(), {:populate_credentials})
       send(self(), {:refresh_settings_form})
       send(self(), {:append_system_message, "Saved: #{Enum.join(saved, ", ")}"})
+    end
+
+    if blocked != [] do
+      send(
+        self(),
+        {:append_system_message,
+         "Cannot save secrets while vault is locked: #{Enum.join(blocked, ", ")}. Unlock first."}
+      )
     end
 
     {:noreply, socket}
   end
 
   def handle_event("settings_save_key", %{"env_var" => env_var, "api_key" => key}, socket) when key != "" do
-    Worth.Settings.put(env_var, key, "secret")
-    send(self(), {:export_secrets_to_env})
-    send(self(), {:refresh_settings_form})
-    send(self(), {:append_system_message, "Saved #{env_var}."})
+    if safe_vault_locked?() do
+      send(self(), {:append_system_message, "Cannot save #{env_var} — vault is locked. Unlock first."})
+    else
+      Worth.Settings.put(env_var, key, "secret")
+      send(self(), {:populate_credentials})
+      send(self(), {:refresh_settings_form})
+      send(self(), {:append_system_message, "Saved #{env_var}."})
+    end
+
     {:noreply, socket}
   end
 
@@ -163,10 +181,7 @@ defmodule WorthWeb.ChatLive.SettingsComponent do
       filter: if(filter == "free_only", do: "free_only", else: "")
     }
 
-    Worth.Config.put([:model_routing], routing)
-    persist_preference("model_routing_mode", mode)
-    persist_preference("model_routing_preference", preference)
-    persist_preference("model_routing_filter", routing.filter)
+    Worth.Config.save_routing(routing)
 
     send(self(), {:refresh_settings_form})
     label = routing_label(mode, preference, routing.filter)
@@ -234,6 +249,14 @@ defmodule WorthWeb.ChatLive.SettingsComponent do
     Worth.Settings.put(key, value, "preference")
   rescue
     _ -> nil
+  end
+
+  defp safe_vault_locked? do
+    Worth.Settings.locked?()
+  rescue
+    _ -> true
+  catch
+    :exit, _ -> true
   end
 
   defp parse_float(nil, default), do: default

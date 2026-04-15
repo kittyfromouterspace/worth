@@ -7,7 +7,8 @@ config :mneme,
   repo: Worth.Repo,
   embedding: [
     provider: Mneme.Embedding.Mock,
-    mock: true
+    mock: true,
+    credentials_fn: nil
   ]
 
 config :phoenix, :plug_init_mode, :runtime

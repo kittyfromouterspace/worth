@@ -27,6 +27,7 @@ defmodule Worth.Application do
       Worth.Mcp.ConnectionMonitor,
       Worth.Brain.Supervisor,
       Worth.Learning.TelemetryBridge,
+      Worth.XRay.TelemetryBridge,
       {Task.Supervisor, name: Worth.SkillInit, max_retries: 0},
       WorthWeb.Telemetry,
       WorthWeb.Endpoint,

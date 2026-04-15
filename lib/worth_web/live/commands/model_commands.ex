@@ -29,11 +29,18 @@ defmodule WorthWeb.Commands.ModelCommands do
 
   def handle({:model, :auto}, socket) do
     routing = current_routing()
-    new_routing = routing |> Map.delete(:manual_model) |> Map.put(:mode, "auto")
+
+    new_routing =
+      routing
+      |> Map.delete(:manual_model)
+      |> Map.delete(:coding_agent)
+      |> Map.put(:mode, "auto")
+
     save_routing(new_routing)
 
     socket
     |> assign(:model_routing, new_routing)
+    |> assign(:mode, :turn_by_turn)
     |> append_system("Switched to automatic model selection.")
   end
 
@@ -110,32 +117,70 @@ defmodule WorthWeb.Commands.ModelCommands do
   end
 
   def handle({:model, {:set, input}}, socket) do
-    case parse_model_ref(input) do
-      {:ok, provider, model_id} ->
-        # Verify the model exists in catalog (try both atom and string provider keys)
-        case catalog_lookup(provider, model_id) do
-          nil ->
-            # Try a fuzzy lookup - maybe they gave a partial id
-            suggest_close_matches(socket, provider, model_id)
+    # Check for coding agent shorthand first (e.g. /model set kimi)
+    case resolve_coding_agent(input) do
+      {:ok, protocol} ->
+        workspace = socket.assigns.workspace
 
-          _model ->
+        case Worth.Brain.switch_to_coding_agent(workspace, protocol) do
+          :ok ->
+            agent_name = Worth.CodingAgents.display_name(protocol)
+
             routing =
               current_routing()
-              |> Map.put(:mode, "manual")
-              |> Map.put(:manual_model, %{provider: provider, model_id: model_id})
+              |> Map.put(:coding_agent, %{protocol: protocol, name: agent_name})
+              |> Map.delete(:manual_model)
 
             save_routing(routing)
 
             socket
             |> assign(:model_routing, routing)
-            |> append_system("Model set to #{provider}/#{model_id} (manual mode)")
+            |> assign(:mode, :coding_agent)
+            |> append_system("Switched to coding agent: #{agent_name}")
+
+          {:error, :not_available} ->
+            append_error(socket, "Coding agent '#{input}' not available. Make sure it's installed.")
+
+          {:error, :unknown_protocol} ->
+            append_error(socket, "Unknown coding agent '#{input}'.")
         end
 
-      :error ->
-        append_system(
-          socket,
-          "Usage: /model set <provider>/<model_id>\nExample: /model set anthropic/claude-sonnet-4-20250514"
-        )
+      :not_agent ->
+        case parse_model_ref(input) do
+          {:ok, provider, model_id} ->
+            # Verify the model exists in catalog (try both atom and string provider keys)
+            case catalog_lookup(provider, model_id) do
+              nil when provider in ["anthropic", "openai", "openrouter", "gemini", "kimi", "moonshot"] ->
+                # Known provider but model not found — try fuzzy lookup
+                suggest_close_matches(socket, provider, model_id)
+
+              nil ->
+                # Unknown provider prefix — treat as bare model id instead
+                try_bare_model_set(socket, input)
+
+              _model ->
+                routing =
+                  current_routing()
+                  |> Map.put(:mode, "manual")
+                  |> Map.put(:manual_model, %{provider: provider, model_id: model_id})
+                  |> Map.delete(:coding_agent)
+
+                save_routing(routing)
+
+                socket
+                |> assign(:model_routing, routing)
+                |> append_system("Model set to #{provider}/#{model_id} (manual mode)")
+            end
+
+          {:bare, model_id} ->
+            try_bare_model_set(socket, model_id)
+
+          :error ->
+            append_system(
+              socket,
+              "Usage: /model set <provider>/<model_id>\nExample: /model set anthropic/claude-sonnet-4-20250514"
+            )
+        end
     end
   end
 
@@ -147,6 +192,46 @@ defmodule WorthWeb.Commands.ModelCommands do
     result || Catalog.lookup(provider, model_id)
   end
 
+  defp try_bare_model_set(socket, model_id) do
+    case find_model_by_id(model_id) do
+      nil ->
+        append_system(socket, "Model '#{model_id}' not found. Try /model list or use /model set <provider>/<model_id>")
+
+      {provider, _model} ->
+        routing =
+          current_routing()
+          |> Map.put(:mode, "manual")
+          |> Map.put(:manual_model, %{provider: to_string(provider), model_id: model_id})
+
+        save_routing(routing)
+
+        socket
+        |> assign(:model_routing, routing)
+        |> append_system("Model set to #{provider}/#{model_id} (manual mode)")
+    end
+  end
+
+  defp find_model_by_id(model_id) do
+    Catalog.all()
+    |> Enum.find_value(fn model ->
+      if model.id == model_id, do: {model.provider, model}, else: nil
+    end)
+  end
+
+  defp resolve_coding_agent(input) do
+    input = String.trim(input) |> String.downcase()
+
+    agents = AgentEx.Protocol.ACP.Discovery.known_agents()
+
+    case Enum.find(agents, fn a ->
+           to_string(a.name) == input or
+             Enum.any?(Map.get(a, :aliases, []), &(to_string(&1) == input))
+         end) do
+      nil -> :not_agent
+      agent -> {:ok, agent.name}
+    end
+  end
+
   defp safe_to_existing_atom(str) when is_binary(str) do
     String.to_existing_atom(str)
   rescue
@@ -156,12 +241,39 @@ defmodule WorthWeb.Commands.ModelCommands do
   defp parse_model_ref(input) do
     input = String.trim(input)
 
+    # Try : separator first, but only if the left side looks like a known provider
+    case String.split(input, ":", parts: 2) do
+      [provider, model_id] when provider != "" and model_id != "" ->
+        if known_provider?(provider) do
+          {:ok, provider, model_id}
+        else
+          # Fall back to / separator
+          parse_slash_ref(input)
+        end
+
+      _ ->
+        parse_slash_ref(input)
+    end
+  end
+
+  defp parse_slash_ref(input) do
     case String.split(input, "/", parts: 2) do
       [provider, model_id] when provider != "" and model_id != "" ->
         {:ok, provider, model_id}
 
       _ ->
-        :error
+        if input != "", do: {:bare, input}, else: :error
+    end
+  end
+
+  defp known_provider?(provider) do
+    # Check against catalog providers and a static list of common providers
+    provider_atom = safe_to_existing_atom(provider)
+
+    if provider_atom do
+      Catalog.for_provider(provider_atom) != []
+    else
+      provider in ["anthropic", "openai", "openrouter", "gemini", "kimi", "moonshot"]
     end
   end
 
@@ -234,19 +346,6 @@ defmodule WorthWeb.Commands.ModelCommands do
   end
 
   defp save_routing(routing) do
-    Worth.Config.put([:model_routing], routing)
-    Worth.Settings.put("model_routing_mode", routing.mode, "preference")
-
-    if routing[:manual_model] do
-      ref = "#{routing.manual_model.provider}/#{routing.manual_model.model_id}"
-      Worth.Settings.put("model_routing_manual_model", ref, "preference")
-    else
-      Worth.Settings.put("model_routing_manual_model", "", "preference")
-    end
-
-    :ok
-  catch
-    :exit, {:noproc, _} -> :ok
-    :exit, _ -> :ok
+    Worth.Config.save_routing(routing)
   end
 end
