@@ -19,6 +19,11 @@ worth_data =
 
 config :agent_ex, catalog: [persist_path: Path.join(worth_data, "catalog.json")]
 
+scheme = if desktop_mode, do: "http", else: System.get_env("PHX_SCHEME", "http")
+host = if desktop_mode, do: "localhost", else: System.get_env("PHX_HOST", "localhost")
+gateway_base = "#{scheme}://#{host}:#{port}"
+config :agent_ex, :llm_gateway_base_url, gateway_base
+
 config :worth, Worth.Metrics.Repo, database: Path.join(worth_data, "metrics.db")
 config :worth, Worth.Repo, database: Path.join(worth_data, "worth.db")
 
@@ -39,7 +44,7 @@ if config_env() == :prod do
         48 |> :crypto.strong_rand_bytes() |> Base.encode64(padding: false)
 
     config :worth, WorthWeb.Endpoint,
-      url: [host: "localhost", port: port, scheme: "http"],
+      url: [host: "127.0.0.1", port: port, scheme: "http"],
       http: [
         ip: {127, 0, 0, 1},
         port: port

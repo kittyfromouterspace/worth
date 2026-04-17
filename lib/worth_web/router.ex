@@ -20,4 +20,9 @@ defmodule WorthWeb.Router do
     live "/", ChatLive, :index
     live "/experiments", ExperimentLive, :index
   end
+
+  scope "/proxy", WorthWeb do
+    post "/anthropic/v1/messages", LLMGatewayController, :anthropic
+    post "/openai/v1/chat/completions", LLMGatewayController, :openai
+  end
 end

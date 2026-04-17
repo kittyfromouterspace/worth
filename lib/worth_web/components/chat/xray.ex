@@ -86,6 +86,7 @@ defmodule WorthWeb.Components.Chat.XRay do
   defp event_border_color({:orch_turn, _}), do: "border-ctp-rosewater"
   defp event_border_color({:plan, _}), do: "border-ctp-green"
   defp event_border_color({:subagent, _}), do: "border-ctp-teal"
+  defp event_border_color({:gateway_request, _}), do: "border-ctp-sapphire"
   defp event_border_color(_), do: "border-ctp-overlay0"
 
   # ── Type labels ─────────────────────────────────────────────────
@@ -128,6 +129,8 @@ defmodule WorthWeb.Components.Chat.XRay do
   defp event_type_label({:subagent, %{phase: :spawn}}), do: "SUB>"
   defp event_type_label({:subagent, %{phase: :complete}}), do: "SUB<"
   defp event_type_label({:subagent, %{phase: :error}}), do: "SUB!"
+  defp event_type_label({:gateway_request, %{phase: :start}}), do: "GWAY>"
+  defp event_type_label({:gateway_request, %{phase: :stop}}), do: "GWAY<"
   defp event_type_label(_), do: "???"
 
   # ── Type CSS classes ────────────────────────────────────────────
@@ -166,6 +169,8 @@ defmodule WorthWeb.Components.Chat.XRay do
   defp event_type_class({:plan, _}), do: "color(:success) font-semibold"
   defp event_type_class({:subagent, %{phase: :error}}), do: "color(:error) font-bold"
   defp event_type_class({:subagent, _}), do: "color(:info) font-semibold"
+  defp event_type_class({:gateway_request, %{phase: :start}}), do: "color(:info) font-semibold"
+  defp event_type_class({:gateway_request, %{phase: :stop}}), do: "color(:success) font-semibold"
   defp event_type_class(_), do: "color(:text_dim)"
 
   # ── Summaries ───────────────────────────────────────────────────
@@ -299,6 +304,23 @@ defmodule WorthWeb.Components.Chat.XRay do
     "#{format_duration(info[:duration_ms])} #{truncate_str(to_string(info[:error]), 60)}"
   end
 
+  defp event_summary({:gateway_request, %{phase: :start} = info}) do
+    provider = info[:provider] || "?"
+    model = info[:model] || "?"
+    stream_tag = if info[:stream], do: " [stream]", else: ""
+    "#{provider}/#{model}#{stream_tag}"
+  end
+
+  defp event_summary({:gateway_request, %{phase: :stop} = info}) do
+    provider = info[:provider] || "?"
+    status = info[:status] || "?"
+    dur = format_duration(info[:duration_ms])
+    tokens_in = info[:input_tokens] || 0
+    tokens_out = info[:output_tokens] || 0
+    stream_tag = if info[:stream], do: " stream", else: ""
+    "#{provider} status=#{status}#{stream_tag} #{dur} in=#{tokens_in} out=#{tokens_out}"
+  end
+
   defp event_summary({:mcp, {:mcp_failed, name}}), do: "#{name} failed"
   defp event_summary({:mcp, {:mcp_reconnected, name}}), do: "#{name} reconnected"
   defp event_summary({:mcp, {:mcp_reconnect_failed, name}}), do: "#{name} reconnect failed"
@@ -384,6 +406,44 @@ defmodule WorthWeb.Components.Chat.XRay do
   end
 
   defp event_detail({:session, %{phase: :error, error: err}}), do: "Error: #{err}"
+
+  defp event_detail({:gateway_request, %{phase: :start} = info}) do
+    parts = []
+    parts = if info[:system_preview], do: ["System: #{info[:system_preview]}" | parts], else: parts
+
+    parts =
+      if info[:tools] && info[:tools] != [] do
+        ["Tools: #{Enum.join(info[:tools], ", ")}" | parts]
+      else
+        parts
+      end
+
+    parts =
+      if info[:messages] && info[:messages] != [] do
+        msg_lines = Enum.map_join(info[:messages], "\n", fn m -> "  #{m[:role]}: #{m[:preview]}" end)
+        ["Messages:\n#{msg_lines}" | parts]
+      else
+        parts
+      end
+
+    join_parts(parts)
+  end
+
+  defp event_detail({:gateway_request, %{phase: :stop} = info}) do
+    parts = []
+    parts = if info[:ttft_ms], do: ["TTFT: #{info[:ttft_ms]}ms" | parts], else: parts
+    parts = if info[:chunk_count], do: ["Chunks: #{info[:chunk_count]}" | parts], else: parts
+    parts = if info[:cache_read] && info[:cache_read] > 0, do: ["Cache read: #{info[:cache_read]}" | parts], else: parts
+    parts = if info[:cache_write] && info[:cache_write] > 0, do: ["Cache write: #{info[:cache_write]}" | parts], else: parts
+
+    parts =
+      case info[:raw_response] do
+        nil -> parts
+        raw -> ["Response: #{truncate_str(to_string(raw), 400)}" | parts]
+      end
+
+    join_parts(parts)
+  end
 
   defp event_detail(_), do: nil
 

@@ -56,7 +56,10 @@ defmodule Worth.XRay.TelemetryBridge do
     # Sub-agents
     [:agent_ex, :subagent, :spawn],
     [:agent_ex, :subagent, :complete],
-    [:agent_ex, :subagent, :error]
+    [:agent_ex, :subagent, :error],
+    # Gateway proxy
+    [:agent_ex, :gateway, :request, :start],
+    [:agent_ex, :gateway, :request, :stop]
   ]
 
   def start_link(opts \\ []) do
@@ -282,6 +285,39 @@ defmodule Worth.XRay.TelemetryBridge do
     {:subagent, %{
       phase: :error, session_id: meta[:session_id], parent: meta[:parent_session_id],
       error: inspect(meta[:error]), duration_ms: native_to_ms(m[:duration])
+    }}
+  end
+
+  # ── Gateway proxy ───────────────────────────────────────────────
+
+  defp translate([:agent_ex, :gateway, :request, :start], _m, meta) do
+    {:gateway_request, %{
+      phase: :start,
+      call_id: meta[:call_id],
+      provider: meta[:provider],
+      model: meta[:model],
+      stream: meta[:stream],
+      messages: meta[:messages],
+      tools: meta[:tools],
+      system_preview: meta[:system_preview]
+    }}
+  end
+
+  defp translate([:agent_ex, :gateway, :request, :stop], m, meta) do
+    {:gateway_request, %{
+      phase: :stop,
+      call_id: meta[:call_id],
+      provider: meta[:provider],
+      status: meta[:status],
+      input_tokens: m[:input_tokens] || 0,
+      output_tokens: m[:output_tokens] || 0,
+      cache_read: m[:cache_read] || 0,
+      cache_write: m[:cache_write] || 0,
+      stream: meta[:stream],
+      chunk_count: meta[:chunk_count],
+      ttft_ms: meta[:ttft_ms],
+      duration_ms: native_to_ms(m[:duration]),
+      raw_response: meta[:raw_response]
     }}
   end
 

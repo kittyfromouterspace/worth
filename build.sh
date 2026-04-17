@@ -21,6 +21,7 @@ release_dir="rel/desktop/src-tauri/rel-${os}"
 echo "==> Building OTP release (${os})..."
 mix deps.get --only prod
 mix assets.deploy
+mix compile --force
 mix release desktop --overwrite --path "${release_dir}"
 
 # Some NIFs (e.g. EXLA) ship read-only .so files. Tauri copies resources
