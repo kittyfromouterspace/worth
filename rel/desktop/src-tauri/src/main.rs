@@ -85,6 +85,17 @@ fn stop_otp_state(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    // WebKit2GTK 2.42+ inside an AppImage with linuxdeploy-plugin-gtk's bundled
+    // libraries fails to initialise its DMA-BUF renderer against the host EGL
+    // driver ("Could not create default EGL display: EGL_BAD_PARAMETER"),
+    // leaving the webview blank. Forcing the legacy renderer avoids the EGL
+    // path. Only do this when actually running from an AppImage so direct
+    // binary runs keep hardware acceleration.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("APPIMAGE").is_some() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
