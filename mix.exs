@@ -4,7 +4,7 @@ defmodule Worth.MixProject do
   def project do
     [
       app: :worth,
-      version: "0.2.1-alpha.9",
+      version: "0.2.1-alpha.10",
       elixir: "~> 1.19",
       description: "An AI assistant built on Elixir/BEAM",
       package: [
@@ -62,8 +62,8 @@ defmodule Worth.MixProject do
     internal_deps =
       if worth_deps_mode == "prod" do
         [
-          {:recollect, git: "https://github.com/kittyfromouterspace/recollect.git", tag: "v0.5.0", override: true},
-          {:agentic, git: "https://github.com/kittyfromouterspace/agentic.git", tag: "v0.2.1"}
+          {:recollect, git: "https://github.com/kittyfromouterspace/recollect.git", tag: "v0.5.1", override: true},
+          {:agentic, git: "https://github.com/kittyfromouterspace/agentic.git", tag: "v0.2.2"}
         ]
       else
         [
