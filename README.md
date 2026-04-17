@@ -46,7 +46,7 @@ Worth ships as a native desktop application built with [Tauri](https://tauri.app
 |----------|--------|
 | **macOS** | `.dmg` (10.15+) |
 | **Windows** | `.exe` installer (NSIS, per-user) |
-| **Linux** | `.deb` / `.AppImage` |
+| **Linux** | `.deb` / `.AppImage` (uses [tauri-apps/tauri#12491](https://github.com/tauri-apps/tauri/pull/12491) for truly portable AppImage) |
 
 The app opens a 1200x800 window with the full Worth UI — chat, sidebar, workspace management, and slash commands. Everything runs locally on your machine. No cloud, no containers.
 
