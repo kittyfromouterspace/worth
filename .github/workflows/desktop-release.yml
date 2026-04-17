@@ -131,7 +131,12 @@ jobs:
 
       - name: Build Tauri app
         working-directory: rel/desktop/src-tauri
-        run: cargo tauri build --target ${{ matrix.target }} --config '{"bundle":{"resources":{"rel-${{ matrix.os_name }}":"rel"}}}'
+        run: |
+          if [ "${{ matrix.os_name }}" = "linux" ]; then
+            cargo tauri build --target ${{ matrix.target }} --config '{"bundle":{"resources":{"rel-${{ matrix.os_name }}":"rel"}},"bundle":{"linux":{"appimage":{"useNewFormat":true}}}}'
+          else
+            cargo tauri build --target ${{ matrix.target }} --config '{"bundle":{"resources":{"rel-${{ matrix.os_name }}":"rel"}}}'
+          fi
 
       # --- Upload artifacts ---
       - name: Upload Windows artifacts
