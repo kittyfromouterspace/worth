@@ -131,12 +131,18 @@ jobs:
 
       - name: Build Tauri app
         working-directory: rel/desktop/src-tauri
+        # Use bash on all platforms (Windows runners ship git-bash) so the
+        # if/else and JSON quoting behave the same everywhere.
+        shell: bash
         run: |
-          if [ "${{ matrix.os_name }}" = "linux" ]; then
-            cargo tauri build --target ${{ matrix.target }} --config '{"bundle":{"resources":{"rel-${{ matrix.os_name }}":"rel"}},"bundle":{"linux":{"appimage":{"useNewFormat":true}}}}'
-          else
-            cargo tauri build --target ${{ matrix.target }} --config '{"bundle":{"resources":{"rel-${{ matrix.os_name }}":"rel"}}}'
-          fi
+          # The `feat/truly-portable-appimage` branch made the new portable
+          # AppImage format the default — `useNewFormat` is no longer a
+          # valid field (the appimage section now accepts bundleMediaFramework
+          # and files). The per-os `resources` mapping is the only config we
+          # still need to inject, and it's identical across platforms.
+          cargo tauri build \
+            --target ${{ matrix.target }} \
+            --config '{"bundle":{"resources":{"rel-${{ matrix.os_name }}":"rel"}}}'
 
       # --- Upload artifacts ---
       - name: Upload Windows artifacts

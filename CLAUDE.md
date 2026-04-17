@@ -175,4 +175,4 @@ Design docs live in `docs/` — start with `vision.md`, `architecture.md`, `brai
 
 ## Desktop Builds
 
-Linux AppImage builds use the experimental sharun-based format from [tauri-apps/tauri#12491](https://github.com/tauri-apps/tauri/pull/12491) for truly portable AppImages. The CI workflow installs a custom Tauri CLI from the `feat/truly-portable-appimage` branch and passes `useNewFormat: true` via CLI config (not in `tauri.conf.json` since the option isn't available in stable Tauri 2.x).
+Linux AppImage builds use the experimental sharun-based format from [tauri-apps/tauri#12491](https://github.com/tauri-apps/tauri/pull/12491) for truly portable AppImages. The CI workflow installs a custom Tauri CLI from the `feat/truly-portable-appimage` branch; that branch now enables the new portable format by default, so no `useNewFormat` flag is needed anywhere (passing one fails the build).

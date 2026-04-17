@@ -111,6 +111,28 @@ WORTH_DEPS_MODE=prod mix test
 
 If tests fail, fix issues or abort.
 
+### Step 4b — Validate the OTP release build locally
+
+`mix test` only exercises `:test` env. The desktop bundle ships a
+`mix release` OTP artifact, which compiles in `:prod` env and pulls a
+different subset of files — bugs that only surface there (missing
+consumer-visible modules, missing assets, priv/ contents, NIF load
+order, etc.) won't be caught by tests. Run a release build before
+tagging:
+
+```bash
+cd ../worth
+WORTH_DEPS_MODE=prod MIX_ENV=prod mix deps.get --only prod
+WORTH_DEPS_MODE=prod MIX_ENV=prod mix assets.deploy
+WORTH_DEPS_MODE=prod MIX_ENV=prod mix release desktop --overwrite --path _build/release-check
+_build/release-check/bin/desktop eval 'IO.puts "release boots OK"'
+```
+
+If the release build fails or the eval call errors, fix before tagging.
+The CI workflow runs the exact same `mix release desktop` invocation on
+all three platforms, so catching problems locally beats another red
+`desktop-release.yml` run.
+
 ### Step 5 — Commit and tag worth
 
 ```bash

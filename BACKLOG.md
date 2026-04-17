@@ -1,5 +1,15 @@
 # Worth Backlog
 
+## Remove `test/support/recollect_embedding_mock.ex` shim
+
+**Added:** 2026-04-17 (during v0.2.1-alpha.10 release)
+
+Recollect v0.5.1 moved `Recollect.Embedding.Mock` from `lib/` to `test/support/`, which means the module isn't available when Recollect is consumed as a git dependency (`test/support` is not packaged). `config/test.exs` still references `Recollect.Embedding.Mock` as the embedding provider, so the v0.2.1-alpha.10 release added a local copy at `test/support/recollect_embedding_mock.ex` to unblock the prod-mode test step in the release SOP.
+
+Once Recollect ships the mock under `lib/` again (tracked in `recollect/BACKLOG.md`), delete the local shim and bump the recollect git dep tag in `mix.exs`. Keeping both will fire a module-redefinition warning at compile time.
+
+
+
 Open items, cleanup, and refinement work identified during the LLM
 provider abstraction phases. Grouped by category, not by priority —
 each item should be evaluated against current goals before pulling
