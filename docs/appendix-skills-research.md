@@ -16,7 +16,7 @@ Worth adopts this standard to ensure skill portability. A skill written for Clau
 
 | MCP Primitive | Control | Maps to Worth |
 |---------------|---------|---------------|
-| **Tools** (model-controlled) | LLM decides when to invoke | agent_ex tool definitions |
+| **Tools** (model-controlled) | LLM decides when to invoke | agentic tool definitions |
 | **Resources** (app-driven) | Host decides what to include | workspace identity files, MEMORY.md |
 | **Prompts** (user-controlled) | User explicitly invokes | slash commands, on_demand skills |
 

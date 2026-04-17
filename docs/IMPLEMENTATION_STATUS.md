@@ -1,40 +1,40 @@
 # Implementation Status: PostgreSQL to libSQL Migration
 
 **Date:** 2026-04-10  
-**Phase:** 1 & 2 Complete (Mneme Modularization + Worth Configuration)
+**Phase:** 1 & 2 Complete (Recollect Modularization + Worth Configuration)
 
 ## Summary
 
-Successfully implemented database adapter pattern for Mneme and configured Worth to support both PostgreSQL and libSQL backends. New installations will default to libSQL (single-file SQLite with vectors), while existing PostgreSQL users can continue without changes.
+Successfully implemented database adapter pattern for Recollect and configured Worth to support both PostgreSQL and libSQL backends. New installations will default to libSQL (single-file SQLite with vectors), while existing PostgreSQL users can continue without changes.
 
 ---
 
-## Phase 1: Mneme Modularization ✓ Complete
+## Phase 1: Recollect Modularization ✓ Complete
 
 ### New Files Created
 
 | File | Purpose |
 |------|---------|
-| `lib/mneme/database_adapter.ex` | Behaviour defining the adapter interface |
-| `lib/mneme/database_adapter/postgres.ex` | PostgreSQL/pgvector adapter implementation |
-| `lib/mneme/database_adapter/libsql.ex` | libSQL/SQLite adapter implementation |
-| `lib/mneme/embedding_type.ex` | Ecto type for adapter-aware embedding fields |
-| `lib/mneme/migration_generator.ex` | Database-specific migration generator |
+| `lib/recollect/database_adapter.ex` | Behaviour defining the adapter interface |
+| `lib/recollect/database_adapter/postgres.ex` | PostgreSQL/pgvector adapter implementation |
+| `lib/recollect/database_adapter/libsql.ex` | libSQL/SQLite adapter implementation |
+| `lib/recollect/embedding_type.ex` | Ecto type for adapter-aware embedding fields |
+| `lib/recollect/migration_generator.ex` | Database-specific migration generator |
 | `IMPLEMENTATION_SUMMARY.md` | Detailed technical summary |
 
 ### Modified Files
 
 | File | Changes |
 |------|---------|
-| `lib/mneme/config.ex` | Added `adapter/0` and `requires_pgvector?/0` functions |
-| `lib/mneme/search/vector.ex` | Refactored to use adapter for SQL generation |
-| `lib/mneme/search/graph.ex` | Updated for adapter-specific SQL |
-| `lib/mneme/graph/postgres_graph.ex` | Made adapter-aware |
-| `lib/mneme/schema/entry.ex` | Changed embedding field to `Mneme.EmbeddingType` |
-| `lib/mneme/schema/chunk.ex` | Changed embedding field to `Mneme.EmbeddingType` |
-| `lib/mneme/schema/entity.ex` | Changed embedding field to `Mneme.EmbeddingType` |
-| `lib/mneme/postgrex_types.ex` | Made pgvector optional |
-| `lib/mix/tasks/mneme.gen.migration.ex` | Added `--adapter` option |
+| `lib/recollect/config.ex` | Added `adapter/0` and `requires_pgvector?/0` functions |
+| `lib/recollect/search/vector.ex` | Refactored to use adapter for SQL generation |
+| `lib/recollect/search/graph.ex` | Updated for adapter-specific SQL |
+| `lib/recollect/graph/postgres_graph.ex` | Made adapter-aware |
+| `lib/recollect/schema/entry.ex` | Changed embedding field to `Recollect.EmbeddingType` |
+| `lib/recollect/schema/chunk.ex` | Changed embedding field to `Recollect.EmbeddingType` |
+| `lib/recollect/schema/entity.ex` | Changed embedding field to `Recollect.EmbeddingType` |
+| `lib/recollect/postgrex_types.ex` | Made pgvector optional |
+| `lib/mix/tasks/recollect.gen.migration.ex` | Added `--adapter` option |
 | `mix.exs` | Made database drivers optional, added ecto_libsql |
 | `README.md` | Added database adapter documentation |
 
@@ -108,7 +108,7 @@ The adapter system provides database-specific implementations for:
 
 ### Adapter-Aware Type System
 
-The `Mneme.EmbeddingType` Ecto type:
+The `Recollect.EmbeddingType` Ecto type:
 - Automatically detects configured adapter
 - Serializes embeddings in database-specific format
 - Handles deserialization transparently
@@ -116,28 +116,28 @@ The `Mneme.EmbeddingType` Ecto type:
 
 ### Migration Generation
 
-The `mix mneme.gen.migration` task now supports:
+The `mix recollect.gen.migration` task now supports:
 ```bash
-mix mneme.gen.migration --adapter libsql --dimensions 768
-mix mneme.gen.migration --adapter postgres --dimensions 1536
+mix recollect.gen.migration --adapter libsql --dimensions 768
+mix recollect.gen.migration --adapter postgres --dimensions 1536
 ```
 
 ---
 
 ## Configuration Reference
 
-### Mneme Configuration
+### Recollect Configuration
 
 ```elixir
 # libSQL (default)
-config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.LibSQL,
+config :recollect,
+  database_adapter: Recollect.DatabaseAdapter.LibSQL,
   repo: MyApp.Repo,
   embedding: [dimensions: 768]
 
 # PostgreSQL
-config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.Postgres,
+config :recollect,
+  database_adapter: Recollect.DatabaseAdapter.Postgres,
   repo: MyApp.Repo,
   embedding: [dimensions: 1536]
 ```
@@ -175,8 +175,8 @@ config :worth, Worth.Repo,
 
 ## Next Steps (Phase 3-5)
 
-### Phase 3: AgentEx Updates
-- [ ] Test AgentEx with updated mneme
+### Phase 3: Agentic Updates
+- [ ] Test Agentic with updated recollect
 - [ ] Verify both database backends work
 
 ### Phase 4: Data Migration Tooling
@@ -193,7 +193,7 @@ config :worth, Worth.Repo,
 
 ## Files Changed Summary
 
-**Mneme:** 13 files  
+**Recollect:** 13 files  
 **Worth:** 3 files  
 **Total:** 16 files modified, 6 files created
 
@@ -201,9 +201,9 @@ config :worth, Worth.Repo,
 
 ## Testing Checklist
 
-- [ ] Compile mneme with libSQL adapter
-- [ ] Compile mneme with PostgreSQL adapter
-- [ ] Run mneme tests with PostgreSQL backend
+- [ ] Compile recollect with libSQL adapter
+- [ ] Compile recollect with PostgreSQL adapter
+- [ ] Run recollect tests with PostgreSQL backend
 - [ ] Create libSQL database via migrations
 - [ ] Test vector search with libSQL
 - [ ] Test graph traversal with libSQL

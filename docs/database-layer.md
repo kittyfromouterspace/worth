@@ -2,14 +2,14 @@
 
 ## The Question
 
-Should worth adopt Ash Framework (with AshPostgres) as its data layer, replacing or coexisting with the raw Ecto approach used by mneme?
+Should worth adopt Ash Framework (with AshPostgres) as its data layer, replacing or coexisting with the raw Ecto approach used by recollect?
 
 ## Current State
 
-Worth owns `Worth.Repo` (Ecto.Repo), which mneme uses via `config :mneme, repo: Worth.Repo`. Mneme has 8 Ecto schemas and 12 tables, but **most queries are raw SQL** (`repo.query/2`) -- especially pgvector similarity search, recursive CTEs for graph traversal, bulk operations, and 4 tables that have no schemas at all.
+Worth owns `Worth.Repo` (Ecto.Repo), which recollect uses via `config :recollect, repo: Worth.Repo`. Recollect has 8 Ecto schemas and 12 tables, but **most queries are raw SQL** (`repo.query/2`) -- especially pgvector similarity search, recursive CTEs for graph traversal, bulk operations, and 4 tables that have no schemas at all.
 
 ```
-mneme database usage:
+recollect database usage:
 ├── Ecto.Query DSL        → simple CRUD (create, update, delete_by)
 ├── repo.query/2 (raw)    → pgvector search, CTEs, bulk ops, non-schema tables
 ├── Ecto associations     → declared but never traversed via preload/join
@@ -19,7 +19,7 @@ mneme database usage:
 
 ## What Ash Would Own
 
-Ash resources would model **worth's domain data**, not mneme's internals. Mneme continues to use raw Ecto against the same Repo -- Ash and Ecto coexist on the same database.
+Ash resources would model **worth's domain data**, not recollect's internals. Recollect continues to use raw Ecto against the same Repo -- Ash and Ecto coexist on the same database.
 
 ### Worth's Own Data (candidates for Ash resources)
 
@@ -33,22 +33,22 @@ Ash resources would model **worth's domain data**, not mneme's internals. Mneme 
 | `Worth.Data.Session` | `worth_sessions` | Session history (or keep as JSONL?) |
 | `Worth.Data.CostRecord` | `worth_cost_records` | Per-turn cost tracking |
 
-### Mneme's Data (stays raw Ecto)
+### Recollect's Data (stays raw Ecto)
 
 | Table | Ash? | Reason |
 |-------|------|--------|
-| `mneme_entries` | No | pgvector similarity search, memory decay, complex raw SQL |
-| `mneme_edges` | No | Graph CTEs, raw SQL |
-| `mneme_chunks` | No | pgvector + raw embedding writes |
-| `mneme_entities` | No | pgvector + extraction pipeline |
-| `mneme_relations` | No | Graph CTEs |
-| `mneme_collections` | No | Pipeline orchestration |
-| `mneme_documents` | No | Pipeline orchestration |
-| `mneme_pipeline_runs` | No | Pipeline status tracking |
-| `mneme_conflicts` | No | No schema, raw SQL only |
-| `mneme_consolidation_runs` | No | No schema, raw SQL only |
-| `mneme_handoffs` | No | No schema, raw SQL only |
-| `mneme_mipmaps` | No | No schema, raw SQL only |
+| `recollect_entries` | No | pgvector similarity search, memory decay, complex raw SQL |
+| `recollect_edges` | No | Graph CTEs, raw SQL |
+| `recollect_chunks` | No | pgvector + raw embedding writes |
+| `recollect_entities` | No | pgvector + extraction pipeline |
+| `recollect_relations` | No | Graph CTEs |
+| `recollect_collections` | No | Pipeline orchestration |
+| `recollect_documents` | No | Pipeline orchestration |
+| `recollect_pipeline_runs` | No | Pipeline status tracking |
+| `recollect_conflicts` | No | No schema, raw SQL only |
+| `recollect_consolidation_runs` | No | No schema, raw SQL only |
+| `recollect_handoffs` | No | No schema, raw SQL only |
+| `recollect_mipmaps` | No | No schema, raw SQL only |
 
 ## Why Ash Makes Sense Here
 
@@ -257,7 +257,7 @@ This generates `UPDATE worth_skills SET usage_count = usage_count + 1 WHERE id =
 
 ## Coexistence Strategy
 
-Ash and Ecto coexist on the same database. AshPostgres.Repo wraps Ecto.Repo. Mneme calls `Config.repo()` (which is Worth.Repo) and does raw SQL as before.
+Ash and Ecto coexist on the same database. AshPostgres.Repo wraps Ecto.Repo. Recollect calls `Config.repo()` (which is Worth.Repo) and does raw SQL as before.
 
 ```
 ┌─────────────────────────────────────────────┐
@@ -267,12 +267,12 @@ Ash and Ecto coexist on the same database. AshPostgres.Repo wraps Ecto.Repo. Mne
 │  ┌──────────────┐    ┌──────────────────┐    │
 │  │  Ash Layer    │    │  Raw Ecto        │    │
 │  │              │    │                  │    │
-│  │ worth_skills │    │ mneme_entries    │    │
-│  │ worth_kits   │    │ mneme_edges      │    │
-│  │ worth_sessions│   │ mneme_chunks     │    │
-│  │ worth_costs  │    │ mneme_entities   │    │
-│  └──────┬───────┘    │ mneme_relations  │    │
-│         │            │ mneme_* (raw)    │    │
+│  │ worth_skills │    │ recollect_entries    │    │
+│  │ worth_kits   │    │ recollect_edges      │    │
+│  │ worth_sessions│   │ recollect_chunks     │    │
+│  │ worth_costs  │    │ recollect_entities   │    │
+│  └──────┬───────┘    │ recollect_relations  │    │
+│         │            │ recollect_* (raw)    │    │
 │         │            └────────┬─────────┘    │
 │         │                     │              │
 ├─────────┼─────────────────────┼──────────────┤
@@ -294,57 +294,57 @@ defmodule Worth.Repo do
 end
 ```
 
-AshPostgres.Repo wraps Ecto.Repo. Mneme's `Config.repo()` returns `Worth.Repo`. No adapter conflict.
+AshPostgres.Repo wraps Ecto.Repo. Recollect's `Config.repo()` returns `Worth.Repo`. No adapter conflict.
 
 ### Migration Strategy
 
-Worth owns the migration directory. Mneme provides a Mix task to generate its migration:
+Worth owns the migration directory. Recollect provides a Mix task to generate its migration:
 
 ```elixir
-# Worth runs both its own migrations and mneme's:
+# Worth runs both its own migrations and recollect's:
 # priv/repo/migrations/
-#   ├── 20260101000000_create_mneme_tables.exs      (from mneme)
-#   ├── 20260101000001_add_memory_enhancements.exs  (from mneme)
+#   ├── 20260101000000_create_recollect_tables.exs      (from recollect)
+#   ├── 20260101000001_add_memory_enhancements.exs  (from recollect)
 #   ├── ...
 #   ├── 20260407000000_create_worth_tables.exs       (worth's own)
 #   └── 20260407000001_create_skill_versions.exs    (worth's own)
 ```
 
-Ash's `mix ash.codegen` generates migration snapshots and diffs. Worth uses Ash for its tables and runs mneme's migration generator separately.
+Ash's `mix ash.codegen` generates migration snapshots and diffs. Worth uses Ash for its tables and runs recollect's migration generator separately.
 
 ## What Ash Does NOT Replace
 
-### Mneme's Vector Search
+### Recollect's Vector Search
 
 Ash has no pgvector support. The 4 vector similarity queries stay as raw SQL:
 
 ```elixir
-# This stays as-is in Mneme.Search.Vector:
+# This stays as-is in Recollect.Search.Vector:
 repo.query("""
   SELECT me.id, me.content, me.summary, ...
     (1 - (me.embedding <=> $1::text::vector)) AS score
-  FROM mneme_entries me
+  FROM recollect_entries me
   WHERE me.scope_id = $2 AND me.embedding IS NOT NULL
   ORDER BY me.embedding <=> $1::text::vector LIMIT $4
 """, [embedding, scope_id, threshold, limit])
 ```
 
-### Mneme's Graph Traversal
+### Recollect's Graph Traversal
 
 Recursive CTEs stay raw:
 
 ```elixir
-# This stays as-is in Mneme.Graph.PostgresGraph:
+# This stays as-is in Recollect.Graph.PostgresGraph:
 repo.query("""
   WITH RECURSIVE neighbors AS (
     SELECT e.id, e.name, 1 as depth
-    FROM mneme_relations r
-    JOIN mneme_entities e ON e.id = CASE ... END
+    FROM recollect_relations r
+    JOIN recollect_entities e ON e.id = CASE ... END
     WHERE r.from_entity_id = $1
     UNION ALL
     SELECT e.id, e.name, n.depth + 1
-    FROM mneme_relations r
-    JOIN mneme_entities e ON ...
+    FROM recollect_relations r
+    JOIN recollect_entities e ON ...
     JOIN neighbors n ON ...
     WHERE n.depth < $2
   )
@@ -352,9 +352,9 @@ repo.query("""
 """, [entity_id, max_hops])
 ```
 
-### AgentEx Callbacks
+### Agentic Callbacks
 
-AgentEx's callback system is runtime, not data-driven. It doesn't use the database. Ash doesn't touch this.
+Agentic's callback system is runtime, not data-driven. It doesn't use the database. Ash doesn't touch this.
 
 ### Session Transcripts
 
@@ -373,7 +373,7 @@ JSONL files on disk. No database. No Ash.
 | Aggregates/Calculations | Skill analytics queries become one-liners |
 | Migration generation | `mix ash.codegen` diffs schema changes automatically |
 | Validation DSL | Consistent validation across all resources |
-| Domain model | Clear separation: worth's domain (Ash) vs mneme's internals (raw Ecto) |
+| Domain model | Clear separation: worth's domain (Ash) vs recollect's internals (raw Ecto) |
 
 ### Costs
 
@@ -381,10 +381,10 @@ JSONL files on disk. No database. No Ash.
 |------|------------|
 | Ash learning curve | The DSL is well-documented; skill resources are simple CRUD + state machine |
 | Added dependency weight | ash (~7 packages), ash_postgres (~4 packages). Significant but not bloated. |
-| Two paradigms in one codebase | Clear boundary: worth's tables use Ash, mneme's tables use raw Ecto. Never mix. |
+| Two paradigms in one codebase | Clear boundary: worth's tables use Ash, recollect's tables use raw Ecto. Never mix. |
 | Ash compile-time overhead | Ash does significant compile-time validation. Adds ~1-2s to compilation. |
 | Raw SQL escape hatches needed | For worth's own data if Ash can't express it, use `Worth.Repo.query/2` directly. Ash doesn't prevent this. |
-| Mneme won't benefit | Mneme continues using raw Ecto. The vector search, CTEs, and bulk ops don't map to Ash resources. |
+| Recollect won't benefit | Recollect continues using raw Ecto. The vector search, CTEs, and bulk ops don't map to Ash resources. |
 
 ### Ash Package Dependencies
 
@@ -406,11 +406,11 @@ Net new dependencies: `ash`, `ash_postgres`, `picosat_elixir`, `spark`, `igniter
 
 ## Recommendation
 
-**Adopt Ash + AshPostgres for worth's domain data. Keep mneme on raw Ecto.**
+**Adopt Ash + AshPostgres for worth's domain data. Keep recollect on raw Ecto.**
 
 The skill lifecycle is the strongest argument. It's a state machine with validation, authorization, and analytics -- exactly what Ash excels at. The kit tracking and workspace metadata are simpler but benefit from the same patterns.
 
-Mneme's vector search, graph CTEs, and bulk operations don't map well to Ash resources. They stay as raw SQL. The two paradigms coexist cleanly because they operate on different tables.
+Recollect's vector search, graph CTEs, and bulk operations don't map well to Ash resources. They stay as raw SQL. The two paradigms coexist cleanly because they operate on different tables.
 
 ### Implementation Order
 
@@ -425,6 +425,6 @@ Phase 5-7: Expand Ash resources for kits, sessions, cost records.
 If you change your mind about Ash, converting back is straightforward:
 - Ash resources are just Ecto schemas under the hood
 - `mix ash_postgres.gen.resources` can be run in reverse
-- The raw SQL queries for mneme are completely unaffected
+- The raw SQL queries for recollect are completely unaffected
 
 The risk is low because Ash adoption is incremental and reversible.

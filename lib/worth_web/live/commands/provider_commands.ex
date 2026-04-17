@@ -2,9 +2,9 @@ defmodule WorthWeb.Commands.ProviderCommands do
   @moduledoc false
   import WorthWeb.Commands.Helpers
 
-  alias AgentEx.LLM.Catalog
-  alias AgentEx.LLM.ProviderRegistry
-  alias AgentEx.LLM.UsageManager
+  alias Agentic.LLM.Catalog
+  alias Agentic.LLM.ProviderRegistry
+  alias Agentic.LLM.UsageManager
 
   def handle({:provider, :list}, socket) do
     providers = ProviderRegistry.list()

@@ -1,8 +1,8 @@
-defmodule Mneme.Repo.Migrations.AddConsolidationRunsTable do
+defmodule Recollect.Repo.Migrations.AddConsolidationRunsTable do
   use Ecto.Migration
 
   def change do
-    create table(:mneme_consolidation_runs, primary_key: false) do
+    create table(:recollect_consolidation_runs, primary_key: false) do
       add(:id, :binary_id, primary_key: true)
       add(:owner_id, :binary_id, null: false)
       add(:scope_id, :binary_id, null: false)
@@ -15,6 +15,6 @@ defmodule Mneme.Repo.Migrations.AddConsolidationRunsTable do
       add(:duration_ms, :integer)
     end
 
-    create(index(:mneme_consolidation_runs, [:scope_id, :timestamp]))
+    create(index(:recollect_consolidation_runs, [:scope_id, :timestamp]))
   end
 end

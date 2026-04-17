@@ -21,7 +21,7 @@ defmodule Worth.Brain.Session do
         (config[:model_routing] || %{}) |> Map.get(:preference, "optimize_price") |> String.to_existing_atom()
     ]
 
-    AgentEx.resume(opts)
+    Agentic.resume(opts)
   end
 
   def list_sessions(workspace_path) do

@@ -7,7 +7,7 @@ defmodule Worth.Orchestration.Strategies.Swarm do
   variations converge toward the global best over iterations.
   """
 
-  @behaviour AgentEx.Strategy
+  @behaviour Agentic.Strategy
 
   defstruct [
     :workspace,

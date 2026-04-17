@@ -27,14 +27,14 @@ Worth is two things in one.
 
 **A powerful AI agent for everyone.** Write code, research topics, manage git repos, browse the web, and connect to external services — all from a single desktop application. Worth gives you a persistent AI assistant with a global memory that learns your preferences across everything you do.
 
-**A research petri dish for agent enthusiasts.** Worth is built on [AgentEx](https://github.com/kittyfromouterspace/agent_ex) (the agent loop engine) and [Mneme](https://github.com/kittyfromouterspace/mneme) (the memory engine) — two standalone libraries you can study, modify, and experiment with. Worth is the living organism that shows what these building blocks can do when composed together.
+**A research petri dish for agent enthusiasts.** Worth is built on [Agentic](https://github.com/kittyfromouterspace/agentic) (the agent loop engine) and [Recollect](https://github.com/kittyfromouterspace/recollect) (the memory engine) — two standalone libraries you can study, modify, and experiment with. Worth is the living organism that shows what these building blocks can do when composed together.
 
 ### Understanding Agents Through Worth
 
 If you want to understand how AI agents actually work — not just use them — Worth is the project for you. Every subsystem is a small, readable Elixir module:
 
-- **Agent loop** — See how an LLM turns into an autonomous agent via `AgentEx.run/1`. The loop iterates LLM calls and tool executions until the task is complete. You can inspect the stages, modify tool permissions, and switch autonomy modes.
-- **Memory** — Explore how persistent memory works through Mneme's three-tier system: working memory (per-session), knowledge graph (facts and relationships), and vector search (semantic retrieval). Watch how memories decay, how facts are extracted, and how the agent uses context from past conversations.
+- **Agent loop** — See how an LLM turns into an autonomous agent via `Agentic.run/1`. The loop iterates LLM calls and tool executions until the task is complete. You can inspect the stages, modify tool permissions, and switch autonomy modes.
+- **Memory** — Explore how persistent memory works through Recollect's three-tier system: working memory (per-session), knowledge graph (facts and relationships), and vector search (semantic retrieval). Watch how memories decay, how facts are extracted, and how the agent uses context from past conversations.
 - **Skills** — See how agents can learn and self-improve. Skills follow the [agentskills.io](https://agentskills.io/) standard and go through a lifecycle: create, test, refine, promote. The system tracks success rates and auto-refines underperforming skills.
 - **MCP integration** — Understand the Model Context Protocol by connecting Worth to external services (GitHub, databases, Slack) and watching how tool discovery and execution works in practice.
 
@@ -134,8 +134,8 @@ git clone https://github.com/kittyfromouterspace/worth.git
 cd worth
 
 # Worth requires two sibling libraries
-git clone https://github.com/kittyfromouterspace/agent_ex.git ../agent_ex
-git clone https://github.com/kittyfromouterspace/mneme.git ../mneme
+git clone https://github.com/kittyfromouterspace/agentic.git ../agentic
+git clone https://github.com/kittyfromouterspace/recollect.git ../recollect
 
 mix deps.get
 mix setup                  # deps + database + assets
@@ -166,9 +166,9 @@ The brain exposes these integration points:
 - `switch_workspace/2` — Change context
 - `switch_mode/2` — Change agent autonomy (`:code`, `:research`, `:planned`, `:turn_by_turn`)
 
-### Memory System (Mneme)
+### Memory System (Recollect)
 
-Worth uses [Mneme](https://github.com/kittyfromouterspace/mneme) for persistent memory — a three-tier system:
+Worth uses [Recollect](https://github.com/kittyfromouterspace/recollect) for persistent memory — a three-tier system:
 
 1. **Working memory** — Per-session context, flushed to global memory on workspace switch
 2. **Knowledge graph** — Structured facts extracted from conversations (entities, relationships)
@@ -232,15 +232,15 @@ Worth can also expose itself as an MCP server (`worth serve`), letting other age
 │  │  Tauri Shell │    │  Brain       │                   │
 │  │  + LiveView  │◄──►│  (GenServer) │                   │
 │  │              │    │              │                    │
-│  │  - Chat UI   │    │  - AgentEx   │                    │
+│  │  - Chat UI   │    │  - Agentic   │                    │
 │  │  - Sidebar   │    │    .run/1    │                    │
-│  │  - Commands  │    │  - Mneme     │                    │
+│  │  - Commands  │    │  - Recollect     │                    │
 │  └──────────────┘    │  - Skills    │                    │
 │                      │  - MCP       │                    │
 │                      └──────┬───────┘                    │
 │                             │                            │
 │                      ┌──────▼───────┐                    │
-│                      │  AgentEx     │                    │
+│                      │  Agentic     │                    │
 │                      │  Loop Engine │                    │
 │                      │              │                    │
 │                      │  Stages:     │                    │
@@ -253,7 +253,7 @@ Worth can also expose itself as an MCP server (`worth serve`), letting other age
 │        ┌─────────────┬──────┼──────┬─────────────┐      │
 │        │             │      │      │             │      │
 │ ┌──────▼──┐  ┌──────▼──┐  ┌──▼──┐  ┌──────▼──┐  ┌─▼───┐│
-│ │ Mneme   │  │ File    │  │Tool │  │ Skills  │  │ MCP ││
+│ │ Recollect   │  │ File    │  │Tool │  │ Skills  │  │ MCP ││
 │ │ Memory  │  │ Tools   │  │Index│  │ System  │  │Srvrs││
 │ └──────┬──┘  └─────────┘  └─────┘  └─────────┘  └─────┘│
 │        │                                               │
@@ -289,7 +289,7 @@ Every subsystem has its own supervisor. A crashed MCP connection restarts withou
 |--------|----------------|
 | `Worth.Brain` | Central GenServer, coordinates agent loop |
 | `WorthWeb.ChatLive` | Phoenix LiveView chat interface |
-| `Worth.Memory.Manager` | Global memory orchestration via Mneme |
+| `Worth.Memory.Manager` | Global memory orchestration via Recollect |
 | `Worth.Skill.Service` | Skill CRUD, lifecycle management |
 | `Worth.Mcp.Broker` | DynamicSupervisor for MCP connections |
 | `Worth.Mcp.Gateway` | Lazy tool discovery and execution |
@@ -390,8 +390,8 @@ Full design docs in `docs/`:
 
 | Library | Purpose |
 |---------|---------|
-| `agent_ex` (path) | Agent loop engine with stages, profiles, and tool system |
-| `mneme` (path) | Vector search + knowledge graph for memory |
+| `agentic` (path) | Agent loop engine with stages, profiles, and tool system |
+| `recollect` (path) | Vector search + knowledge graph for memory |
 | `phoenix` + `phoenix_live_view` | Web UI framework |
 | `hermes_mcp` | MCP client/server (JSON-RPC 2.0) |
 | `bandit` | HTTP server for LiveView |

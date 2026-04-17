@@ -1,8 +1,8 @@
-defmodule Mneme.Repo.Migrations.AddHandoffsTable do
+defmodule Recollect.Repo.Migrations.AddHandoffsTable do
   use Ecto.Migration
 
   def change do
-    create table(:mneme_handoffs, primary_key: false) do
+    create table(:recollect_handoffs, primary_key: false) do
       add(:id, :binary_id, primary_key: true)
       add(:scope_id, :binary_id, null: false)
       add(:session_id, :binary_id)
@@ -14,7 +14,7 @@ defmodule Mneme.Repo.Migrations.AddHandoffsTable do
       add(:updated_at, :utc_datetime_usec)
     end
 
-    create(index(:mneme_handoffs, [:scope_id, :created_at]))
-    create(index(:mneme_handoffs, [:session_id]))
+    create(index(:recollect_handoffs, [:scope_id, :created_at]))
+    create(index(:recollect_handoffs, [:session_id]))
   end
 end

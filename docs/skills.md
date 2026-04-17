@@ -92,7 +92,7 @@ CREATE ──────► TEST ──────► REFINE ─────�
 | Failure analysis | After a task fails and is retried |
 | Explicit request | User says "learn from this" |
 | Skill composition | Two skills frequently used together |
-| Gap detection | Mneme reveals patterns without skill coverage |
+| Gap detection | Recollect reveals patterns without skill coverage |
 
 ### TEST
 

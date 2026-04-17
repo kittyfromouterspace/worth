@@ -7,7 +7,7 @@ defmodule Worth.Orchestration.Strategies.Evolutionary do
   and mutating for subsequent generations.
   """
 
-  @behaviour AgentEx.Strategy
+  @behaviour Agentic.Strategy
 
   defstruct [
     :workspace,

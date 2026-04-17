@@ -346,7 +346,7 @@ defmodule WorthWeb.Components.Chat do
 
     catalog_info =
       try do
-        AgentEx.LLM.Catalog.info()
+        Agentic.LLM.Catalog.info()
       rescue
         _ -> %{model_count: 0, providers: %{}}
       catch

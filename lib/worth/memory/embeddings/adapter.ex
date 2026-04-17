@@ -1,25 +1,25 @@
 defmodule Worth.Memory.Embeddings.Adapter do
   @moduledoc """
-  Bridges Mneme's `Mneme.EmbeddingProvider` behaviour to the unified
-  `AgentEx.LLM.embed_tier/3` stack.
+  Bridges Recollect's `Recollect.EmbeddingProvider` behaviour to the unified
+  `Agentic.LLM.embed_tier/3` stack.
 
   Configured in `config/config.exs`:
 
-      config :mneme,
+      config :recollect,
         embedding: [
           provider: Worth.Memory.Embeddings.Adapter,
           tier: :embeddings
         ]
 
-  Tier resolution lives in `AgentEx.LLM.embed_tier/3` — it walks the
+  Tier resolution lives in `Agentic.LLM.embed_tier/3` — it walks the
   catalog for `:embeddings`-tagged models, optionally filtered by the
   IDENTITY.md frontmatter tier override.
   """
 
-  @behaviour Mneme.EmbeddingProvider
+  @behaviour Recollect.EmbeddingProvider
 
-  alias AgentEx.LLM.Credentials
-  alias AgentEx.LLM.ProviderRegistry
+  alias Agentic.LLM.Credentials
+  alias Agentic.LLM.ProviderRegistry
 
   @default_dimensions 1536
   @default_model "text-embedding-3-small"
@@ -150,7 +150,7 @@ defmodule Worth.Memory.Embeddings.Adapter do
   end
 
   defp catalog_model_provider(model_id) do
-    models = AgentEx.LLM.Catalog.find(has: :embeddings)
+    models = Agentic.LLM.Catalog.find(has: :embeddings)
 
     case Enum.find(models, fn m -> m.id == model_id end) do
       nil -> nil
@@ -177,7 +177,7 @@ defmodule Worth.Memory.Embeddings.Adapter do
   end
 
   def credentials do
-    case Credentials.resolve(AgentEx.LLM.Provider.OpenRouter) do
+    case Credentials.resolve(Agentic.LLM.Provider.OpenRouter) do
       {:ok, %{api_key: key}} -> %{api_key: key}
       _ -> :disabled
     end

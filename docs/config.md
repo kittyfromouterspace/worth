@@ -4,7 +4,7 @@
 
 ```
 ~/.worth/
-├── worth.db                          # Single PostgreSQL database (mneme tables)
+├── worth.db                          # Single PostgreSQL database (recollect tables)
 ├── config.exs                        # Global config
 ├── skills/                            # Global skill library
 └── workspaces/

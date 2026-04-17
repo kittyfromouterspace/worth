@@ -22,18 +22,18 @@ Worth now uses **libSQL** (SQLite with native vector support) as the default dat
 
 ## What Was Implemented
 
-### Phase 1: Mneme Modularization ✓
+### Phase 1: Recollect Modularization ✓
 
 **New Files (6):**
 | File | Purpose |
 |------|---------|
-| `lib/mneme/database_adapter.ex` | Adapter behaviour |
-| `lib/mneme/database_adapter/postgres.ex` | PostgreSQL adapter |
-| `lib/mneme/database_adapter/libsql.ex` | libSQL adapter |
-| `lib/mneme/embedding_type.ex` | Adapter-aware Ecto type |
-| `lib/mneme/migration_generator.ex` | Database-specific migrations |
-| `lib/mneme/export.ex` | Data export functionality |
-| `lib/mneme/import.ex` | Data import functionality |
+| `lib/recollect/database_adapter.ex` | Adapter behaviour |
+| `lib/recollect/database_adapter/postgres.ex` | PostgreSQL adapter |
+| `lib/recollect/database_adapter/libsql.ex` | libSQL adapter |
+| `lib/recollect/embedding_type.ex` | Adapter-aware Ecto type |
+| `lib/recollect/migration_generator.ex` | Database-specific migrations |
+| `lib/recollect/export.ex` | Data export functionality |
+| `lib/recollect/import.ex` | Data import functionality |
 
 **Modified (13):**
 - Config, search, graph modules → adapter-aware
@@ -48,13 +48,13 @@ Worth now uses **libSQL** (SQLite with native vector support) as the default dat
 - `config/config.exs` → Database backend selection
 - `lib/worth/repo.ex` → Dynamic adapter selection
 
-### Phase 3: AgentEx Updates ✓
+### Phase 3: Agentic Updates ✓
 
 **Modified:**
 - `mix.exs` → Optional database drivers
 - `README.md` → Database backend documentation
 
-AgentEx uses Mneme's high-level API which remains unchanged.
+Agentic uses Recollect's high-level API which remains unchanged.
 
 ### Phase 4: Data Migration Tooling ✓
 
@@ -126,8 +126,8 @@ config :worth, Worth.Repo,
   database: "~/.worth/worth.db",
   pool_size: 5
 
-config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.LibSQL
+config :recollect,
+  database_adapter: Recollect.DatabaseAdapter.LibSQL
 ```
 
 ### PostgreSQL (Existing Users)
@@ -144,8 +144,8 @@ config :worth, Worth.Repo,
   database: "worth_dev",
   # ... other options
 
-config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.Postgres
+config :recollect,
+  database_adapter: Recollect.DatabaseAdapter.Postgres
 ```
 
 ---
@@ -182,7 +182,7 @@ mix worth.import --input ~/worth_backup.jsonl
 
 ## Files Changed
 
-### Mneme (20 files)
+### Recollect (20 files)
 **Created:** 8 new modules + docs  
 **Modified:** 12 existing files
 
@@ -190,7 +190,7 @@ mix worth.import --input ~/worth_backup.jsonl
 **Created:** 4 Mix tasks + docs  
 **Modified:** 3 existing files
 
-### AgentEx (2 files)
+### Agentic (2 files)
 **Modified:** mix.exs, README.md
 
 **Total:** 29 files
@@ -221,7 +221,7 @@ mix worth.import --input ~/worth_backup.jsonl
 │           ┌──────────────┼──────────────┐               │
 │           ▼              ▼              ▼               │
 │  ┌────────────────┐ ┌────────────┐ ┌────────────┐      │
-│  │ Worth.Repo     │ │ Mneme      │ │ Worth      │      │
+│  │ Worth.Repo     │ │ Recollect      │ │ Worth      │      │
 │  │ (libSQL)       │ │ (via       │ │ Settings   │      │
 │  │                │ │ adapter)   │ │            │      │
 │  └────────────────┘ └────────────┘ └────────────┘      │
@@ -243,8 +243,8 @@ mix worth.import --input ~/worth_backup.jsonl
 
 **No breaking changes.** All existing APIs remain unchanged:
 
-- `Mneme.search/2` — Works with both backends
-- `Mneme.remember/2` — Works with both backends
+- `Recollect.search/2` — Works with both backends
+- `Recollect.remember/2` — Works with both backends
 - `Worth.Brain.send_message/1` — Unchanged
 - `Worth.Memory.Manager` — Unchanged
 
@@ -269,7 +269,7 @@ The adapter selection is transparent to application code.
 
 1. **Install ecto_libsql** dependencies when testing:
    ```bash
-   cd /path/to/mneme && mix deps.get
+   cd /path/to/recollect && mix deps.get
    cd /path/to/worth && mix deps.get
    ```
 
@@ -279,7 +279,7 @@ The adapter selection is transparent to application code.
    - Data migration from PostgreSQL to libSQL
 
 3. **Tag releases:**
-   - mneme: v0.2.0
+   - recollect: v0.2.0
    - worth: v0.2.0
 
 ---

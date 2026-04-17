@@ -171,7 +171,7 @@ defmodule Worth.Config.Setup do
   end
 
   defp safe_catalog_refresh do
-    AgentEx.LLM.Catalog.refresh()
+    Agentic.LLM.Catalog.refresh()
   rescue
     _ -> :ok
   catch

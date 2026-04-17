@@ -5,12 +5,12 @@
 **Goal:** Worth starts, renders a terminal UI, accepts input, calls an LLM, streams the response back.
 
 Steps:
-1. Mix project setup with agent_ex, phoenix_live_view, mneme, hermes_mcp dependencies
-2. `Worth.Application` -- supervision tree (Brain, Repo, AgentEx deps, McpRegistry)
+1. Mix project setup with agentic, phoenix_live_view, recollect, hermes_mcp dependencies
+2. `Worth.Application` -- supervision tree (Brain, Repo, Agentic deps, McpRegistry)
 3. `Worth.Config` -- load from `~/.worth/config.exs`
-4. `Worth.Repo` -- Ecto Repo for Mneme, run migrations
+4. `Worth.Repo` -- Ecto Repo for Recollect, run migrations
 5. `WorthWeb.ChatLive` -- Phoenix LiveView with chat input + message display
-6. `Worth.Brain` -- GenServer, receive input, call AgentEx.run/1 with `:conversational` profile
+6. `Worth.Brain` -- GenServer, receive input, call Agentic.run/1 with `:conversational` profile
 7. `Worth.LLM` -- implement `:llm_chat` callback for one provider (Anthropic)
 8. `:on_event` callback -- stream text chunks to UI via PubSub
 9. Basic rendering: user messages, assistant messages, tool call/result blocks
@@ -23,9 +23,9 @@ Steps:
 
 Steps:
 1. `Worth.Workspace.Service` -- init, list, switch workspaces
-2. Workspace scaffolding (IDENTITY.md, AGENTS.md) -- reuse agent_ex's WorkspaceService
+2. Workspace scaffolding (IDENTITY.md, AGENTS.md) -- reuse agentic's WorkspaceService
 3. Switch Brain to `:agentic` profile for code workspaces
-4. Register agent_ex's core file tools
+4. Register agentic's core file tools
 5. `Worth.Workspace.Context` -- system prompt assembly from identity files + global memory
 6. `WorthWeb.ChatLive` -- workspace tab, tools tab, skills tab, status sidebar
 7. Tool call/result rendering in LiveView
@@ -39,11 +39,11 @@ Steps:
 **Goal:** Global knowledge store, workspace-aware retrieval, cross-session memory.
 
 Steps:
-1. Configure Mneme with global `scope_id: "worth"`
+1. Configure Recollect with global `scope_id: "worth"`
 2. `Worth.Memory.Manager` -- orchestrate global retrieval with workspace boosting
 3. Implement `:on_response_facts` and `on_tool_facts` callbacks (global storage with workspace tagging)
 4. Start ContextKeeper per workspace (ephemeral session state)
-5. Workspace deactivation flush: ContextKeeper → global mneme (tagged with workspace)
+5. Workspace deactivation flush: ContextKeeper → global recollect (tagged with workspace)
 6. `:knowledge_search`, `:knowledge_create`, `:knowledge_recent` callbacks (all global)
 7. System prompt integration: memory context within budget
 8. `/memory query`, `/memory note` slash commands
@@ -78,11 +78,11 @@ Steps:
 1. `Worth.Skill.Refiner` -- reactive refinement: analyze failures, update skills
 2. `Worth.Skill.Versioner` -- version management, rollback
 3. `Worth.Skill.Lifecycle` -- PROMOTE stage: user review flow
-4. Memory-skill integration: Mneme entries tagged with skill provenance
-5. Skill gap detection: Mneme knowledge search reveals patterns without skill coverage
+4. Memory-skill integration: Recollect entries tagged with skill provenance
+5. Skill gap detection: Recollect knowledge search reveals patterns without skill coverage
 6. Additional LLM providers (OpenAI, OpenRouter) with ModelRouter
 7. Model routing: primary for complex tasks, lightweight for quick responses
-8. Session resumption via AgentEx.resume/1
+8. Session resumption via Agentic.resume/1
 9. `Worth.Theme` -- configurable themes (Standard, Cyberdeck, Fifth Element)
 10. `Worth.UI.Commands` -- command history, command parsing
 11. `WorthWeb.CommandHandler` -- slash command dispatch
@@ -113,7 +113,7 @@ Steps:
 ## Phase 7: Advanced Features (Week 8+)
 
 - Planned mode with plan visualization in UI
-- Codebase indexing via Mneme Tier 1 pipeline
+- Codebase indexing via Recollect Tier 1 pipeline
 - Turn-by-turn mode with approval UI
 - Sub-agent delegation for parallel tasks
 - Git integration tools (diff, log, status)

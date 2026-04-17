@@ -2,7 +2,7 @@
 
 Worth uses a unified global memory model. There is one central knowledge store. Every workspace draws from it. Workspaces provide overlays, not silos.
 
-Mneme provides two tiers of storage:
+Recollect provides two tiers of storage:
 
 - **Tier 1 — Full Pipeline:** Collections → Documents → Chunks → Entities → Relations. For structured ingestion of documents with chunking, embedding, entity extraction, and graph queries.
 - **Tier 2 — Lightweight Knowledge:** Entries + Edges. For simple knowledge storage with embeddings, access tracking, and edge traversal.
@@ -14,7 +14,7 @@ Worth uses Tier 2 (lightweight) for general knowledge storage and optionally Tie
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                  Global Knowledge Store                   │
-│               (one Mneme instance, one database)          │
+│               (one Recollect instance, one database)          │
 │                                                          │
 │  All facts, preferences, patterns, skills, integrations    │
 │  ever learned, stored in one place.                       │
@@ -45,16 +45,16 @@ Per-workspace GenServer that holds ephemeral session state. This is the **only p
 - Facts: structured triples `{entity, relation, value, confidence, source_turn}`, capped at 500
 - Working set: key-value pairs with TTL and priority
 - Lifetime: started on workspace activation, flushed on deactivation
-- Flush target: **global** Mneme knowledge store (not a per-workspace store)
+- Flush target: **global** Recollect knowledge store (not a per-workspace store)
 
 Working memory is not a memory silo. It's a staging area. When a workspace is deactivated, high-confidence facts flush into the **global** knowledge store with metadata tagging the originating workspace. This means knowledge flows freely between workspaces over time.
 
 ### Tier 1: Full Pipeline (Optional)
 
-For large codebases, worth can ingest files through mneme's pipeline:
+For large codebases, worth can ingest files through recollect's pipeline:
 
 ```
-Codebase files → Mneme.ingest/3 → Documents → Chunks → Embeddings → Entities → Relations
+Codebase files → Recollect.ingest/3 → Documents → Chunks → Embeddings → Entities → Relations
 ```
 
 Schema hierarchy:
@@ -72,7 +72,7 @@ This is workspace-triggered (via `/index` command) but stored globally. The scop
 
 ```elixir
 # Storing a fact (always global scope)
-Mneme.remember("User prefers conventional commits with scope prefix", %{
+Recollect.remember("User prefers conventional commits with scope prefix", %{
   scope_id: "worth",
   entry_type: "preference",
   metadata: %{
@@ -103,13 +103,13 @@ Entry-to-entry relationships via Edges:
 
 ```elixir
 # Retrieving context (global search, optional workspace boost)
-Mneme.search("how should I commit?", %{
+Recollect.search("how should I commit?", %{
   scope_id: "worth",
   # workspace boost: entries tagged with current workspace get higher relevance
 })
 ```
 
-All retrieval is global by default. The workspace context provides **boosting**, not filtering. When working in `my-project`, entries tagged with `workspace: "my-project"` get a relevance boost via Mneme's outcome feedback system, but entries from other workspaces are still visible.
+All retrieval is global by default. The workspace context provides **boosting**, not filtering. When working in `my-project`, entries tagged with `workspace: "my-project"` get a relevance boost via Recollect's outcome feedback system, but entries from other workspaces are still visible.
 
 ## Memory Flow Per Turn
 
@@ -119,12 +119,12 @@ All retrieval is global by default. The workspace context provides **boosting**,
        ▼
 2. Brain assembles context:
    a. System prompt (worth core + workspace identity + always-loaded skills)
-   b. Memory retrieval → Mneme.search(query, scope_id: "worth")
+   b. Memory retrieval → Recollect.search(query, scope_id: "worth")
    c. Working memory → ContextKeeper for "my-project" (ephemeral session state)
-   d. Merge: Mneme results (global) + ContextKeeper facts (session-local)
+   d. Merge: Recollect results (global) + ContextKeeper facts (session-local)
        │
        ▼
-3. AgentEx runs the loop with merged context
+3. Agentic runs the loop with merged context
        │
        ▼
 4. After response, FactExtractor extracts facts
@@ -132,12 +132,12 @@ All retrieval is global by default. The workspace context provides **boosting**,
        ▼
 5. Facts stored:
    a. ContextKeeper (ephemeral, session-local)
-   b. Mneme.remember/2 (persistent, global, tagged with workspace metadata)
+   b. Recollect.remember/2 (persistent, global, tagged with workspace metadata)
        │
        ▼
 6. Outcome feedback:
-   - Mneme.Outcome.good("worth") → boosts recently retrieved entries
-   - Mneme.Outcome.bad("worth") → reduces half-life of bad entries
+   - Recollect.Outcome.good("worth") → boosts recently retrieved entries
+   - Recollect.Outcome.bad("worth") → reduces half-life of bad entries
 ```
 
 ## Workspace Overlays
@@ -161,7 +161,7 @@ System Prompt Assembly for "my-project":
 │     Names of skills installed in this workspace  │
 ├─────────────────────────────────────────────────┤
 │  5. Memory Context (from global store)            │  (global + overlay boost)
-│     Mneme.search results, workspace-boosted     │
+│     Recollect.search results, workspace-boosted     │
 ├─────────────────────────────────────────────────┤
 │  6. Working Memory (session-local)               │  (overlay)
 │     ContextKeeper facts for this workspace        │
@@ -247,7 +247,7 @@ Skills learned by the agent (trust level `learned`) are always stored globally i
 
 ### Memory Entries
 
-All Mneme knowledge entries use `scope_id: "worth"`. Workspace provenance is stored in metadata:
+All Recollect knowledge entries use `scope_id: "worth"`. Workspace provenance is stored in metadata:
 
 ```elixir
 %{
@@ -275,11 +275,11 @@ This means a convention learned in one workspace naturally surfaces in others wh
 
 ```elixir
 # After a successful task in ANY workspace:
-Mneme.Outcome.good("worth")
+Recollect.Outcome.good("worth")
 # Boosts half-life of ALL recently retrieved entries, regardless of which workspace they came from
 
 # After a failed task:
-Mneme.Outcome.bad("worth")
+Recollect.Outcome.bad("worth")
 # Reduces half-life of entries that were just retrieved (these were the ones that led to the bad outcome)
 ```
 
@@ -292,9 +292,9 @@ When switching workspaces or exiting worth:
 ```
 ContextKeeper (my-project)
     │
-    ├──► High-confidence facts → Mneme.remember/2 (global store, tagged with workspace: "my-project")
+    ├──► High-confidence facts → Recollect.remember/2 (global store, tagged with workspace: "my-project")
     │
-    └──► Persistent working set entries → Mneme.remember/2 (global store)
+    └──► Persistent working set entries → Recollect.remember/2 (global store)
 ```
 
 ContextKeeper is terminated. No per-workspace persistent state remains. Everything goes to the global store.
@@ -303,24 +303,24 @@ ContextKeeper is terminated. No per-workspace persistent state remains. Everythi
 
 The original design used per-workspace `scope_id` (e.g., `scope_id: workspace:my-project`). The unified model uses `scope_id: "worth"` everywhere with workspace provenance in metadata.
 
-Changes required in AgentEx callbacks:
+Changes required in Agentic callbacks:
 
 ```elixir
 # Before (per-workspace):
 knowledge_search: fn query, opts ->
-  Mneme.search(query, Keyword.put(opts, :scope_id, "workspace:#{brain.workspace_id}))
+  Recollect.search(query, Keyword.put(opts, :scope_id, "workspace:#{brain.workspace_id}))
 
 # After (global):
 knowledge_search: fn query, opts ->
-  Mneme.search(query, Keyword.put(opts, :scope_id, "worth"))
+  Recollect.search(query, Keyword.put(opts, :scope_id, "worth"))
 
 # Before (per-workspace):
 knowledge_create: fn params ->
-  Mneme.remember(params.content, Keyword.put(params, :scope_id, "workspace:#{brain.workspace_id}"))
+  Recollect.remember(params.content, Keyword.put(params, :scope_id, "workspace:#{brain.workspace_id}"))
 
 # After (global with workspace tagging):
 knowledge_create: fn params ->
-  Mneme.remember(params.content, %{
+  Recollect.remember(params.content, %{
     scope_id: "worth",
     content: params.content,
     entry_type: params[:entry_type] || "fact",
@@ -328,14 +328,14 @@ knowledge_create: fn params ->
   })
 ```
 
-This is a one-line change in the brain's callback setup. Mneme doesn't care about scope semantics -- it's just a string field for filtering.
+This is a one-line change in the brain's callback setup. Recollect doesn't care about scope semantics -- it's just a string field for filtering.
 
 ## Skill-Specific Memory
 
 Skills can request memory scoped to themselves. When the skill-lifecycle system evaluates a skill, it queries:
 
 ```elixir
-Mneme.search("skill:git-workflow outcomes", %{
+Recollect.search("skill:git-workflow outcomes", %{
   scope_id: "worth",
   metadata_filter: %{skill: "git-workflow"}
 })
@@ -359,7 +359,7 @@ This surfaces all knowledge entries created while the git-workflow skill was act
 
 ```
 ~/.worth/
-├── worth.db                          # Single PostgreSQL database (mneme tables)
+├── worth.db                          # Single PostgreSQL database (recollect tables)
 ├── config.exs                        # Global config (LLM, MCP servers, memory, UI)
 ├── skills/                            # Global skill library
 │   ├── git-workflow/
@@ -393,8 +393,8 @@ This surfaces all knowledge entries created while the git-workflow skill was act
 ```
 
 Key differences from the old design:
-- No per-workspace `knowledge.jsonl` (everything goes to global mneme)
-- No per-workspace `MEMORY.md` flush target (flush goes to global mneme)
+- No per-workspace `knowledge.jsonl` (everything goes to global recollect)
+- No per-workspace `MEMORY.md` flush target (flush goes to global recollect)
 - Skills are in `~/.worth/skills/` (global), not per-workspace
 - `.worth/skills.json` is a manifest (what's active), not a storage location
 - `mcp.json` is merge-style overrides, not standalone config

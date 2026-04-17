@@ -1,8 +1,8 @@
 defmodule Worth.Learning.TelemetryBridge do
   @moduledoc """
-  Bridges Mneme's `:telemetry` learning events into Worth's PubSub system.
+  Bridges Recollect's `:telemetry` learning events into Worth's PubSub system.
 
-  Mneme emits `:telemetry` events during learning. This module attaches
+  Recollect emits `:telemetry` events during learning. This module attaches
   handlers to those events and rebroadcasts them as
   `{:agent_event, {:learning_progress, details}}` messages on the
   `"workspace:<name>"` PubSub topic so the web UI can display real-time
@@ -10,13 +10,13 @@ defmodule Worth.Learning.TelemetryBridge do
 
   ## Attached events
 
-  | Mneme event | PubSub payload |
+  | Recollect event | PubSub payload |
   |---|---|
-  | `[:mneme, :learning, :start]` | `%{phase: :start, sources: [...]}` |
-  | `[:mneme, :learn, :source, :stop]` | `%{phase: :source_complete, source: ..., fetched: ..., learned: ...}` |
-  | `[:mneme, :learn, :coding_agents, :fetch, :stop]` | `%{phase: :agents_fetched, events_found: ...}` |
-  | `[:mneme, :learn, :git, :fetch, :stop]` | `%{phase: :git_fetched, commits_found: ...}` |
-  | `[:mneme, :learning, :stop]` | `%{phase: :complete, total_learned: ..., total_fetched: ...}` |
+  | `[:recollect, :learning, :start]` | `%{phase: :start, sources: [...]}` |
+  | `[:recollect, :learn, :source, :stop]` | `%{phase: :source_complete, source: ..., fetched: ..., learned: ...}` |
+  | `[:recollect, :learn, :coding_agents, :fetch, :stop]` | `%{phase: :agents_fetched, events_found: ...}` |
+  | `[:recollect, :learn, :git, :fetch, :stop]` | `%{phase: :git_fetched, commits_found: ...}` |
+  | `[:recollect, :learning, :stop]` | `%{phase: :complete, total_learned: ..., total_fetched: ...}` |
 
   ## Usage
 
@@ -35,13 +35,13 @@ defmodule Worth.Learning.TelemetryBridge do
   @impl true
   def init(_opts) do
     events = [
-      [:mneme, :learning, :start],
-      [:mneme, :learning, :stop],
-      [:mneme, :learn, :source, :stop],
-      [:mneme, :learn, :coding_agents, :fetch, :stop],
-      [:mneme, :learn, :git, :fetch, :stop],
-      [:mneme, :learn, :claude_code, :fetch, :stop],
-      [:mneme, :learn, :opencode, :fetch, :stop]
+      [:recollect, :learning, :start],
+      [:recollect, :learning, :stop],
+      [:recollect, :learn, :source, :stop],
+      [:recollect, :learn, :coding_agents, :fetch, :stop],
+      [:recollect, :learn, :git, :fetch, :stop],
+      [:recollect, :learn, :claude_code, :fetch, :stop],
+      [:recollect, :learn, :opencode, :fetch, :stop]
     ]
 
     :telemetry.attach_many(@handler_id, events, &__MODULE__.handle_telemetry/4, nil)
@@ -55,7 +55,7 @@ defmodule Worth.Learning.TelemetryBridge do
     :ok
   end
 
-  def handle_telemetry([:mneme, :learning, :start], _measurements, metadata, _config) do
+  def handle_telemetry([:recollect, :learning, :start], _measurements, metadata, _config) do
     scope_id = Map.get(metadata, :scope_id)
     workspace = workspace_from_scope(scope_id)
 
@@ -66,7 +66,7 @@ defmodule Worth.Learning.TelemetryBridge do
     })
   end
 
-  def handle_telemetry([:mneme, :learning, :stop], measurements, metadata, _config) do
+  def handle_telemetry([:recollect, :learning, :stop], measurements, metadata, _config) do
     scope_id = Map.get(metadata, :scope_id)
     workspace = workspace_from_scope(scope_id)
 
@@ -79,7 +79,7 @@ defmodule Worth.Learning.TelemetryBridge do
     })
   end
 
-  def handle_telemetry([:mneme, :learn, :source, :stop], measurements, metadata, _config) do
+  def handle_telemetry([:recollect, :learn, :source, :stop], measurements, metadata, _config) do
     scope_id = Map.get(metadata, :scope_id)
     workspace = workspace_from_scope(scope_id)
 
@@ -92,7 +92,7 @@ defmodule Worth.Learning.TelemetryBridge do
     })
   end
 
-  def handle_telemetry([:mneme, :learn, :coding_agents, :fetch, :stop], measurements, metadata, _config) do
+  def handle_telemetry([:recollect, :learn, :coding_agents, :fetch, :stop], measurements, metadata, _config) do
     scope_id = Map.get(metadata, :scope_id)
     workspace = workspace_from_scope(scope_id)
 
@@ -104,7 +104,7 @@ defmodule Worth.Learning.TelemetryBridge do
     })
   end
 
-  def handle_telemetry([:mneme, :learn, agent, :fetch, :stop], measurements, metadata, _config) do
+  def handle_telemetry([:recollect, :learn, agent, :fetch, :stop], measurements, metadata, _config) do
     scope_id = Map.get(metadata, :scope_id)
     workspace = workspace_from_scope(scope_id)
 

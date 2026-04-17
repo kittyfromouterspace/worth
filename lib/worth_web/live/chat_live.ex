@@ -7,7 +7,7 @@ defmodule WorthWeb.ChatLive do
   import WorthWeb.Components.Chat.XRay
   import WorthWeb.Components.Settings
 
-  alias AgentEx.LLM.Catalog
+  alias Agentic.LLM.Catalog
   alias Worth.Agent.Tracker
   alias Worth.Config.Setup
   alias Worth.Learning.Permissions
@@ -776,8 +776,8 @@ defmodule WorthWeb.ChatLive do
         resolve_free_models()
       else
         %{
-          primary: format_model_slot(AgentEx.ModelRouter.resolve(:primary)),
-          lightweight: format_model_slot(AgentEx.ModelRouter.resolve(:lightweight))
+          primary: format_model_slot(Agentic.ModelRouter.resolve(:primary)),
+          lightweight: format_model_slot(Agentic.ModelRouter.resolve(:lightweight))
         }
       end
 
@@ -929,7 +929,7 @@ defmodule WorthWeb.ChatLive do
 
       Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
         try do
-          Mneme.remember(text,
+          Recollect.remember(text,
             scope_id: scope_id,
             entry_type: "identity"
           )
@@ -1024,7 +1024,7 @@ defmodule WorthWeb.ChatLive do
       |> Worth.Settings.all_by_category()
       |> Map.new(fn s -> {s.key, s.encrypted_value} end)
 
-    AgentEx.LLM.ProviderRegistry.list()
+    Agentic.LLM.ProviderRegistry.list()
     |> Enum.map(fn entry ->
       mod = entry.module
       env_var = List.first(mod.env_vars()) || ""
@@ -1131,7 +1131,7 @@ defmodule WorthWeb.ChatLive do
   defp populate_credentials_from_vault do
     for setting <- Worth.Settings.all_by_category("secret"),
         is_binary(setting.encrypted_value) and setting.encrypted_value != "" do
-      AgentEx.LLM.Credentials.put(setting.key, setting.encrypted_value)
+      Agentic.LLM.Credentials.put(setting.key, setting.encrypted_value)
     end
 
     Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->

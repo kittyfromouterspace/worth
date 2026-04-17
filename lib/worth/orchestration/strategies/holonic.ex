@@ -7,7 +7,7 @@ defmodule Worth.Orchestration.Strategies.Holonic do
   adjusts capacity based on success rates.
   """
 
-  @behaviour AgentEx.Strategy
+  @behaviour Agentic.Strategy
 
   defstruct [
     :workspace,

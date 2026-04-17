@@ -1,6 +1,6 @@
 # Model Selection & Routing Pipeline
 
-This document describes the model selection, routing, and credential architecture across the three codebases: **mneme**, **agent_ex**, and **worth**.
+This document describes the model selection, routing, and credential architecture across the three codebases: **recollect**, **agentic**, and **worth**.
 
 ---
 
@@ -8,47 +8,47 @@ This document describes the model selection, routing, and credential architectur
 
 | Codebase | Role |
 |----------|------|
-| **mneme** (`../mneme`) | Model-agnostic framework. Defines behaviours for embeddings and extraction. Never owns a model name or API key. Delegates everything to the host app via callbacks. |
-| **agent_ex** (`../agent_ex`) | Core LLM engine. Owns all model selection, routing, failover, error classification, health reporting, credential resolution, and cost tracking. |
-| **worth** (`/home/lenz/code/worth`) | Host application. Provides user preferences as parameters, encrypted secret storage, Brain orchestration, and UI. Thin dispatch layer over agent_ex — contains no routing or failover logic. |
+| **recollect** (`../recollect`) | Model-agnostic framework. Defines behaviours for embeddings and extraction. Never owns a model name or API key. Delegates everything to the host app via callbacks. |
+| **agentic** (`../agentic`) | Core LLM engine. Owns all model selection, routing, failover, error classification, health reporting, credential resolution, and cost tracking. |
+| **worth** (`/home/lenz/code/worth`) | Host application. Provides user preferences as parameters, encrypted secret storage, Brain orchestration, and UI. Thin dispatch layer over agentic — contains no routing or failover logic. |
 
 ---
 
-## 2. Mneme — Behaviour-Only Framework
+## 2. Recollect — Behaviour-Only Framework
 
 ### 2.1 Key Files
 
 | File | Role |
 |------|------|
-| `lib/mneme/embedding_provider.ex` | Behaviour: `generate/2`, `embed/2`, `model_id/1`, `dimensions/1` |
-| `lib/mneme/extraction_provider.ex` | Behaviour: `extract/2` |
-| `lib/mneme/config.ex` | Resolves provider + opts from Application env |
-| `lib/mneme/embedding/openrouter.ex` | Concrete OpenRouter embedding provider (default: `text-embedding-3-small`) |
-| `lib/mneme/embedding/local.ex` | Local Bumblebee/NX embeddings (default: `all-MiniLM-L6-v2`, 384 dims) |
-| `lib/mneme/embedding/mock.ex` | Deterministic SHA-256 mock for tests |
-| `lib/mneme/extraction/llm_json.ex` | Extraction via `llm_fn` callback provided by host |
-| `lib/mneme/pipeline/embedder.ex` | Orchestrates embedding calls |
-| `lib/mneme/pipeline/extractor.ex` | Orchestrates entity/relation extraction |
-| `lib/mneme/search/completion.ex` | LLM-augmented retrieval (requires `llm_fn`) |
-| `lib/mneme/search/vector.ex` | Vector similarity search via pgvector |
+| `lib/recollect/embedding_provider.ex` | Behaviour: `generate/2`, `embed/2`, `model_id/1`, `dimensions/1` |
+| `lib/recollect/extraction_provider.ex` | Behaviour: `extract/2` |
+| `lib/recollect/config.ex` | Resolves provider + opts from Application env |
+| `lib/recollect/embedding/openrouter.ex` | Concrete OpenRouter embedding provider (default: `text-embedding-3-small`) |
+| `lib/recollect/embedding/local.ex` | Local Bumblebee/NX embeddings (default: `all-MiniLM-L6-v2`, 384 dims) |
+| `lib/recollect/embedding/mock.ex` | Deterministic SHA-256 mock for tests |
+| `lib/recollect/extraction/llm_json.ex` | Extraction via `llm_fn` callback provided by host |
+| `lib/recollect/pipeline/embedder.ex` | Orchestrates embedding calls |
+| `lib/recollect/pipeline/extractor.ex` | Orchestrates entity/relation extraction |
+| `lib/recollect/search/completion.ex` | LLM-augmented retrieval (requires `llm_fn`) |
+| `lib/recollect/search/vector.ex` | Vector similarity search via pgvector |
 
 ### 2.2 Model Selection
 
-Mneme has two model selection paths:
+Recollect has two model selection paths:
 
 **Embeddings:** Config-driven chain:
 ```
-config :mneme, embedding: [provider: Worth.Memory.Embeddings.Adapter, tier: :embeddings]
-  → Mneme.Config.embedding_provider() → Worth.Memory.Embeddings.Adapter
-  → Mneme.Config.embedding_opts() → [provider: ..., tier: :embeddings]
+config :recollect, embedding: [provider: Worth.Memory.Embeddings.Adapter, tier: :embeddings]
+  → Recollect.Config.embedding_provider() → Worth.Memory.Embeddings.Adapter
+  → Recollect.Config.embedding_opts() → [provider: ..., tier: :embeddings]
   → Worth.Memory.Embeddings.Adapter.generate/2 → resolves model + provider + credentials
 ```
 
-**Extraction:** Requires `llm_fn` in opts. Worth does not configure Mneme extraction; it uses its own `FactExtractor` instead.
+**Extraction:** Requires `llm_fn` in opts. Worth does not configure Recollect extraction; it uses its own `FactExtractor` instead.
 
 ### 2.3 Credential Handling
 
-Mneme's `Config.embedding_credentials/0` resolves through:
+Recollect's `Config.embedding_credentials/0` resolves through:
 1. `credentials_fn` callback (host provides a zero-arity function returning `%{api_key: ...}` or `:disabled`)
 2. Static config fallback (`:api_key` key in embedding config)
 3. Mock mode (`mock: true` — no key needed)
@@ -58,25 +58,25 @@ Env-var fallback in `OpenRouter.resolve_api_key/1` remains for other host applic
 
 ---
 
-## 3. AgentEx — Core LLM Engine
+## 3. Agentic — Core LLM Engine
 
 ### 3.1 Architecture Layers
 
 | Layer | Files | Purpose |
 |-------|-------|---------|
-| **Provider Behaviour** | `lib/agent_ex/llm/provider.ex`, `lib/agent_ex/llm/transport.ex` | Behaviour definitions |
-| **Providers** | `lib/agent_ex/llm/provider/{anthropic,openai,openrouter,groq,ollama}.ex` | Concrete implementations |
-| **Transports** | `lib/agent_ex/llm/transport/{anthropic_messages,openai_chat_completions,ollama}.ex` | HTTP protocol adapters |
-| **Catalog** | `lib/agent_ex/llm/catalog.ex`, `lib/agent_ex/llm/model.ex` | Unified model catalog (static + dynamic discovery), persisted to disk |
-| **Credentials** | `lib/agent_ex/llm/credentials.ex` | ETS store (priority 2) + env var fallback (priority 3). No redundant lookups — store and env paths are strictly sequential. |
-| **Provider Registry** | `lib/agent_ex/llm/provider_registry.ex` | Provider name (atom or string) → module lookup |
-| **Router** | `lib/agent_ex/model_router.ex`, `lib/agent_ex/model_router/{selector,analyzer,preference}.ex` | Manual (tier) and auto (analysis) routing |
-| **Error Handling** | `lib/agent_ex/llm/error.ex`, `lib/agent_ex/llm/error_classifier.ex`, `lib/agent_ex/llm/error_patterns.ex` | Error classification and retry logic |
-| **Rate Limiting** | `lib/agent_ex/llm/rate_limit.ex`, `lib/agent_ex/llm/usage.ex`, `lib/agent_ex/llm/usage_window.ex`, `lib/agent_ex/llm/usage_manager.ex` | Quota tracking per provider |
-| **Loop** | `lib/agent_ex/loop/stages/llm_call.ex`, `lib/agent_ex/loop/context.ex` | Pipeline stage: resolve routes, walk with failover |
-| **LLM** | `lib/agent_ex/llm.ex` | Top-level entry points: `chat_tier/3`, `embed_tier/3`. Embedding model preference is configurable (not hardcoded). |
-| **Config** | `lib/agent_ex/config.ex` | Typed accessors for Application env, including `embedding_model/0` |
-| **Application** | `lib/agent_ex/application.ex` | Supervision tree: ProviderRegistry, Catalog, UsageManager, ModelRouter, Credentials ETS |
+| **Provider Behaviour** | `lib/agentic/llm/provider.ex`, `lib/agentic/llm/transport.ex` | Behaviour definitions |
+| **Providers** | `lib/agentic/llm/provider/{anthropic,openai,openrouter,groq,ollama}.ex` | Concrete implementations |
+| **Transports** | `lib/agentic/llm/transport/{anthropic_messages,openai_chat_completions,ollama}.ex` | HTTP protocol adapters |
+| **Catalog** | `lib/agentic/llm/catalog.ex`, `lib/agentic/llm/model.ex` | Unified model catalog (static + dynamic discovery), persisted to disk |
+| **Credentials** | `lib/agentic/llm/credentials.ex` | ETS store (priority 2) + env var fallback (priority 3). No redundant lookups — store and env paths are strictly sequential. |
+| **Provider Registry** | `lib/agentic/llm/provider_registry.ex` | Provider name (atom or string) → module lookup |
+| **Router** | `lib/agentic/model_router.ex`, `lib/agentic/model_router/{selector,analyzer,preference}.ex` | Manual (tier) and auto (analysis) routing |
+| **Error Handling** | `lib/agentic/llm/error.ex`, `lib/agentic/llm/error_classifier.ex`, `lib/agentic/llm/error_patterns.ex` | Error classification and retry logic |
+| **Rate Limiting** | `lib/agentic/llm/rate_limit.ex`, `lib/agentic/llm/usage.ex`, `lib/agentic/llm/usage_window.ex`, `lib/agentic/llm/usage_manager.ex` | Quota tracking per provider |
+| **Loop** | `lib/agentic/loop/stages/llm_call.ex`, `lib/agentic/loop/context.ex` | Pipeline stage: resolve routes, walk with failover |
+| **LLM** | `lib/agentic/llm.ex` | Top-level entry points: `chat_tier/3`, `embed_tier/3`. Embedding model preference is configurable (not hardcoded). |
+| **Config** | `lib/agentic/config.ex` | Typed accessors for Application env, including `embedding_model/0` |
+| **Application** | `lib/agentic/application.ex` | Supervision tree: ProviderRegistry, Catalog, UsageManager, ModelRouter, Credentials ETS |
 
 ### 3.2 Provider Implementations
 
@@ -151,7 +151,7 @@ Persisted to `~/.local/share/worth/catalog.json`. Refreshed every 10 minutes.
 | Priority | Source | Notes |
 |----------|--------|-------|
 | 1 | `opts[:api_key]` | Injected by host app per-call |
-| 2 | ETS table `:agent_ex_credentials` | Runtime store, populated by Worth on vault unlock. Checked first via `find_first_in_store/1`. |
+| 2 | ETS table `:agentic_credentials` | Runtime store, populated by Worth on vault unlock. Checked first via `find_first_in_store/1`. |
 | 3 | `System.get_env(var)` | Environment variable fallback for other host apps. Only reached after ETS returns `:none` — no redundant ETS lookup. |
 | 4 | N/A for `:ollama` | No key required, always resolves |
 
@@ -168,7 +168,7 @@ Routes sorted by priority. `do_try_routes` walks them:
 - On failure: Error classified via `classify_error/1`, route marked unhealthy with cooldown, next route tried
 - All routes exhausted: calls `llm_chat` without `_route` as final fallback
 
-**For standalone tier-based calls (`AgentEx.LLM.chat_tier/3`):**
+**For standalone tier-based calls (`Agentic.LLM.chat_tier/3`):**
 - Same failover logic, but uses a `llm_chat:` callback provided by the caller (or falls back to direct `Provider.chat/3`)
 - Worth provides `Worth.LLM.chat/1` as the callback to inject credentials per-route
 
@@ -191,11 +191,11 @@ Categories: `:rate_limit`, `:auth_error`, `:connection_error`, `:context_length_
 
 | File | Role |
 |------|------|
-| `lib/worth/llm.ex` | **Thin dispatch module** (~190 lines). Extracts route from params, resolves provider + credentials, dispatches to `AgentEx.LLM.Provider`. No routing, failover, or error classification logic. `chat_tier/2` pre-builds a credential cache to avoid per-route DB lookups during failover. |
+| `lib/worth/llm.ex` | **Thin dispatch module** (~190 lines). Extracts route from params, resolves provider + credentials, dispatches to `Agentic.LLM.Provider`. No routing, failover, or error classification logic. `chat_tier/2` pre-builds a credential cache to avoid per-route DB lookups during failover. |
 | `lib/worth/config.ex` | Runtime config Agent. Merges compile-time env + Settings DB preferences. `save_routing/1` atomically persists routing config to both in-memory state and DB. |
-| `lib/worth/brain.ex` | Per-workspace GenServer. Builds run_opts with model routing parameters, calls `AgentEx.run/1`. |
+| `lib/worth/brain.ex` | Per-workspace GenServer. Builds run_opts with model routing parameters, calls `Agentic.run/1`. |
 | `lib/worth/brain/session.ex` | Session resume logic. Builds callbacks with simplified `llm_chat` → `Worth.LLM.chat/1`. |
-| `lib/worth/settings.ex` | Settings CRUD facade. Preferences (plaintext) + Secrets (AES-GCM encrypted). On lock: clears AgentEx ETS. |
+| `lib/worth/settings.ex` | Settings CRUD facade. Preferences (plaintext) + Secrets (AES-GCM encrypted). On lock: clears Agentic ETS. |
 | `lib/worth/settings/setting.ex` | Ecto schema for `worth_settings` table. |
 | `lib/worth/settings/master_password.ex` | Ecto schema for master password (PBKDF2 hash + salt). |
 | `lib/worth/vault.ex` | Cloak Vault. AES-GCM encryption. Starts locked, runtime key configuration. |
@@ -204,12 +204,12 @@ Categories: `:rate_limit`, `:auth_error`, `:connection_error`, `:context_length_
 | `lib/worth/config/setup.ex` | First-run wizard. Workspace dir, API key, embedding model. |
 | `lib/worth/workspace/identity.ex` | `IDENTITY.md` YAML frontmatter parser for tier overrides and cost ceiling. |
 | `lib/worth/workspace/context.ex` | System prompt builder (identity + skills + memory). |
-| `lib/worth/memory/embeddings/adapter.ex` | Worth's `Mneme.EmbeddingProvider` implementation. Resolves provider/credentials via AgentEx. |
-| `lib/worth/memory/manager.ex` | Memory facade. Calls `Mneme.remember/2`, `Mneme.search/2`. |
+| `lib/worth/memory/embeddings/adapter.ex` | Worth's `Recollect.EmbeddingProvider` implementation. Resolves provider/credentials via Agentic. |
+| `lib/worth/memory/manager.ex` | Memory facade. Calls `Recollect.remember/2`, `Recollect.search/2`. |
 | `lib/worth/memory/fact_extractor.ex` | LLM-powered fact extraction with regex fallback. Uses `chat_tier/2` for background LLM calls. |
 | `lib/worth/metrics.ex` | Per-session cost/token telemetry aggregator. Read-only tracking, no enforcement. |
 | `lib/worth/agent/tracker.ex` | Active agent session tracker (ETS + telemetry). |
-| `config/config.exs` | Compile-time config. Default provider, models. No API key env refs. Mneme `credentials_fn` wired to vault. |
+| `config/config.exs` | Compile-time config. Default provider, models. No API key env refs. Recollect `credentials_fn` wired to vault. |
 | `config/test.exs` | Test config. Sets `credentials_fn: nil` to prevent deep-merge override of mock provider. |
 | `lib/worth_web/live/commands/model_commands.ex` | `/model` CLI commands for searching/setting models. Uses `Worth.Config.save_routing/1` for persistence. |
 | `lib/worth_web/live/chat_live/settings_component.ex` | UI settings panel. Routing mode, cost limits. Uses `Worth.Config.save_routing/1` for persistence. |
@@ -218,11 +218,11 @@ Categories: `:rate_limit`, `:auth_error`, `:connection_error`, `:context_length_
 
 Worth.LLM is a thin dispatch module (~190 lines) with three entry points:
 
-- **`stream_chat/2`** — Streaming dispatch for a single route. AgentEx's `LLMCall` stage resolves routes and injects `_route` into params. Worth extracts the route, resolves the provider module and credentials, and calls `Provider.stream_chat`.
+- **`stream_chat/2`** — Streaming dispatch for a single route. Agentic's `LLMCall` stage resolves routes and injects `_route` into params. Worth extracts the route, resolves the provider module and credentials, and calls `Provider.stream_chat`.
 - **`chat/1`** — Non-streaming dispatch for a single route. Same pattern as `stream_chat` but without streaming.
-- **`chat_tier/2`** — Tier-based dispatch for background tasks (fact extraction, skill refinement). Pre-builds a `creds_cache` map (provider id → `{module, api_key}`) by resolving credentials for all enabled providers once upfront, then delegates to `AgentEx.LLM.chat_tier/3` with a `dispatch_with_cache/2` callback that uses the cache instead of re-querying the DB per route attempt.
+- **`chat_tier/2`** — Tier-based dispatch for background tasks (fact extraction, skill refinement). Pre-builds a `creds_cache` map (provider id → `{module, api_key}`) by resolving credentials for all enabled providers once upfront, then delegates to `Agentic.LLM.chat_tier/3` with a `dispatch_with_cache/2` callback that uses the cache instead of re-querying the DB per route attempt.
 
-**Provider resolution** uses `AgentEx.LLM.ProviderRegistry.get/1` (accepts atoms and strings via internal string→atom conversion) — a single call, no manual atom conversion needed.
+**Provider resolution** uses `Agentic.LLM.ProviderRegistry.get/1` (accepts atoms and strings via internal string→atom conversion) — a single call, no manual atom conversion needed.
 
 **Credential injection** per-call:
 ```elixir
@@ -247,10 +247,10 @@ Reads `Worth.Config.get([:model_routing])` which holds:
   manual_model: %{provider: ..., model_id: ...}}
 ```
 
-Translates to AgentEx `run_opts`:
+Translates to Agentic `run_opts`:
 - Auto: `%{model_selection_mode: :auto, model_preference: :optimize_price, model_filter: :free_only}`
-- Manual with pinned model: `%{model_selection_mode: :manual, tier_overrides: %{primary: "provider/model_id"}}` — converts `manual_model` into a `tier_overrides` map so AgentEx prepends the chosen model to the failover list
-- Manual without pinned model: `%{model_selection_mode: :manual}` — AgentEx resolves routes with full failover
+- Manual with pinned model: `%{model_selection_mode: :manual, tier_overrides: %{primary: "provider/model_id"}}` — converts `manual_model` into a `tier_overrides` map so Agentic prepends the chosen model to the failover list
+- Manual without pinned model: `%{model_selection_mode: :manual}` — Agentic resolves routes with full failover
 
 If no manual model is pinned, `default_model_override/0` generates a `tier_overrides` from config defaults. User's explicit manual model selection always takes precedence.
 
@@ -273,7 +273,7 @@ llm:
   cost_ceiling_per_turn: 0.10
 ```
 
-Parsed by `Worth.Workspace.Identity.tier_overrides/1`, set via `AgentEx.ModelRouter.set_tier_overrides/1` at Brain init.
+Parsed by `Worth.Workspace.Identity.tier_overrides/1`, set via `Agentic.ModelRouter.set_tier_overrides/1` at Brain init.
 
 ### 4.4 Secret Handling — Vault-Only
 
@@ -288,16 +288,16 @@ Parsed by `Worth.Workspace.Identity.tier_overrides/1`, set via `AgentEx.ModelRou
 `Worth.Vault` uses Cloak with AES-GCM:
 - Starts locked (no ciphers configured)
 - Unlocked by master password → `Worth.Vault.Password.derive_key/2` (PBKDF2, 100k iterations, SHA-256) → 32-byte key
-- On unlock: `populate_credentials_from_vault/0` populates AgentEx ETS and triggers catalog refresh
+- On unlock: `populate_credentials_from_vault/0` populates Agentic ETS and triggers catalog refresh
 - On lock: ETS cleared via `Credentials.delete/1` per key
 
 #### Layer 3: Per-call injection
 
-`Worth.LLM.credential_opts/1` resolves key from `Worth.Settings.get(var)` and passes directly as `api_key:` to `AgentEx.LLM.Provider`. This bypasses env var lookup entirely.
+`Worth.LLM.credential_opts/1` resolves key from `Worth.Settings.get(var)` and passes directly as `api_key:` to `Agentic.LLM.Provider`. This bypasses env var lookup entirely.
 
-#### Layer 4: Mneme credentials_fn
+#### Layer 4: Recollect credentials_fn
 
-A `credentials_fn` is configured in `config/config.exs` for Mneme's embedding pipeline that reads from `Worth.Settings.get("OPENROUTER_API_KEY")`, returning `:disabled` when no key is available.
+A `credentials_fn` is configured in `config/config.exs` for Recollect's embedding pipeline that reads from `Worth.Settings.get("OPENROUTER_API_KEY")`, returning `:disabled` when no key is available.
 
 **Boundary diagram:**
 
@@ -311,7 +311,7 @@ A `credentials_fn` is configured in `config/config.exs` for Mneme's embedding pi
 │        │              api_key: injected via opts         │
 │        │                      │                          │
 │        │                      ▼                          │
-│        └────────────► AgentEx ETS (on unlock only)      │
+│        └────────────► Agentic ETS (on unlock only)      │
 │                           │                              │
 └───────────────────────────┼──────────────────────────────┘
                             ▼
@@ -335,7 +335,7 @@ A `credentials_fn` is configured in `config/config.exs` for Mneme's embedding pi
 └─────────────────────────────────────────────────────────┘
 ```
 
-Worth guarantees credentials reach agent_ex and mneme through **injection** (priority 1 in their resolution chains). The env-var fallbacks in both libraries remain intact for other consumers but are never reached under Worth.
+Worth guarantees credentials reach agentic and recollect through **injection** (priority 1 in their resolution chains). The env-var fallbacks in both libraries remain intact for other consumers but are never reached under Worth.
 
 **Known secret keys:** `["OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"]`
 
@@ -346,26 +346,26 @@ Worth guarantees credentials reach agent_ex and mneme through **injection** (pri
 | State | What works | What doesn't |
 |-------|-----------|--------------|
 | **No password set** (first run) | Setup wizard prompts for master password + API keys. On submit: vault created, unlocked, credentials stored encrypted. | LLM calls, embeddings, catalog refresh — nothing can authenticate. |
-| **Password set, vault locked** | UI renders. Preferences (theme, routing, memory) readable. Chat history visible. AgentEx ETS is empty. | All LLM calls fail (`:not_configured` — opts have no `api_key`, ETS is empty, env has nothing). Embeddings disabled. User sees "Unlock vault" prompt. |
+| **Password set, vault locked** | UI renders. Preferences (theme, routing, memory) readable. Chat history visible. Agentic ETS is empty. | All LLM calls fail (`:not_configured` — opts have no `api_key`, ETS is empty, env has nothing). Embeddings disabled. User sees "Unlock vault" prompt. |
 | **Password set, vault unlocked** | ETS populated from vault. Per-call injection active. LLM calls, embeddings, catalog refresh all succeed. | — |
 | **Vault locked after being unlocked** | Same as "vault locked". ETS cleared. In-flight requests complete; new ones fail. | No new LLM calls until re-unlock. |
 
 ### 4.5 Embedding Pipeline (Memory)
 
-Separate from chat. `Worth.Memory.Embeddings.Adapter` implements `Mneme.EmbeddingProvider`:
+Separate from chat. `Worth.Memory.Embeddings.Adapter` implements `Recollect.EmbeddingProvider`:
 
 1. `model_id/1` → opts `:model` → opts `:model_override` → `Worth.Config.get([:memory, :embedding_model])` → default `"text-embedding-3-small"`
-2. `resolve_provider/1` → opts `:provider` via `ProviderRegistry.get/1` → model lookup in `AgentEx.LLM.Catalog` for `:embeddings` tag → fallback `ProviderRegistry.get(:openrouter)`
-3. Credentials via `AgentEx.LLM.Credentials.resolve(provider)`
+2. `resolve_provider/1` → opts `:provider` via `ProviderRegistry.get/1` → model lookup in `Agentic.LLM.Catalog` for `:embeddings` tag → fallback `ProviderRegistry.get(:openrouter)`
+3. Credentials via `Agentic.LLM.Credentials.resolve(provider)`
 4. `provider.transport().build_embedding_request/2` → `Req.post` → `provider.transport().parse_embedding_response/3`
 
-**Embedding model preference in AgentEx:** When no explicit model+provider pair is given, `AgentEx.LLM.resolve_embedding_target/2` sorts candidates by `embedding_preference/2`, which prefers a configurable `preferred_id` (from `AgentEx.Config.embedding_model/0` or an explicit `:model` opt) over hardcoded names. Falls back to neutral sorting (non-Ollama > Ollama) if no preference is set.
+**Embedding model preference in Agentic:** When no explicit model+provider pair is given, `Agentic.LLM.resolve_embedding_target/2` sorts candidates by `embedding_preference/2`, which prefers a configurable `preferred_id` (from `Agentic.Config.embedding_model/0` or an explicit `:model` opt) over hardcoded names. Falls back to neutral sorting (non-Ollama > Ollama) if no preference is set.
 
 ### 4.6 Cost Tracking
 
 - `cost_limit` (default $5.00) from `config/config.exs`, changeable via UI settings
-- Passed to `AgentEx.run/1` as `run_opts[:cost_limit]` — enforced inside AgentEx
-- `Worth.Metrics` GenServer attaches to `[:agent_ex, :llm_call, :stop]` telemetry:
+- Passed to `Agentic.run/1` as `run_opts[:cost_limit]` — enforced inside Agentic
+- `Worth.Metrics` GenServer attaches to `[:agentic, :llm_call, :stop]` telemetry:
   - Accumulates: `cost`, `calls`, `input_tokens`, `output_tokens`, `cache_read`, `cache_write`
   - Tracks `by_provider` breakdown
   - `session_cost/0` returns current total USD
@@ -391,7 +391,7 @@ config :worth,
   ],
   cost_limit: 5.0
 
-config :mneme,
+config :recollect,
   embedding: [
     provider: Worth.Memory.Embeddings.Adapter,
     tier: :embeddings,
@@ -403,11 +403,11 @@ config :mneme,
     end
   ]
 
-config :agent_ex,
+config :agentic,
   providers: [
-    AgentEx.LLM.Provider.OpenRouter,
-    AgentEx.LLM.Provider.Anthropic,
-    AgentEx.LLM.Provider.OpenAI
+    Agentic.LLM.Provider.OpenRouter,
+    Agentic.LLM.Provider.Anthropic,
+    Agentic.LLM.Provider.OpenAI
   ],
   catalog: [persist_path: Path.join(System.get_env("HOME") || "~", ".local/share/worth/catalog.json")]
 ```
@@ -438,7 +438,7 @@ Worth.Brain.handle_call({:send_message, text})
   │     ├── manual (no manual_model): sets model_selection_mode: :manual
   │     └── default_model_override() → tier_overrides from config (only if not already set)
   │
-  └── AgentEx.run(run_opts)
+  └── Agentic.run(run_opts)
         │
         ├── Context.new with routing params
         │
@@ -467,7 +467,7 @@ Worth.Brain.handle_call({:send_message, text})
                     │   Worth.LLM.stream_chat(params, on_chunk)
                     │     │
                     │     ├── route_from_params(params)
-                    │     │     → extracts params["_route"] (injected by AgentEx)
+                    │     │     → extracts params["_route"] (injected by Agentic)
                     │     │
                     │     ├── resolve_provider(name)
                     │     │     → ProviderRegistry.get(name) → provider module
@@ -503,7 +503,7 @@ Worth.Brain (or FactExtractor/Refiner)
         │
         ├── build_creds_cache()  ← resolves credentials once for all enabled providers
         │
-        └── AgentEx.LLM.chat_tier(params, :lightweight,
+        └── Agentic.LLM.chat_tier(params, :lightweight,
               llm_chat: fn p -> dispatch_with_cache(p, creds_cache) end)
               │
               ├── ModelRouter.resolve_all(:lightweight)
@@ -527,9 +527,9 @@ Worth.Brain (or FactExtractor/Refiner)
 ```
 Worth.Memory.Manager
   │
-  ├── Mneme.remember(text, opts)
-  │     → Mneme.Pipeline.Embedder.embed_entry_async/1
-  │     → Mneme.EmbeddingProvider.embed(text)
+  ├── Recollect.remember(text, opts)
+  │     → Recollect.Pipeline.Embedder.embed_entry_async/1
+  │     → Recollect.EmbeddingProvider.embed(text)
   │     → Worth.Memory.Embeddings.Adapter.embed(text, opts)
   │           │
   │           ├── model_id/1
@@ -538,15 +538,15 @@ Worth.Memory.Manager
   │           │     → default: "text-embedding-3-small"
   │           │
   │           ├── resolve_provider/1
-  │           │     → AgentEx.LLM.Catalog lookup for :embeddings tag
+  │           │     → Agentic.LLM.Catalog lookup for :embeddings tag
   │           │     → fallback: :openrouter
   │           │
-  │           ├── AgentEx.LLM.Credentials.resolve(provider)
+  │           ├── Agentic.LLM.Credentials.resolve(provider)
   │           │
   │           └── provider.transport().build_embedding_request → Req.post → parse
   │
-  └── Mneme.search(query, opts)
-        → Mneme.Search.Vector.search(query, opts)
+  └── Recollect.search(query, opts)
+        → Recollect.Search.Vector.search(query, opts)
         → embed query via same pipeline
         → SQL vector similarity via pgvector
 ```
@@ -555,17 +555,17 @@ Worth.Memory.Manager
 
 ## 7. Credential Flow Summary
 
-Every entry point where Worth calls into agent_ex or mneme injects credentials from the vault:
+Every entry point where Worth calls into agentic or recollect injects credentials from the vault:
 
 | Entry point | How credentials reach the library | Env-var fallback reached? |
 |-------------|----------------------------------|---------------------------|
 | `Worth.LLM.stream_chat/2` → `Provider.stream_chat/3` | `credential_opts/1` injects `api_key:` kwarg | No — `opts[:api_key]` is priority 1 |
 | `Worth.LLM.chat/1` → `Provider.chat/3` | Same injection | No |
-| `Worth.LLM.chat_tier/2` → `AgentEx.LLM.chat_tier/3` | Pre-built `creds_cache` (provider→key map) passed to `dispatch_with_cache/2` callback | No |
+| `Worth.LLM.chat_tier/2` → `Agentic.LLM.chat_tier/3` | Pre-built `creds_cache` (provider→key map) passed to `dispatch_with_cache/2` callback | No |
 | `Worth.Memory.Embeddings.Adapter` | `Credentials.resolve(provider)` | Only if ETS empty — Worth populates ETS on unlock |
-| Mneme internal paths | `credentials_fn` callback | No — callback reads from vault |
+| Recollect internal paths | `credentials_fn` callback | No — callback reads from vault |
 
-On vault lock, ETS is cleared, so even the ETS path returns nothing. The env-var fallback in agent_ex/mneme would technically be reached, but Worth never writes to `System.put_env`, so there is nothing to find.
+On vault lock, ETS is cleared, so even the ETS path returns nothing. The env-var fallback in agentic/recollect would technically be reached, but Worth never writes to `System.put_env`, so there is nothing to find.
 
 ---
 
@@ -573,12 +573,12 @@ On vault lock, ETS is cleared, so even the ETS path returns nothing. The env-var
 
 | Variable | Used By | Purpose |
 |----------|---------|---------|
-| `OPENROUTER_API_KEY` | Worth (encrypted vault only), AgentEx (fallback for other apps), Mneme (fallback for other apps) | OpenRouter API auth |
-| `ANTHROPIC_API_KEY` | Worth (encrypted vault only), AgentEx (fallback for other apps) | Anthropic API auth |
-| `OPENAI_API_KEY` | Worth (encrypted vault only), AgentEx (fallback for other apps) | OpenAI API auth |
-| `GROQ_API_KEY` | AgentEx (fallback for other apps) | Groq API auth |
-| `OLLAMA_HOST` | AgentEx | Override Ollama base URL (default `http://localhost:11434`) |
+| `OPENROUTER_API_KEY` | Worth (encrypted vault only), Agentic (fallback for other apps), Recollect (fallback for other apps) | OpenRouter API auth |
+| `ANTHROPIC_API_KEY` | Worth (encrypted vault only), Agentic (fallback for other apps) | Anthropic API auth |
+| `OPENAI_API_KEY` | Worth (encrypted vault only), Agentic (fallback for other apps) | OpenAI API auth |
+| `GROQ_API_KEY` | Agentic (fallback for other apps) | Groq API auth |
+| `OLLAMA_HOST` | Agentic | Override Ollama base URL (default `http://localhost:11434`) |
 
-**Worth resolution path (vault-only):** `Worth.Settings.get(key)` → per-call `api_key:` injection → AgentEx uses injected key directly (priority 1 in `Credentials.resolve/2`). On vault unlock, ETS is also populated as a secondary path. No `System.get_env` or `System.put_env` for secrets.
+**Worth resolution path (vault-only):** `Worth.Settings.get(key)` → per-call `api_key:` injection → Agentic uses injected key directly (priority 1 in `Credentials.resolve/2`). On vault unlock, ETS is also populated as a secondary path. No `System.get_env` or `System.put_env` for secrets.
 
-**AgentEx/Mneme env-var fallbacks** remain available for other host applications but are never used by Worth.
+**Agentic/Recollect env-var fallbacks** remain available for other host applications but are never used by Worth.

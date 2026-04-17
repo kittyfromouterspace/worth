@@ -8,7 +8,7 @@ Workspaces are directories on disk. Each workspace represents a project or conte
 
 ```
 ~/.worth/
-├── worth.db                          # Single PostgreSQL database (mneme tables)
+├── worth.db                          # Single PostgreSQL database (recollect tables)
 ├── config.exs                        # Global config
 ├── skills/                            # Global skill library
 └── workspaces/
@@ -48,7 +48,7 @@ Workspaces are directories on disk. Each workspace represents a project or conte
 2. `worth` or `worth -w my-project` -- opens the UI, enters the workspace
 3. Identity files loaded as system prompt overlay
 4. Global skills activated per workspace manifest
-5. On exit: ContextKeeper flushes to global mneme store
+5. On exit: ContextKeeper flushes to global recollect store
 
 ## Workspace Identity Files
 
@@ -125,7 +125,7 @@ Merge-style overrides for MCP servers. Workspace config wins for conflicting ser
 
 When the user switches workspaces (`/workspace switch my-project`):
 
-1. Flush ContextKeeper for current workspace → global mneme store
+1. Flush ContextKeeper for current workspace → global recollect store
 2. Load new workspace's identity files
 3. Load new workspace's skill manifest
 4. Merge MCP configs (global + workspace overrides)

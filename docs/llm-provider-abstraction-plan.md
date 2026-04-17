@@ -9,7 +9,7 @@
 ## Goal
 
 Replace the current ad-hoc adapter pile (`Worth.LLM.{Anthropic, OpenAI,
-OpenRouter}`) with a layered abstraction in `agent_ex` that cleanly
+OpenRouter}`) with a layered abstraction in `agentic` that cleanly
 separates the wire-protocol family (transport) from the service
 (provider), and adds first-class concepts for catalogs, capabilities,
 quotas, credentials, and embeddings.
@@ -33,25 +33,25 @@ follow the same shape.
   Anthropic prompt caching is the only "advanced model feature" we add
   in this round.
 - Multi-tenant SaaS provider configs. Providers are code modules in the
-  agent_ex repo, not DB rows.
+  agentic repo, not DB rows.
 
 ## Architecture overview
 
 ```
                           ┌────────────────────────────────────┐
-                          │   AgentEx.LLM.Catalog (GenServer)  │
+                          │   Agentic.LLM.Catalog (GenServer)  │
                           │   models: %{provider => [Model]}   │
                           │   persisted to ~/.worth/catalog    │
                           └─────────────┬──────────────────────┘
                                         │
                           ┌─────────────▼──────────────────────┐
-                          │   AgentEx.ModelRouter              │
+                          │   Agentic.ModelRouter              │
                           │   (tier resolution + cooldowns)    │
                           │   queries Catalog                  │
                           └─────────────┬──────────────────────┘
                                         │
                           ┌─────────────▼──────────────────────┐
-                          │   AgentEx.LLM (entry point)        │
+                          │   Agentic.LLM (entry point)        │
                           │   chat/2  chat_tier/3              │
                           │   embed/2  embed_tier/3            │
                           └─────────────┬──────────────────────┘
@@ -77,13 +77,13 @@ follow the same shape.
 
 ## Layers
 
-### Layer 1 — `AgentEx.LLM.Transport`
+### Layer 1 — `Agentic.LLM.Transport`
 
 **Behaviour describing one wire-protocol family.** Pure functions, no
 auth, no provider-specific quirks, no rate-limit policy.
 
 ```elixir
-defmodule AgentEx.LLM.Transport do
+defmodule Agentic.LLM.Transport do
   @callback id() :: atom()
   @callback build_chat_request(canonical_params, opts) :: %{
     method: :post,
@@ -92,13 +92,13 @@ defmodule AgentEx.LLM.Transport do
     headers: keyword()
   }
   @callback parse_chat_response(http_status, http_body, http_headers) ::
-    {:ok, AgentEx.LLM.Response.t()} | {:error, AgentEx.LLM.Error.t()}
-  @callback parse_rate_limit(http_headers) :: AgentEx.LLM.RateLimit.t() | nil
+    {:ok, Agentic.LLM.Response.t()} | {:error, Agentic.LLM.Error.t()}
+  @callback parse_rate_limit(http_headers) :: Agentic.LLM.RateLimit.t() | nil
 
   # Embedding support is optional per transport.
   @callback build_embedding_request(text_or_list, opts) :: map() | :not_supported
   @callback parse_embedding_response(http_status, http_body) ::
-    {:ok, [vector]} | {:error, AgentEx.LLM.Error.t()} | :not_supported
+    {:ok, [vector]} | {:error, Agentic.LLM.Error.t()} | :not_supported
 
   @optional_callbacks build_embedding_request: 2, parse_embedding_response: 2
 end
@@ -117,7 +117,7 @@ end
 realistically integrate. Bedrock, Vertex, Azure-OpenAI Responses are
 follow-ups when someone actually needs them.
 
-### Layer 2 — `AgentEx.LLM.Provider`
+### Layer 2 — `Agentic.LLM.Provider`
 
 **Behaviour describing one service.** Each provider is a small module
 that declares which transport it uses, points at a base URL, declares
@@ -125,19 +125,19 @@ env vars for credentials, and optionally implements catalog and usage
 fetchers.
 
 ```elixir
-defmodule AgentEx.LLM.Provider do
+defmodule Agentic.LLM.Provider do
   @callback id() :: atom()
   @callback label() :: String.t()
   @callback transport() :: module()
   @callback default_base_url() :: String.t() | nil
   @callback env_vars() :: [String.t()]                    # priority order
-  @callback default_models() :: [AgentEx.LLM.Model.t()]   # static seed
+  @callback default_models() :: [Agentic.LLM.Model.t()]   # static seed
   @callback request_headers(creds) :: keyword()           # provider-specific extras
   @callback supports() :: MapSet.t(:chat | :embeddings | :vision | :tools)
 
   # Optional dynamic discovery / quota
   @callback fetch_catalog(creds) :: {:ok, [Model.t()]} | {:error, term} | :not_supported
-  @callback fetch_usage(creds)   :: {:ok, AgentEx.LLM.Usage.t()} | :not_supported
+  @callback fetch_usage(creds)   :: {:ok, Agentic.LLM.Usage.t()} | :not_supported
   @callback classify_http_error(status, body, headers) ::
     {failure_type, retry_after_ms | nil} | :default
 
@@ -148,9 +148,9 @@ end
 **A concrete provider stays under 100 lines:**
 
 ```elixir
-defmodule AgentEx.LLM.Provider.Groq do
-  @behaviour AgentEx.LLM.Provider
-  alias AgentEx.LLM.{Model, Transport}
+defmodule Agentic.LLM.Provider.Groq do
+  @behaviour Agentic.LLM.Provider
+  alias Agentic.LLM.{Model, Transport}
 
   def id, do: :groq
   def label, do: "Groq"
@@ -165,7 +165,7 @@ defmodule AgentEx.LLM.Provider.Groq do
     %Model{id: "llama-3.1-8b-instant", tier: :lightweight, ...}
   ]
 
-  def fetch_catalog(creds), do: AgentEx.LLM.OpenAICompatCatalog.fetch(default_base_url(), creds)
+  def fetch_catalog(creds), do: Agentic.LLM.OpenAICompatCatalog.fetch(default_base_url(), creds)
 end
 ```
 
@@ -186,7 +186,7 @@ old adapters get deleted.
 ### Layer 3 — Shared structs
 
 ```elixir
-defmodule AgentEx.LLM.Model do
+defmodule Agentic.LLM.Model do
   defstruct [
     :id,                  # provider-local model id, e.g. "claude-opus-4-6"
     :provider,            # :anthropic
@@ -200,7 +200,7 @@ defmodule AgentEx.LLM.Model do
   ]
 end
 
-defmodule AgentEx.LLM.Route do
+defmodule Agentic.LLM.Route do
   @enforce_keys [:provider_id, :transport, :model_id]
   defstruct [
     :provider_id, :transport, :model_id, :label,
@@ -209,27 +209,27 @@ defmodule AgentEx.LLM.Route do
   ]
 end
 
-defmodule AgentEx.LLM.Response do
+defmodule Agentic.LLM.Response do
   defstruct [:content, :stop_reason, :usage, :model_id, :raw]
   # content: [%{type: :text, text}, %{type: :tool_use, id, name, input}, ...]
   # stop_reason: :end_turn | :tool_use | :max_tokens | :error
   # usage: %{input_tokens, output_tokens, cache_read, cache_write}
 end
 
-defmodule AgentEx.LLM.Error do
+defmodule Agentic.LLM.Error do
   defstruct [:message, :status, :retry_after_ms, :rate_limit, :classification, :raw]
   # classification: :rate_limit | :auth | :transient | :permanent
 end
 
-defmodule AgentEx.LLM.RateLimit do
+defmodule Agentic.LLM.RateLimit do
   defstruct [:remaining, :limit, :reset_at_ms]
 end
 
-defmodule AgentEx.LLM.Usage do
+defmodule Agentic.LLM.Usage do
   defstruct [:provider, :label, :plan, :windows, :credits, :error, :fetched_at]
 end
 
-defmodule AgentEx.LLM.UsageWindow do
+defmodule Agentic.LLM.UsageWindow do
   defstruct [:label, :used, :limit, :unit, :reset_at]
 end
 ```
@@ -257,7 +257,7 @@ chosen from a fixed taxonomy:
 :free            — costs $0/token (free tier model)
 ```
 
-`AgentEx.LLM.Catalog` exposes a tag-aware query:
+`Agentic.LLM.Catalog` exposes a tag-aware query:
 
 ```elixir
 Catalog.find(provider: :openrouter, tier: :lightweight, has: :tools)
@@ -277,7 +277,7 @@ metadata: OpenRouter's `output_modalities` field gives us
 `:tools`/`:reasoning`, `pricing.prompt == "0"` gives us `:free`.
 Anthropic's static catalog gets tags from the model id pattern.
 
-### Layer 5 — `AgentEx.LLM.Catalog` **(GenServer)**
+### Layer 5 — `Agentic.LLM.Catalog` **(GenServer)**
 
 Holds all known models, refreshed on a schedule. Sources, in priority
 order:
@@ -287,7 +287,7 @@ order:
 3. Provider's static `default_models/0` (always present).
 
 ```elixir
-defmodule AgentEx.LLM.Catalog do
+defmodule Agentic.LLM.Catalog do
   use GenServer
 
   def all() :: [Model.t()]
@@ -306,19 +306,19 @@ can evolve the Model struct without trashing existing caches.
 Refresh interval: 10 minutes for chat catalogs, 1 hour for embedding
 catalogs, on-demand via `/catalog refresh` slash command.
 
-`AgentEx.ModelRouter` becomes a thin layer **on top of Catalog**:
+`Agentic.ModelRouter` becomes a thin layer **on top of Catalog**:
 `resolve_all/1` queries the catalog with the requested tier and
 capability filter, sorts by `priority` then `cost`, and returns
 `Route` structs.
 
-### Layer 6 — `AgentEx.LLM.Credentials`
+### Layer 6 — `Agentic.LLM.Credentials`
 
 Resolves credentials for a provider by walking its declared `env_vars/0`
 in order. Returns the first non-empty value as a `%Credentials{}`
 struct. The provider knows its own env var names; nothing else does.
 
 ```elixir
-defmodule AgentEx.LLM.Credentials do
+defmodule Agentic.LLM.Credentials do
   defstruct [:api_key, :headers, :base_url_override, :expires_at, :source]
 
   def resolve(provider_module) :: {:ok, t} | :not_configured
@@ -335,14 +335,14 @@ After this lands, `Worth.Config.resolve_env_values/1`'s `{:env, "VAR"}`
 tuple convention can go away — providers handle their own env lookups
 and `~/.worth/config.exs` doesn't need to know.
 
-### Layer 7 — `AgentEx.LLM.UsageManager` **(GenServer)**
+### Layer 7 — `Agentic.LLM.UsageManager` **(GenServer)**
 
 Periodically calls `provider.fetch_usage/1` for every enabled provider
 that implements it. Caches snapshots for ~30 seconds. Worth's Status
 sidebar reads the cache.
 
 ```elixir
-defmodule AgentEx.LLM.UsageManager do
+defmodule Agentic.LLM.UsageManager do
   use GenServer
   def snapshot() :: [Usage.t()]
   def for_provider(provider_id) :: Usage.t() | nil
@@ -355,14 +355,14 @@ and don't appear in the snapshot.
 
 ### Layer 8 — Embeddings
 
-**Mneme needs an embedding provider.** Currently configured via
-`config :mneme, embedding: [provider: Mneme.Embedding.Mock, mock: true]`
+**Recollect needs an embedding provider.** Currently configured via
+`config :recollect, embedding: [provider: Recollect.Embedding.Mock, mock: true]`
 which is a placeholder.
 
 The plan unifies embeddings into the same provider/transport stack:
 
 ```elixir
-defmodule AgentEx.LLM do
+defmodule Agentic.LLM do
   def chat(params, opts \\ [])
   def chat_tier(params, tier, opts \\ [])
 
@@ -375,12 +375,12 @@ end
 chat does. `embed_tier/2` resolves a model with the `:embeddings`
 capability tag (and optionally `:free`).
 
-A new `Worth.Memory.Embeddings.Adapter` implements Mneme's
-`Mneme.EmbeddingProvider` behaviour by delegating to
-`AgentEx.LLM.embed_tier/2`. Mneme's config becomes:
+A new `Worth.Memory.Embeddings.Adapter` implements Recollect's
+`Recollect.EmbeddingProvider` behaviour by delegating to
+`Agentic.LLM.embed_tier/2`. Recollect's config becomes:
 
 ```elixir
-config :mneme,
+config :recollect,
   embedding: [
     provider: Worth.Memory.Embeddings.Adapter,
     tier: :embeddings_lightweight   # via tag query, not hardcoded model
@@ -401,7 +401,7 @@ config :mneme,
   `text-embedding-3-large`, `text-embedding-ada-002`) hardcoded in the
   provider's `default_models/0`.
 
-The free-route discovery in `AgentEx.ModelRouter.Free` becomes
+The free-route discovery in `Agentic.ModelRouter.Free` becomes
 **generic over capability**: same code, but instead of "find me free
 chat models", `Catalog.find(has: [:embeddings, :free])` returns free
 embedding models. The same retry/cooldown machinery applies.
@@ -413,7 +413,7 @@ call can compute its dollar cost at parse time. Two paths to surface it
 to the UI:
 
 **Option A — Elixir messages (current pattern).**
-`agent_ex/LLMCall` emits `{:cost, %{usd, model, provider, tokens}}`
+`agentic/LLMCall` emits `{:cost, %{usd, model, provider, tokens}}`
 through the existing `on_event` callback. Worth's `Events.drain/1`
 already handles `:cost` events; just enrich the payload.
 
@@ -423,14 +423,14 @@ already handles `:cost` events; just enrich the payload.
   emit anything unless we add the same wiring there.
 
 **Option B — `:telemetry` events.**
-Emit `[:agent_ex, :llm, :call, :stop]` with measurements
+Emit `[:agentic, :llm, :call, :stop]` with measurements
 `%{duration, input_tokens, output_tokens, cost_usd}` and metadata
 `%{provider, model, tier, classification}`. Worth attaches a telemetry
 handler at boot that reads these into a `Worth.Metrics` GenServer; UI
 polls or subscribes.
 
 - ➕ Decoupled, works for any caller (chat, chat_tier, embed). Already
-  partially in place — agent_ex emits `[:llm_call, :stop]` today, just
+  partially in place — agentic emits `[:llm_call, :stop]` today, just
   with `cost_usd: 0.0` as a placeholder.
 - ➕ Lets the same events feed prometheus / live dashboards / log
   aggregation later.
@@ -450,20 +450,20 @@ Want to talk through this one before we commit.
 
 | # | Decision | Choice |
 |---|---|---|
-| 1 | Where does the abstraction live? | **agent_ex** |
+| 1 | Where does the abstraction live? | **agentic** |
 | 2 | Provider registration mechanism | **Hybrid:** compile-time list of available providers + runtime enable/disable persisted to config. Follow-up iteration: secure API key store + config UI. |
 | 3 | Catalog persistence path | **`~/.worth/catalog.json`** |
-| 4 | Cost tracking transport | **`:telemetry` events.** `agent_ex/LLMCall` and `Worth.LLM.embed/2` emit `[:agent_ex, :llm, :call, :stop]` with real `cost_usd`. A `Worth.Metrics` GenServer attaches a handler at boot and aggregates per-session totals. The current `:cost` event in `on_event` callbacks stays as a thin shim that forwards from telemetry to UI for backwards compat. |
+| 4 | Cost tracking transport | **`:telemetry` events.** `agentic/LLMCall` and `Worth.LLM.embed/2` emit `[:agentic, :llm, :call, :stop]` with real `cost_usd`. A `Worth.Metrics` GenServer attaches a handler at boot and aggregates per-session totals. The current `:cost` event in `on_event` callbacks stays as a thin shim that forwards from telemetry to UI for backwards compat. |
 | 5 | Tier semantics | **User-configurable per workspace via IDENTITY.md frontmatter, internal heuristic as default.** Workspace config can override `tier: :primary` to mean a specific model id. Lives in the workspace repo so it's versioned alongside the project. |
-| 6 | Anthropic prompt caching | **YES** — implement `cache_control` blocks in `Transport.AnthropicMessages` since `agent_ex/LLMCall` already computes `stable_prefix_hash` and `prefix_changed`. |
-| 7 | Embeddings as separate concept? | **Same provider/transport stack, distinguished by capability tag.** Mneme gets a thin adapter that calls `AgentEx.LLM.embed_tier/2`. |
+| 6 | Anthropic prompt caching | **YES** — implement `cache_control` blocks in `Transport.AnthropicMessages` since `agentic/LLMCall` already computes `stable_prefix_hash` and `prefix_changed`. |
+| 7 | Embeddings as separate concept? | **Same provider/transport stack, distinguished by capability tag.** Recollect gets a thin adapter that calls `Agentic.LLM.embed_tier/2`. |
 | 8 | Capability tags | **YES** — starter taxonomy, grow as we use the agent. Providers tag their catalog entries, `Catalog.find/1` accepts tag filters. |
 | 9 | Catalog refresh on boot | **Async.** First refresh fires ~100 ms after boot. Persisted catalog from `~/.worth/catalog.json` is the warm path so the sidebar isn't `(detecting…)`. |
 | 10 | Workspace tier config location | **IDENTITY.md frontmatter.** Lives in the workspace repo, versioned with the project. No new config file. |
 | 11 | Provider enable/disable persistence | **Persisted to `~/.worth/config.exs`.** `/provider disable groq` survives restart. |
-| 12 | Embedding dimension migration | **Slim tool in worth that calls into Mneme.** If Mneme lacks the underlying re-embed primitive, implement it in `../mneme` first. Worth provides the user-facing CLI/slash command. |
+| 12 | Embedding dimension migration | **Slim tool in worth that calls into Recollect.** If Recollect lacks the underlying re-embed primitive, implement it in `../recollect` first. Worth provides the user-facing CLI/slash command. |
 | 13 | Per-provider error classification | **Pre-populate with the openclaw failover taxonomy.** See "Error taxonomy" section below. Adds Phase 2 alongside the Provider behaviour. |
-| 14 | `agent_ex` config namespace | **Yes, add it.** `agent_ex` is used in other projects, needs its own config surface. See "agent_ex configuration" section below. |
+| 14 | `agentic` config namespace | **Yes, add it.** `agentic` is used in other projects, needs its own config surface. See "agentic configuration" section below. |
 
 ## Tier configuration **(from decision #5, #10)**
 
@@ -505,12 +505,12 @@ Resolution order (highest priority first):
 
 1. Workspace `IDENTITY.md` frontmatter `llm:` block.
 2. Global `~/.worth/config.exs` `[:llm, :tiers]` setting.
-3. Compile-time provider defaults in `agent_ex`.
+3. Compile-time provider defaults in `agentic`.
 4. Heuristic from catalog metadata (context window thresholds above).
 
 `Worth.Workspace.Identity` already parses frontmatter — extend it with
 an `llm` schema validation pass and surface the parsed config to
-`AgentEx.ModelRouter` per agent turn so a user editing the file mid-run
+`Agentic.ModelRouter` per agent turn so a user editing the file mid-run
 takes effect on the next message.
 
 ## Error taxonomy **(from decision #13)**
@@ -557,7 +557,7 @@ other 4xx → :permanent
 
 These come straight from `failover-matches.ts` — string matching on
 the lowercased error body. Implemented in
-`AgentEx.LLM.ErrorPatterns` so all transports share the same logic.
+`Agentic.LLM.ErrorPatterns` so all transports share the same logic.
 
 **`:rate_limit`** patterns:
 - `~r/rate[_ ]limit|too many requests|429/`
@@ -644,7 +644,7 @@ optional callback):
 ### Module structure
 
 ```
-agent_ex/lib/agent_ex/llm/
+agentic/lib/agentic/llm/
 ├── error.ex                    # %Error{} struct (already in plan)
 ├── error_patterns.ex           # Generic pattern tables + classify_message/1
 ├── error_classifier.ex         # classify/3 — combines status + headers + body
@@ -667,24 +667,24 @@ It's the one classification that **doesn't trigger failover**. The
 right response to "your prompt is too long" is to compact the
 conversation (drop old turns, summarize, prune tool results), not to
 try a different model — every model will fail the same way until you
-shrink the input. The agent_ex loop already has hooks for this; the
+shrink the input. The agentic loop already has hooks for this; the
 `:context_overflow` classification feeds into them rather than into
 the route retry walk.
 
-## `agent_ex` configuration namespace **(from decision #14)**
+## `agentic` configuration namespace **(from decision #14)**
 
-`agent_ex` gets its own application config surface. Hosts (worth and
-others) configure agent_ex through the standard Elixir config flow:
+`agentic` gets its own application config surface. Hosts (worth and
+others) configure agentic through the standard Elixir config flow:
 
 ```elixir
 # config/config.exs in any host project
-config :agent_ex,
+config :agentic,
   providers: [
-    AgentEx.LLM.Provider.Anthropic,
-    AgentEx.LLM.Provider.OpenAI,
-    AgentEx.LLM.Provider.OpenRouter,
-    AgentEx.LLM.Provider.Groq,
-    AgentEx.LLM.Provider.Ollama
+    Agentic.LLM.Provider.Anthropic,
+    Agentic.LLM.Provider.OpenAI,
+    Agentic.LLM.Provider.OpenRouter,
+    Agentic.LLM.Provider.Groq,
+    Agentic.LLM.Provider.Ollama
   ],
   catalog: [
     persist_path: "~/.worth/catalog.json",   # host-specific
@@ -705,16 +705,16 @@ config :agent_ex,
   ]
 ```
 
-Worth's `config/config.exs` provides the `agent_ex` block with worth-
+Worth's `config/config.exs` provides the `agentic` block with worth-
 specific paths. Other future projects (e.g. a non-TUI CLI tool, a
 Phoenix LiveView app embedding the agent loop) provide their own.
 
-`AgentEx.Config` (new module, mirrors `Worth.Config`) loads from
-`Application.get_all_env(:agent_ex)` at boot, exposes typed accessors
-(`AgentEx.Config.providers/0`, `AgentEx.Config.catalog_path/0`, etc.),
+`Agentic.Config` (new module, mirrors `Worth.Config`) loads from
+`Application.get_all_env(:agentic)` at boot, exposes typed accessors
+(`Agentic.Config.providers/0`, `Agentic.Config.catalog_path/0`, etc.),
 validates with `nimble_options`. **Worth's `Worth.Config` stays
 worth-specific** (workspaces, UI theme, MCP servers, cost limit) and
-delegates anything LLM-related to `AgentEx.Config`.
+delegates anything LLM-related to `Agentic.Config`.
 
 ## Embedding dimension migration **(from decision #12)**
 
@@ -728,16 +728,16 @@ search returns garbage.
 defmodule Worth.Tools.Memory.Reembed do
   @moduledoc """
   Re-embed all stored memories with the currently configured embedding
-  model. Calls into Mneme.Maintenance.Reembed.
+  model. Calls into Recollect.Maintenance.Reembed.
 
   Triggered by `/memory reembed` slash command, or by automatic
   detection when the embedding model changes between runs.
   """
 
   def execute(args, workspace) do
-    Mneme.Maintenance.Reembed.run(
+    Recollect.Maintenance.Reembed.run(
       workspace: workspace,
-      llm_fn: &AgentEx.LLM.embed_tier(&1, :embeddings, []),
+      llm_fn: &Agentic.LLM.embed_tier(&1, :embeddings, []),
       progress_callback: &report_progress/1
     )
   end
@@ -748,24 +748,24 @@ The tool is exposed as a slash command (`/memory reembed`) and as an
 agent tool (`memory_reembed`) so the agent can suggest re-running it
 when it notices retrieval quality has dropped.
 
-### Mneme side: implement what's missing
+### Recollect side: implement what's missing
 
-`../mneme` already has `Mneme.Maintenance.Reembed` (we saw it in the
+`../recollect` already has `Recollect.Maintenance.Reembed` (we saw it in the
 homunculus build artifacts). Audit it before Phase 4 starts:
 
-1. Confirm `Mneme.Maintenance.Reembed.run/1` exists and accepts a
+1. Confirm `Recollect.Maintenance.Reembed.run/1` exists and accepts a
    pluggable embedding callback.
 2. Confirm it stores the embedding model id alongside each row so a
    change is detectable.
-3. If either is missing, **implement it in `../mneme` first** before
-   wiring the worth tool. The mneme side is the right home — it's a
+3. If either is missing, **implement it in `../recollect` first** before
+   wiring the worth tool. The recollect side is the right home — it's a
    memory subsystem concern.
 4. Add startup detection: when worth boots and the configured
    embedding model differs from the one stored in the most recent
    memory rows, log a warning suggesting `/memory reembed`.
 
-Implementation order: **Mneme audit/patch → Worth tool → Phase 4
-Mneme adapter switch.**
+Implementation order: **Recollect audit/patch → Worth tool → Phase 4
+Recollect adapter switch.**
 
 ## Phased migration
 
@@ -778,19 +778,19 @@ phase is allowed to break the running app.
 into shared transport modules. No new provider behaviour yet, no
 catalog changes, no embeddings.
 
-1. Define `AgentEx.LLM.Response`, `AgentEx.LLM.Error`,
-   `AgentEx.LLM.RateLimit` structs in `agent_ex/lib/agent_ex/llm/`.
-2. Implement `AgentEx.LLM.Transport` behaviour.
-3. Implement `AgentEx.LLM.Transport.OpenAIChatCompletions`. Move all
+1. Define `Agentic.LLM.Response`, `Agentic.LLM.Error`,
+   `Agentic.LLM.RateLimit` structs in `agentic/lib/agentic/llm/`.
+2. Implement `Agentic.LLM.Transport` behaviour.
+3. Implement `Agentic.LLM.Transport.OpenAIChatCompletions`. Move all
    request building / response normalization / rate-limit header
    parsing / finish_reason translation / tool_calls parsing **out** of
    `Worth.LLM.OpenRouter` and into the transport.
-4. Implement `AgentEx.LLM.Transport.AnthropicMessages`. Move
+4. Implement `Agentic.LLM.Transport.AnthropicMessages`. Move
    `Worth.LLM.Anthropic`'s logic in.
 5. Rewrite `Worth.LLM.OpenRouter` and `Worth.LLM.Anthropic` as ~30-line
    shims that call into the transports with their respective base URLs
    and provider-specific request headers.
-6. `Worth.LLM.classify_error/1` and `agent_ex/LLMCall.classify_error/1`
+6. `Worth.LLM.classify_error/1` and `agentic/LLMCall.classify_error/1`
    forks **delete** — `Error.classification` is set at parse time.
 7. `chat_tier/3` retry walk and `LLMCall.do_try_routes/6` retry walk
    read `error.classification` and `error.retry_after_ms` directly.
@@ -804,33 +804,33 @@ trivially copyable to add Groq.
 classifier, and prove the abstraction works by adding Groq with zero
 edits outside the new file.
 
-1. Define `AgentEx.LLM.Provider` behaviour.
-2. Define `AgentEx.LLM.Model` and `AgentEx.LLM.Credentials` structs.
-3. Implement `AgentEx.LLM.Credentials.resolve/1`.
-4. **Implement `AgentEx.LLM.ErrorPatterns`** with the full pattern
+1. Define `Agentic.LLM.Provider` behaviour.
+2. Define `Agentic.LLM.Model` and `Agentic.LLM.Credentials` structs.
+3. Implement `Agentic.LLM.Credentials.resolve/1`.
+4. **Implement `Agentic.LLM.ErrorPatterns`** with the full pattern
    tables from the "Error taxonomy" section above. Pure functions,
    string-based, exhaustively unit-tested.
-5. **Implement `AgentEx.LLM.ErrorClassifier.classify/3`** that combines
+5. **Implement `Agentic.LLM.ErrorClassifier.classify/3`** that combines
    status code lookup + pattern fallback + provider-specific override.
-6. Add `AgentEx.Config` module (per the agent_ex configuration
+6. Add `Agentic.Config` module (per the agentic configuration
    namespace section) with `nimble_options` validation.
-7. Re-implement Anthropic, OpenAI, OpenRouter as `AgentEx.LLM.Provider.*`
+7. Re-implement Anthropic, OpenAI, OpenRouter as `Agentic.LLM.Provider.*`
    modules (move from `worth/lib/worth/llm/` to
-   `agent_ex/lib/agent_ex/llm/provider/`). Each implements the
+   `agentic/lib/agentic/llm/provider/`). Each implements the
    optional `classify_http_error/3` callback only if it has a
    provider-specific override (e.g. Z.ai code 1311). Old `Worth.LLM.*`
    adapter modules **deleted**.
-8. Add hybrid registration: `AgentEx.LLM.ProviderRegistry` GenServer
-   with compile-time list from `config :agent_ex, providers: [...]`,
+8. Add hybrid registration: `Agentic.LLM.ProviderRegistry` GenServer
+   with compile-time list from `config :agentic, providers: [...]`,
    runtime `enable/1` and `disable/1` calls. **Disable state persists
    to `~/.worth/config.exs`** via `Worth.Config.update/2` (per
    decision #11).
 9. Rewrite `Worth.LLM.chat/2` as a thin dispatcher: lookup provider →
    call transport. Retry logic in `chat_tier/3` and
-   `agent_ex/LLMCall.do_try_routes/6` reads `Error.classification` and
+   `agentic/LLMCall.do_try_routes/6` reads `Error.classification` and
    `Error.retry_after_ms` directly — no more string-matching.
-10. **Add `AgentEx.LLM.Provider.Groq`** as the forcing-function test.
-    New file under `agent_ex/lib/agent_ex/llm/provider/`. **No edits
+10. **Add `Agentic.LLM.Provider.Groq`** as the forcing-function test.
+    New file under `agentic/lib/agentic/llm/provider/`. **No edits
     to any other file.** If the abstraction is right, this works the
     first time. If anything else needs to change, the abstraction is
     wrong and we iterate.
@@ -848,24 +848,24 @@ classifications across providers.
 OpenRouter-specific free-model discovery, with workspace-level tier
 overrides.
 
-1. Define `AgentEx.LLM.Catalog` GenServer with `find/1`, `lookup/2`,
+1. Define `Agentic.LLM.Catalog` GenServer with `find/1`, `lookup/2`,
    `refresh/0`.
 2. Implement `~/.worth/catalog.json` persistence (schema-versioned).
 3. **Async refresh on boot** (per decision #9):
    `Process.send_after(self(), :first_refresh, 100)` so the warm path
    from disk is the first paint, network refresh kicks in shortly
    after.
-4. Move OpenRouter free-model discovery from `AgentEx.ModelRouter.Free`
-   into `AgentEx.LLM.Provider.OpenRouter.fetch_catalog/1`. Tag models
+4. Move OpenRouter free-model discovery from `Agentic.ModelRouter.Free`
+   into `Agentic.LLM.Provider.OpenRouter.fetch_catalog/1`. Tag models
    with `:chat`, `:tools`, `:reasoning`, `:free`, `:vision` based on
    the upstream metadata.
-5. Delete `AgentEx.ModelRouter.Free` (its job is now done by the
+5. Delete `Agentic.ModelRouter.Free` (its job is now done by the
    catalog + per-provider fetch_catalog).
-6. Refactor `AgentEx.ModelRouter.resolve_all/1` to query
-   `AgentEx.LLM.Catalog.find(tier: tier, ...)`. Cooldown table stays.
+6. Refactor `Agentic.ModelRouter.resolve_all/1` to query
+   `Agentic.LLM.Catalog.find(tier: tier, ...)`. Cooldown table stays.
 7. **Extend `Worth.Workspace.Identity`** to parse the `llm:` block
    from `IDENTITY.md` frontmatter (per decisions #5, #10). Validate
-   with `nimble_options`. Surface to `AgentEx.ModelRouter` per agent
+   with `nimble_options`. Surface to `Agentic.ModelRouter` per agent
    turn.
 8. Status sidebar reads model metadata (context window, cost) from the
    catalog instead of just labels.
@@ -877,20 +877,20 @@ choices and they take effect on the next agent turn.
 
 ### Phase 4 — Embeddings + reembed migration
 
-**Goal:** Mneme uses real embedding models via the same provider stack,
+**Goal:** Recollect uses real embedding models via the same provider stack,
 with a working migration path when the embedding model changes.
 
-**Pre-work in `../mneme`** (per decision #12):
+**Pre-work in `../recollect`** (per decision #12):
 
-1. Audit `Mneme.Maintenance.Reembed` — confirm it exists and accepts
+1. Audit `Recollect.Maintenance.Reembed` — confirm it exists and accepts
    a pluggable embedding callback. The build artifacts in homunculus
    suggest it does, but verify against the current source.
-2. Confirm Mneme stores `embedding_model_id` alongside each embedded
+2. Confirm Recollect stores `embedding_model_id` alongside each embedded
    row so a model switch is detectable.
-3. If either is missing, **implement them in `../mneme` first**. The
+3. If either is missing, **implement them in `../recollect` first**. The
    API surface should be:
    ```elixir
-   Mneme.Maintenance.Reembed.run(
+   Recollect.Maintenance.Reembed.run(
      workspace: workspace,
      embedding_fn: (text_or_list -> {:ok, vector_or_list} | {:error, term}),
      progress_callback: (progress -> :ok),
@@ -898,23 +898,23 @@ with a working migration path when the embedding model changes.
    )
    ```
 
-**Worth + agent_ex side:**
+**Worth + agentic side:**
 
 4. Add `build_embedding_request/2` and `parse_embedding_response/2` to
    `Transport.OpenAIChatCompletions` and `Transport.Ollama`.
-5. Implement `AgentEx.LLM.Provider.Ollama` (chat + embeddings, hits
+5. Implement `Agentic.LLM.Provider.Ollama` (chat + embeddings, hits
    `localhost:11434`).
 6. Add `:embeddings` tag detection in `OpenRouter.fetch_catalog/1` via
    `?output_modalities=embeddings` filter (port from homunculus's
    `Homunculus.Providers.OpenRouter.list_embedding_models/2`).
-7. Add `AgentEx.LLM.embed/2` and `embed_tier/2` entry points.
+7. Add `Agentic.LLM.embed/2` and `embed_tier/2` entry points.
 8. Implement `Worth.Memory.Embeddings.Adapter` conforming to
-   `Mneme.EmbeddingProvider` behaviour, delegating to
-   `AgentEx.LLM.embed_tier/2`.
-9. Switch Mneme config away from `Mneme.Embedding.Mock`.
+   `Recollect.EmbeddingProvider` behaviour, delegating to
+   `Agentic.LLM.embed_tier/2`.
+9. Switch Recollect config away from `Recollect.Embedding.Mock`.
 10. Add `embeddings` tier slot to the IDENTITY.md frontmatter schema.
 11. **Implement `Worth.Tools.Memory.Reembed`** as a thin wrapper around
-    `Mneme.Maintenance.Reembed.run/1`. Expose as `/memory reembed`
+    `Recollect.Maintenance.Reembed.run/1`. Expose as `/memory reembed`
     slash command and as agent tool `memory_reembed`.
 12. **Boot-time detection:** when worth starts and the configured
     embedding model differs from the most recent embedding row's
@@ -922,7 +922,7 @@ with a working migration path when the embedding model changes.
     `/memory reembed`. Don't auto-trigger — let the user decide when
     to spend the time/tokens.
 
-**Deliverable:** Mneme stores real embeddings, sidebar shows the
+**Deliverable:** Recollect stores real embeddings, sidebar shows the
 embedding model in addition to chat models, both can fall back to free
 via the same retry/cooldown machinery, and switching embedding models
 is a single slash command away.
@@ -931,17 +931,17 @@ is a single slash command away.
 
 **Goal:** see your quota and your spend in the TUI.
 
-1. Define `AgentEx.LLM.Usage` and `AgentEx.LLM.UsageWindow` structs.
+1. Define `Agentic.LLM.Usage` and `Agentic.LLM.UsageWindow` structs.
 2. Implement `Provider.Anthropic.fetch_usage/1` (`/v1/organizations/<id>/usage`
    with oauth credential).
 3. Implement `Provider.OpenRouter.fetch_usage/1` (`/api/v1/auth/key`).
-4. Add `AgentEx.LLM.UsageManager` GenServer polling every 5 minutes,
+4. Add `Agentic.LLM.UsageManager` GenServer polling every 5 minutes,
    on-demand via `/usage refresh`.
 5. **Cost telemetry via `:telemetry` events** (decision #4):
-   - `agent_ex/LLMCall` and `AgentEx.LLM.embed/2` already emit
-     `[:agent_ex, :llm_call, :stop]` with placeholder `cost_usd: 0.0`.
+   - `agentic/LLMCall` and `Agentic.LLM.embed/2` already emit
+     `[:agentic, :llm_call, :stop]` with placeholder `cost_usd: 0.0`.
      Replace with real cost computed from `Model.cost` × `Response.usage`.
-   - New event: `[:agent_ex, :llm, :embed, :stop]` for embedding calls,
+   - New event: `[:agentic, :llm, :embed, :stop]` for embedding calls,
      same shape.
    - New module `Worth.Metrics` (GenServer): attaches handlers to
      these events at boot, aggregates per-session totals (cost,
@@ -975,7 +975,7 @@ attach to.
 
 **Goal:** stop paying full price for the system prompt every turn.
 
-1. `agent_ex/LLMCall` already computes `stable_prefix_hash` and
+1. `agentic/LLMCall` already computes `stable_prefix_hash` and
    `prefix_changed`. Pass this through to the transport in
    `canonical_params`.
 2. `Transport.AnthropicMessages.build_chat_request/2` adds
@@ -1024,7 +1024,7 @@ blocking the plan on:
   (`name | enabled | model count | last refresh | usage status`), grow
   if needed.
 - **Slash command for re-embed progress reporting:** the
-  `progress_callback` from Mneme should pipe into a `:reembed_progress`
+  `progress_callback` from Recollect should pipe into a `:reembed_progress`
   agent event so the UI can show a progress bar.
 - **Provider-specific test harness:** every provider module should
   have a smoke test that hits `test_key/1` (validate auth) and
@@ -1065,15 +1065,15 @@ deferred, and any judgment calls future phases need to know about.
 ### Phase 1 — Extract transports ✅ (2026-04-08)
 
 **Status:** Shipped. `mix compile --warnings-as-errors` clean in both
-repos; `worth` 117 tests / `agent_ex` 266 tests, 0 failures.
+repos; `worth` 117 tests / `agentic` 266 tests, 0 failures.
 
-**Files created (agent_ex):**
-- `lib/agent_ex/llm/response.ex` — `AgentEx.LLM.Response` struct
-- `lib/agent_ex/llm/error.ex` — `AgentEx.LLM.Error` struct
-- `lib/agent_ex/llm/rate_limit.ex` — `AgentEx.LLM.RateLimit` struct
-- `lib/agent_ex/llm/transport.ex` — `Transport` behaviour + canonical-params typespec
-- `lib/agent_ex/llm/transport/openai_chat_completions.ex`
-- `lib/agent_ex/llm/transport/anthropic_messages.ex`
+**Files created (agentic):**
+- `lib/agentic/llm/response.ex` — `Agentic.LLM.Response` struct
+- `lib/agentic/llm/error.ex` — `Agentic.LLM.Error` struct
+- `lib/agentic/llm/rate_limit.ex` — `Agentic.LLM.RateLimit` struct
+- `lib/agentic/llm/transport.ex` — `Transport` behaviour + canonical-params typespec
+- `lib/agentic/llm/transport/openai_chat_completions.ex`
+- `lib/agentic/llm/transport/anthropic_messages.ex`
 
 **Files created (worth):**
 - `lib/worth/llm/shim.ex` — shared canonical-params builder, `Req.post`
@@ -1087,7 +1087,7 @@ repos; `worth` 117 tests / `agent_ex` 266 tests, 0 failures.
 - `worth/lib/worth/llm.ex` — `chat_tier/3` retry walk now reads
   `error.classification` first, with the legacy `{:error, binary}`
   clauses retained as a fallback shim.
-- `agent_ex/lib/agent_ex/loop/stages/llm_call.ex` — same treatment in
+- `agentic/lib/agentic/loop/stages/llm_call.ex` — same treatment in
   `do_try_routes/6`.
 
 **Phase 1 classification scope (deliberately partial — full taxonomy
@@ -1106,11 +1106,11 @@ pattern table.
    first, so any shim-produced error goes through the new path. **Phase
    2's `ErrorClassifier` should remove the legacy clauses entirely**
    once those sites are migrated.
-2. **`Worth.LLM.Shim` lives in worth, not agent_ex.** Its
+2. **`Worth.LLM.Shim` lives in worth, not agentic.** Its
    `project_response/1` translates the new `%Response{}` back into the
-   legacy Worth map shape because `AgentEx.Loop.Stages.ModeRouter`
+   legacy Worth map shape because `Agentic.Loop.Stages.ModeRouter`
    still matches on `response["stop_reason"] == "end_turn"`. **Phase 2
-   should move the canonical-params builder + Req driver into agent_ex
+   should move the canonical-params builder + Req driver into agentic
    alongside the `Provider` behaviour, and switch ModeRouter to atom
    matching so the projection layer can be deleted.**
 3. **`Response.stop_reason` is an atom in the struct, string in the
@@ -1132,43 +1132,43 @@ pattern table.
 ### Phase 2 — Provider behaviour, error taxonomy, Groq ✅ (2026-04-08)
 
 **Status:** Shipped. `mix compile --warnings-as-errors` clean in both
-repos; `agent_ex` 352 tests / `worth` 117 tests, 0 failures.
+repos; `agentic` 352 tests / `worth` 117 tests, 0 failures.
 
-**Files created (agent_ex):**
-- `lib/agent_ex/llm/credentials.ex` — `%Credentials{}` struct + `resolve/1`
-- `lib/agent_ex/llm/error_patterns.ex` — Full pattern tables from openclaw
-- `lib/agent_ex/llm/error_classifier.ex` — `classify/3` combining status + patterns + provider override
-- `lib/agent_ex/llm/provider.ex` — `Provider` behaviour + `Provider.chat/3` entry point
-- `lib/agent_ex/llm/provider/anthropic.ex`
-- `lib/agent_ex/llm/provider/openai.ex`
-- `lib/agent_ex/llm/provider/openrouter.ex`
-- `lib/agent_ex/llm/provider/groq.ex` — Forcing-function test: zero edits to dispatch code
-- `lib/agent_ex/llm/provider_registry.ex` — Hybrid registration GenServer
-- `lib/agent_ex/config.ex` — `AgentEx.Config` with `nimble_options` validation
-- `test/agent_ex/llm/error_patterns_test.exs` — 86 new tests
-- `test/agent_ex/llm/error_classifier_test.exs`
-- `test/agent_ex/llm/provider_test.exs`
+**Files created (agentic):**
+- `lib/agentic/llm/credentials.ex` — `%Credentials{}` struct + `resolve/1`
+- `lib/agentic/llm/error_patterns.ex` — Full pattern tables from openclaw
+- `lib/agentic/llm/error_classifier.ex` — `classify/3` combining status + patterns + provider override
+- `lib/agentic/llm/provider.ex` — `Provider` behaviour + `Provider.chat/3` entry point
+- `lib/agentic/llm/provider/anthropic.ex`
+- `lib/agentic/llm/provider/openai.ex`
+- `lib/agentic/llm/provider/openrouter.ex`
+- `lib/agentic/llm/provider/groq.ex` — Forcing-function test: zero edits to dispatch code
+- `lib/agentic/llm/provider_registry.ex` — Hybrid registration GenServer
+- `lib/agentic/config.ex` — `Agentic.Config` with `nimble_options` validation
+- `test/agentic/llm/error_patterns_test.exs` — 86 new tests
+- `test/agentic/llm/error_classifier_test.exs`
+- `test/agentic/llm/provider_test.exs`
 
-**Files modified (agent_ex):**
-- `lib/agent_ex/llm/error.ex` — Expanded classification type to full 12-value taxonomy
-- `lib/agent_ex/llm/transport/openai_chat_completions.ex` — Uses `ErrorClassifier` instead of inline `classify/2`
-- `lib/agent_ex/llm/transport/anthropic_messages.ex` — Same
-- `lib/agent_ex/loop/stages/mode_router.ex` — Atom-based `stop_reason` matching with `normalize_stop_reason/1` for backward compat
-- `lib/agent_ex/loop/stages/llm_call.ex` — Expanded `legacy_failure/1` mapping for all 12 classifications
-- `lib/agent_ex/loop/stages/transcript_recorder.ex` — Handles atom stop_reasons
-- `lib/agent_ex/loop/stages/plan_tracker.ex` — Same
-- `lib/agent_ex/application.ex` — Added `ProviderRegistry` to supervision tree
+**Files modified (agentic):**
+- `lib/agentic/llm/error.ex` — Expanded classification type to full 12-value taxonomy
+- `lib/agentic/llm/transport/openai_chat_completions.ex` — Uses `ErrorClassifier` instead of inline `classify/2`
+- `lib/agentic/llm/transport/anthropic_messages.ex` — Same
+- `lib/agentic/loop/stages/mode_router.ex` — Atom-based `stop_reason` matching with `normalize_stop_reason/1` for backward compat
+- `lib/agentic/loop/stages/llm_call.ex` — Expanded `legacy_failure/1` mapping for all 12 classifications
+- `lib/agentic/loop/stages/transcript_recorder.ex` — Handles atom stop_reasons
+- `lib/agentic/loop/stages/plan_tracker.ex` — Same
+- `lib/agentic/application.ex` — Added `ProviderRegistry` to supervision tree
 - `config/config.exs` — Added `providers:` list with all four providers
 - `test/support/test_helpers.ex` — Mock responses now use atom `stop_reason`
 - `mix.exs` — Added `nimble_options` dep
 
 **Files modified (worth):**
-- `lib/worth/llm.ex` — Rewritten as thin dispatcher over `AgentEx.LLM.Provider.chat/3`
+- `lib/worth/llm.ex` — Rewritten as thin dispatcher over `Agentic.LLM.Provider.chat/3`
 - `lib/worth/llm/cost.ex` — Uses `Model.cost` struct when available, falls back to legacy pricing
 - `lib/worth/ui/commands.ex` — Added `/provider list`, `/provider enable <id>`, `/provider disable <id>`
 
 **Old adapter files retained (not deleted yet):**
-- `lib/worth/llm/adapter.ex` — Superseded by `AgentEx.LLM.Provider` but kept for safety
+- `lib/worth/llm/adapter.ex` — Superseded by `Agentic.LLM.Provider` but kept for safety
 - `lib/worth/llm/anthropic.ex` — No longer called from `Worth.LLM`, can delete
 - `lib/worth/llm/openai.ex` — Same
 - `lib/worth/llm/openrouter.ex` — Same
@@ -1201,11 +1201,11 @@ repos; `agent_ex` 352 tests / `worth` 117 tests, 0 failures.
    calls them. Delete them early in Phase 3 once Catalog is in place.
 2. **`Worth.LLM` still projects `%Response{}` to legacy map shape.** The
    `project_result/1` / `project_block/1` functions in `Worth.LLM` create
-   the string-keyed maps the agent_ex loop consumes. Phase 3 should
+   the string-keyed maps the agentic loop consumes. Phase 3 should
    switch the loop to consume `%Response{}` directly and delete the
    projection layer.
 3. **ProviderRegistry doesn't yet feed ModelRouter.** The current
-   ModelRouter still uses the `AgentEx.ModelRouter.Free` module for route
+   ModelRouter still uses the `Agentic.ModelRouter.Free` module for route
    discovery. Phase 3's Catalog will replace this: `Catalog.find/1`
    replaces `Free.free_routes/1`, and `ProviderRegistry.enabled/0`
    determines which providers to query.
@@ -1216,33 +1216,33 @@ repos; `agent_ex` 352 tests / `worth` 117 tests, 0 failures.
 ### Phase 3 — Catalog + capability tags + IDENTITY tiers ✅ (2026-04-08)
 
 **Status:** Shipped. `mix compile --warnings-as-errors` clean in both
-repos; `agent_ex` 363 tests / `worth` 123 tests, 0 failures.
+repos; `agentic` 363 tests / `worth` 123 tests, 0 failures.
 
-**Files created (agent_ex):**
-- `lib/agent_ex/llm/catalog.ex` — GenServer with `find/1`, `lookup/2`,
+**Files created (agentic):**
+- `lib/agentic/llm/catalog.ex` — GenServer with `find/1`, `lookup/2`,
   `for_provider/1`, `all/0`, `refresh/0`, `refresh_provider/1`, `info/0`
-- `test/agent_ex/llm/catalog_test.exs` — 11 tests
+- `test/agentic/llm/catalog_test.exs` — 11 tests
 
 **Files created (worth):**
 - `lib/worth/workspace/identity.ex` — Frontmatter parser with `llm:`
   block schema validation via `nimble_options`
 - `test/worth/workspace/identity_test.exs` — 6 tests
 
-**Files modified (agent_ex):**
-- `lib/agent_ex/model_router.ex` — Rewritten to query `Catalog.find/1`
+**Files modified (agentic):**
+- `lib/agentic/model_router.ex` — Rewritten to query `Catalog.find/1`
   instead of `Free.free_routes/1`. Added `set_tier_overrides/1`,
   `clear_tier_overrides/0`. Cooldown table preserved as ETS-backed
   per-model-id health tracking.
-- `lib/agent_ex/application.ex` — Added `Catalog` to supervision tree
+- `lib/agentic/application.ex` — Added `Catalog` to supervision tree
   (before ModelRouter)
 - `config/config.exs` — Added `catalog:` config block with persist path
-- `lib/agent_ex.ex` — Added `:tier_overrides` option support alongside
+- `lib/agentic.ex` — Added `:tier_overrides` option support alongside
   legacy `:model_routes`
 
 **Files modified (worth):**
 - `lib/worth/brain.ex` — `init/1` and `switch_workspace` handler now
   load tier overrides from IDENTITY.md frontmatter and pass them to
-  `AgentEx.ModelRouter.set_tier_overrides/1`
+  `Agentic.ModelRouter.set_tier_overrides/1`
 - `lib/worth/ui/sidebar.ex` — Status tab now shows catalog model count,
   provider fetch statuses, and context window metadata. Tab functions
   changed from `defp` to `def` for root.ex access.
@@ -1284,42 +1284,42 @@ repos; `agent_ex` 363 tests / `worth` 123 tests, 0 failures.
 ### Phase 4 — Embeddings + reembed migration ✅ (2026-04-08)
 
 **Status:** Shipped. `mix compile` clean in all three repos;
-`mneme` 56 tests / `agent_ex` 386 tests / `worth` 128 tests, 0 failures.
+`recollect` 56 tests / `agentic` 386 tests / `worth` 128 tests, 0 failures.
 
-**Files created (mneme):**
-- `priv/repo/migrations/20260408000000_embedding_model_id_and_1536_dim.exs` — drops/recreates `embedding` columns on `mneme_chunks/entries/entities` as `vector(1536)`, adds nullable `embedding_model_id :string` column, recreates HNSW indexes
-- `test/mneme/maintenance/reembed_test.exs` — 3 new tests covering callback path, `:stale_model` scope, and progress callback capture
+**Files created (recollect):**
+- `priv/repo/migrations/20260408000000_embedding_model_id_and_1536_dim.exs` — drops/recreates `embedding` columns on `recollect_chunks/entries/entities` as `vector(1536)`, adds nullable `embedding_model_id :string` column, recreates HNSW indexes
+- `test/recollect/maintenance/reembed_test.exs` — 3 new tests covering callback path, `:stale_model` scope, and progress callback capture
 
-**Files created (agent_ex):**
-- `lib/agent_ex/llm.ex` — `AgentEx.LLM` entry point with `chat/2`, `chat_tier/3`, `embed/2`, `embed_tier/3`
-- `lib/agent_ex/llm/transport/ollama.ex` — full transport (chat + embeddings) hitting `/api/chat` and `/api/embed`, atom `stop_reason`, `parse_rate_limit/1` returns `nil`
-- `lib/agent_ex/llm/provider/ollama.ex` — `OLLAMA_HOST` override, `:not_supported` on connection failure, embedding-model name detection by `embed`/`bge`/`nomic-embed`/`mxbai-embed`/`all-minilm`/`snowflake-arctic-embed` substrings
-- `test/agent_ex/llm/transport/ollama_test.exs`, `test/agent_ex/llm/provider/ollama_test.exs`, `test/agent_ex/llm_test.exs`
+**Files created (agentic):**
+- `lib/agentic/llm.ex` — `Agentic.LLM` entry point with `chat/2`, `chat_tier/3`, `embed/2`, `embed_tier/3`
+- `lib/agentic/llm/transport/ollama.ex` — full transport (chat + embeddings) hitting `/api/chat` and `/api/embed`, atom `stop_reason`, `parse_rate_limit/1` returns `nil`
+- `lib/agentic/llm/provider/ollama.ex` — `OLLAMA_HOST` override, `:not_supported` on connection failure, embedding-model name detection by `embed`/`bge`/`nomic-embed`/`mxbai-embed`/`all-minilm`/`snowflake-arctic-embed` substrings
+- `test/agentic/llm/transport/ollama_test.exs`, `test/agentic/llm/provider/ollama_test.exs`, `test/agentic/llm_test.exs`
 
 **Files created (worth):**
-- `lib/worth/memory/embeddings/adapter.ex` — `Worth.Memory.Embeddings.Adapter` implementing `Mneme.EmbeddingProvider` and delegating to `AgentEx.LLM.embed_tier/3`
+- `lib/worth/memory/embeddings/adapter.ex` — `Worth.Memory.Embeddings.Adapter` implementing `Recollect.EmbeddingProvider` and delegating to `Agentic.LLM.embed_tier/3`
 - `lib/worth/memory/embeddings/stale_check.ex` — boot-time check that compares configured model id vs latest stored row's id, logs at info level suggesting `/memory reembed`
-- `lib/worth/tools/memory/reembed.ex` — `Worth.Tools.Memory.Reembed` thin wrapper around `Mneme.Maintenance.Reembed.run/1` with embed_fn pre-wired to `AgentEx.LLM.embed_tier/3`
-- `priv/repo/migrations/20260408000000_embedding_model_id_and_1536_dim.exs` — copy of the mneme migration (worth bundles its own copies of mneme migrations)
+- `lib/worth/tools/memory/reembed.ex` — `Worth.Tools.Memory.Reembed` thin wrapper around `Recollect.Maintenance.Reembed.run/1` with embed_fn pre-wired to `Agentic.LLM.embed_tier/3`
+- `priv/repo/migrations/20260408000000_embedding_model_id_and_1536_dim.exs` — copy of the recollect migration (worth bundles its own copies of recollect migrations)
 
-**Files modified (mneme):**
-- `lib/mneme/embedding_provider.ex` — added optional `model_id/1` callback (chosen over the 3-tuple shape so existing 2-tuple returns from generate/embed stay intact); added `EmbeddingProvider.model_id/1` helper
-- `lib/mneme/maintenance/reembed.ex` — full rewrite. New `run/1` accepts `:embedding_fn`, `:progress_callback`, `:scope` (`:nil_only` | `:all` | `{:stale_model, id}`), `:tables`, `:batch_size`. Default `embedding_fn` calls the global `EmbeddingProvider`. UUID handled via `uuid_to_binary/1` (handles both 16-byte binary and string forms)
-- `lib/mneme/pipeline/embedder.ex` — every embedding write now passes `model_id` through to `store_embedding/5` which sets `embedding_model_id` alongside the vector via raw SQL, with the same UUID binary helper
-- `lib/mneme/embedding/mock.ex` — 1536 dims, `model_id/1` returns `"mock-1536"`
-- `lib/mneme/config.ex` — default dimensions 768 → 1536
-- `lib/mneme/schema/{chunk,entity,entry}.ex` — added `embedding_model_id` field + cast
-- `lib/mix/tasks/mneme.gen.migration.ex` — default `--dimensions` 768 → 1536
-- **Deleted** `lib/mneme/embedding/{openai,ollama,openrouter}.ex` per the "adapter + delete" choice — worth's adapter is now the canonical embedding path, and these were duplicating logic that lives in agent_ex providers
+**Files modified (recollect):**
+- `lib/recollect/embedding_provider.ex` — added optional `model_id/1` callback (chosen over the 3-tuple shape so existing 2-tuple returns from generate/embed stay intact); added `EmbeddingProvider.model_id/1` helper
+- `lib/recollect/maintenance/reembed.ex` — full rewrite. New `run/1` accepts `:embedding_fn`, `:progress_callback`, `:scope` (`:nil_only` | `:all` | `{:stale_model, id}`), `:tables`, `:batch_size`. Default `embedding_fn` calls the global `EmbeddingProvider`. UUID handled via `uuid_to_binary/1` (handles both 16-byte binary and string forms)
+- `lib/recollect/pipeline/embedder.ex` — every embedding write now passes `model_id` through to `store_embedding/5` which sets `embedding_model_id` alongside the vector via raw SQL, with the same UUID binary helper
+- `lib/recollect/embedding/mock.ex` — 1536 dims, `model_id/1` returns `"mock-1536"`
+- `lib/recollect/config.ex` — default dimensions 768 → 1536
+- `lib/recollect/schema/{chunk,entity,entry}.ex` — added `embedding_model_id` field + cast
+- `lib/mix/tasks/recollect.gen.migration.ex` — default `--dimensions` 768 → 1536
+- **Deleted** `lib/recollect/embedding/{openai,ollama,openrouter}.ex` per the "adapter + delete" choice — worth's adapter is now the canonical embedding path, and these were duplicating logic that lives in agentic providers
 
-**Files modified (agent_ex):**
-- `lib/agent_ex/llm/transport.ex` — added optional `build_embedding_request/2` and `parse_embedding_response/3` callbacks
-- `lib/agent_ex/llm/transport/openai_chat_completions.ex` — implements both new callbacks; covers OpenAI/OpenRouter/Groq/etc. via standard `/embeddings` endpoint
-- `lib/agent_ex/llm/provider/openrouter.ex` — `fetch_catalog/1` now does dual fetch (`/models` + `/models?output_modalities=embeddings`), merges, dedupes by id, logs warning + degrades gracefully when embedding fetch fails
+**Files modified (agentic):**
+- `lib/agentic/llm/transport.ex` — added optional `build_embedding_request/2` and `parse_embedding_response/3` callbacks
+- `lib/agentic/llm/transport/openai_chat_completions.ex` — implements both new callbacks; covers OpenAI/OpenRouter/Groq/etc. via standard `/embeddings` endpoint
+- `lib/agentic/llm/provider/openrouter.ex` — `fetch_catalog/1` now does dual fetch (`/models` + `/models?output_modalities=embeddings`), merges, dedupes by id, logs warning + degrades gracefully when embedding fetch fails
 - `config/config.exs` — `Provider.Ollama` added to `providers:` list
 
 **Files modified (worth):**
-- `config/config.exs` — `:mneme` `embedding:` switched from `Mneme.Embedding.Mock` to `Worth.Memory.Embeddings.Adapter` with `tier: :embeddings, dimensions: 1536`. `config/test.exs` keeps Mock for fast unit tests
+- `config/config.exs` — `:recollect` `embedding:` switched from `Recollect.Embedding.Mock` to `Worth.Memory.Embeddings.Adapter` with `tier: :embeddings, dimensions: 1536`. `config/test.exs` keeps Mock for fast unit tests
 - `lib/worth/application.ex` — async `Worth.Memory.Embeddings.StaleCheck.run/0` after boot via `Worth.SkillInit` task supervisor
 - `lib/worth/ui/commands.ex` — `/memory reembed` parse + dispatch (runs reembed in a background `Task` so the UI doesn't block) + help text entry
 
@@ -1342,7 +1342,7 @@ repos; `agent_ex` 363 tests / `worth` 123 tests, 0 failures.
    `StaleCheck` uses the latter implicitly by suggesting the user run
    `/memory reembed` when the configured model differs from the most
    recent row's stored id.
-4. **`AgentEx.LLM.embed/2` and `embed_tier/3` always return a list of
+4. **`Agentic.LLM.embed/2` and `embed_tier/3` always return a list of
    vectors plus a model id.** Single-text input is a 1-element list.
    `{:ok, [vector, ...], model_id}`. Caller flattens when it knows.
 5. **OpenRouter dual catalog fetch.** Chat models from `/models`,
@@ -1353,22 +1353,22 @@ repos; `agent_ex` 363 tests / `worth` 123 tests, 0 failures.
    pin a model, `embed_tier/3` walks the catalog and sorts: prefer
    `text-embedding-3-small` (the documented default), then non-Ollama
    providers, then anything else.
-7. **Worth bundles its own copy of mneme migrations** in
+7. **Worth bundles its own copy of recollect migrations** in
    `priv/repo/migrations/`. The new migration was copied across — both
    repos run the migration independently.
-8. **Mneme's `Mneme.Embedding.{OpenAI,Ollama,OpenRouter}` deleted.**
+8. **Recollect's `Recollect.Embedding.{OpenAI,Ollama,OpenRouter}` deleted.**
    Per decision in conversation: worth's adapter is the canonical embed
-   path, and the agent_ex provider stack is where those providers now
+   path, and the agentic provider stack is where those providers now
    live. Mock stays for tests.
 9. **`config/test.exs` in worth keeps Mock.** Routing tests through the
-   adapter would require a live agent_ex catalog and providers — too
+   adapter would require a live agentic catalog and providers — too
    heavy for unit tests. Mock now produces 1536-dim vectors so the
    schema dim matches production.
 
 **Judgment calls Phase 5+ needs to know about:**
 
 1. **Pre-existing async ownership warnings** in
-   `Mneme.Pipeline.Embedder.embed_entry_async/1` show up in worth's test
+   `Recollect.Pipeline.Embedder.embed_entry_async/1` show up in worth's test
    output. They are NOT Phase 4 regressions — `embed_entry_async` spawns
    into `Task.Supervisor` outside the test sandbox connection, and
    always has. Worth fixing in a future cleanup pass via `:caller`
@@ -1399,21 +1399,21 @@ repos; `agent_ex` 363 tests / `worth` 123 tests, 0 failures.
 ### Phase 5 — Usage / quota + cost telemetry ✅ (2026-04-08)
 
 **Status:** Shipped. `mix compile` clean in all three repos;
-`agent_ex` 386 tests / `mneme` 56 tests / `worth` 128 tests, 0 failures.
+`agentic` 386 tests / `recollect` 56 tests / `worth` 128 tests, 0 failures.
 
-**Files created (agent_ex):**
-- `lib/agent_ex/llm/usage.ex` — `%Usage{}` struct (provider, label, plan, windows, credits, error, fetched_at)
-- `lib/agent_ex/llm/usage_window.ex` — `%UsageWindow{}` struct (label, used, limit, unit, reset_at)
-- `lib/agent_ex/llm/usage_manager.ex` — `UsageManager` GenServer that polls every 5min via `Process.send_after`, exposes `snapshot/0`, `for_provider/1`, `refresh/0`, `refresh_provider/1`. Walks `ProviderRegistry.enabled/0` and calls `fetch_usage/1` on each, normalizing the result to `%Usage{}`. Skips providers that return `:not_supported`.
+**Files created (agentic):**
+- `lib/agentic/llm/usage.ex` — `%Usage{}` struct (provider, label, plan, windows, credits, error, fetched_at)
+- `lib/agentic/llm/usage_window.ex` — `%UsageWindow{}` struct (label, used, limit, unit, reset_at)
+- `lib/agentic/llm/usage_manager.ex` — `UsageManager` GenServer that polls every 5min via `Process.send_after`, exposes `snapshot/0`, `for_provider/1`, `refresh/0`, `refresh_provider/1`. Walks `ProviderRegistry.enabled/0` and calls `fetch_usage/1` on each, normalizing the result to `%Usage{}`. Skips providers that return `:not_supported`.
 
 **Files created (worth):**
-- `lib/worth/metrics.ex` — `Worth.Metrics` GenServer that attaches `:telemetry` handlers to `[:agent_ex, :llm_call, :stop]` and `[:agent_ex, :llm, :embed, :stop]`. Aggregates per-session totals (cost, calls, input/output/cache tokens, embed calls/cost) and a `by_provider` breakdown. Exposes `session/0`, `session_cost/0`, `by_provider/0`, `reset/0`.
+- `lib/worth/metrics.ex` — `Worth.Metrics` GenServer that attaches `:telemetry` handlers to `[:agentic, :llm_call, :stop]` and `[:agentic, :llm, :embed, :stop]`. Aggregates per-session totals (cost, calls, input/output/cache tokens, embed calls/cost) and a `by_provider` breakdown. Exposes `session/0`, `session_cost/0`, `by_provider/0`, `reset/0`.
 
-**Files modified (agent_ex):**
-- `lib/agent_ex/loop/stages/llm_call.ex` — `[:llm_call, :stop]` event now carries real `cost_usd` (computed from `Catalog.lookup` × token counts), plus `cache_read`/`cache_write` measurements and `provider` metadata. New private `compute_cost/2` + `route_model/1` + `safe_atom/1` helpers. The route map fields are `:provider_name` (string) and `:model_id` (string) — `safe_atom/1` converts to atom for catalog lookup.
-- `lib/agent_ex/llm.ex` — `embed_via_provider/3` now wraps `Req.post` in a telemetry span and emits `[:agent_ex, :llm, :embed, :stop]` with `duration`, `input_count`, `cost_usd: 0.0` (placeholder — embedding cost requires per-vector pricing not yet in Model.cost). Helper `input_size/1` works for both list and single-string requests.
-- `lib/agent_ex/llm/provider/openrouter.ex` — `fetch_usage/1` now parses the `/auth/key` response into a `%Usage{}` struct with `credits` from `data.usage`/`data.limit` and `windows` from `data.rate_limit`. Falls back to flat-body parsing when the response doesn't have a `data` envelope.
-- `lib/agent_ex/application.ex` — `UsageManager` added to supervision tree after `Catalog`.
+**Files modified (agentic):**
+- `lib/agentic/loop/stages/llm_call.ex` — `[:llm_call, :stop]` event now carries real `cost_usd` (computed from `Catalog.lookup` × token counts), plus `cache_read`/`cache_write` measurements and `provider` metadata. New private `compute_cost/2` + `route_model/1` + `safe_atom/1` helpers. The route map fields are `:provider_name` (string) and `:model_id` (string) — `safe_atom/1` converts to atom for catalog lookup.
+- `lib/agentic/llm.ex` — `embed_via_provider/3` now wraps `Req.post` in a telemetry span and emits `[:agentic, :llm, :embed, :stop]` with `duration`, `input_count`, `cost_usd: 0.0` (placeholder — embedding cost requires per-vector pricing not yet in Model.cost). Helper `input_size/1` works for both list and single-string requests.
+- `lib/agentic/llm/provider/openrouter.ex` — `fetch_usage/1` now parses the `/auth/key` response into a `%Usage{}` struct with `credits` from `data.usage`/`data.limit` and `windows` from `data.rate_limit`. Falls back to flat-body parsing when the response doesn't have a `data` envelope.
+- `lib/agentic/application.ex` — `UsageManager` added to supervision tree after `Catalog`.
 
 **Files modified (worth):**
 - `lib/worth/application.ex` — `Worth.Metrics` added to supervision tree after `Worth.Telemetry`.
@@ -1425,9 +1425,9 @@ repos; `agent_ex` 363 tests / `worth` 123 tests, 0 failures.
 
 1. **Anthropic `fetch_usage/1` stays `:not_supported`.** The plan's `/v1/organizations/<id>/usage` endpoint requires OAuth admin credentials, and OAuth is explicitly deferred to a follow-up iteration. Phase 5 ships with OpenRouter as the only provider exposing real quota — Groq has no public usage endpoint, OpenAI's `/v1/usage` requires admin keys, Ollama has no quota.
 2. **Embedding cost is a 0.0 placeholder.** Embedding pricing is per-token but the response from `/v1/embeddings` doesn't include token usage in a portable shape, and `Model.cost` for embedding models stores per-1M-input pricing differently from chat models. Wiring real embedding cost requires (a) parsing usage out of each transport's embedding response, and (b) extending `Model.cost` to support embedding-only fields. Both deferred — telemetry events ship with the placeholder so the UI/Metrics path works end-to-end and the value can be flipped on without further plumbing.
-3. **`compute_cost/2` lives in `LLMCall`, not in a standalone Cost module.** The plan referenced `Worth.LLM.Cost.calculate/2` which existed but was never wired up — the route walks happen inside agent_ex, so doing the lookup there avoids the host having to know about catalog details. Worth's `Worth.LLM.Cost` module is now dead code (kept for backward compat, can be deleted in a follow-up).
+3. **`compute_cost/2` lives in `LLMCall`, not in a standalone Cost module.** The plan referenced `Worth.LLM.Cost.calculate/2` which existed but was never wired up — the route walks happen inside agentic, so doing the lookup there avoids the host having to know about catalog details. Worth's `Worth.LLM.Cost` module is now dead code (kept for backward compat, can be deleted in a follow-up).
 4. **Brain's `cost_total` field is now stale.** It still exists in the struct for backward compat with the dead `{:cost, amount}` event handler, but `:get_status` reads from `Worth.Metrics.session_cost()`. The `{:cost, amount}` handler in `Brain.handle_info/2` is now dead code paths nothing emits — removed in a follow-up cleanup is fine.
-5. **Cost limit enforcement still happens in agent_ex via `ContextGuard`** (which already emits `[:context, :cost_limit]`). The brain doesn't need to track cost itself for the limit — the agent loop bails when its own `total_cost` exceeds `cost_limit`. Worth.Metrics is purely observational.
+5. **Cost limit enforcement still happens in agentic via `ContextGuard`** (which already emits `[:context, :cost_limit]`). The brain doesn't need to track cost itself for the limit — the agent loop bails when its own `total_cost` exceeds `cost_limit`. Worth.Metrics is purely observational.
 6. **`Worth.Metrics.reset/0` is called from `/clear` and `switch_workspace`.** Per-session metrics, not long-term history — matches the plan's "session-only, reset on /clear and on workspace switch" guidance.
 7. **`Worth.Metrics.handle_event/4` is `cast`-only.** The telemetry callback runs in the caller's process and dispatches to the GenServer asynchronously to keep the agent loop fast. Order is preserved by the GenServer mailbox.
 8. **The telemetry handler is registered in `Worth.Metrics.init/1`** via `:telemetry.attach_many/4` with handler id `"worth-metrics-handler"`. No detach on shutdown — the GenServer dying is rare enough that leaking the handler is acceptable for now.
@@ -1438,27 +1438,27 @@ repos; `agent_ex` 363 tests / `worth` 123 tests, 0 failures.
 1. **Per-provider rate-limit windows are a stub.** OpenRouter exposes `data.rate_limit.{requests, interval}` but no `used` counter, so the sidebar shows the limit and a `?` for current usage. Anthropic's 5h/7d windows would populate `used` properly but require OAuth (deferred). Real per-window enforcement waits on Phase 5+.
 2. **Catalog `cost` field is read with both atom and string keys.** `Model.cost` uses atom keys (`%{input: 3.0, ...}`), but the `compute_cost/2` helper falls back to string keys defensively in case a host populates the catalog with a JSON-decoded map. Belt and suspenders.
 3. **`Worth.LLM.Cost`** is now unused dead code. Phase 6 can delete it cleanly along with `Worth.Brain.cost_total` and the dead `{:cost, amount}` handler.
-4. **`UsageManager` polls with a fixed 5-minute interval.** The `:agent_ex, :usage, :refresh_interval_ms` config key is read at boot but there's no live reload. Restart the app to change it. Acceptable for an observability cache.
+4. **`UsageManager` polls with a fixed 5-minute interval.** The `:agentic, :usage, :refresh_interval_ms` config key is read at boot but there's no live reload. Restart the app to change it. Acceptable for an observability cache.
 5. **The sidebar `:usage` tab is the 5th tab** (between `:status` and `:logs`). Tab number key `5` selects `:logs` per the existing `event_to_msg` handler — adding a 6th tab means either rebinding `5`→`:usage` and `6`→`:logs` (ugly because of tens), or accepting that `:usage` is reachable only via arrow keys. Left as-is for now; the user can adjust the keymap when they touch `root.ex` next.
 6. **Phase 6 (Anthropic prompt caching) will need to read `cache_read`/`cache_write` from the response and populate `Response.usage`.** The telemetry path is already wired — `LLMCall` reads `usage["cache_read"]`/`usage["cache_creation_input_tokens"]`/`usage["cache_read_input_tokens"]` defensively, so Phase 6 just needs the transport to populate them and the cost computation will start showing real cache savings.
 
 ### Phase 6 — Anthropic prompt caching ✅ (2026-04-08)
 
 **Status:** Shipped. `mix compile --warnings-as-errors` clean in
-`agent_ex`; `agent_ex` 395 tests / `worth` 128 tests, 0 failures.
+`agentic`; `agentic` 395 tests / `worth` 128 tests, 0 failures.
 
-**Files modified (agent_ex):**
-- `lib/agent_ex/llm/transport.ex` — extended `canonical_params` typespec to include `optional(:cache_control) => map() | nil`. Updated moduledoc to describe how transports may opt into provider-side prompt caching by reading `cache_control.prefix_changed`.
-- `lib/agent_ex/llm/provider.ex` — `build_canonical/2` now reads `cache_control` from the input params (both atom and string keys) via a new `normalize_cache_control/1` helper. The normalized form is `%{stable_hash:, prefix_changed:}` regardless of input key style.
-- `lib/agent_ex/llm/transport/anthropic_messages.ex` — `build_chat_request/2` now applies cache breakpoints when `cache_control.prefix_changed == false`. New helpers `cache_breakpoint_enabled?/1`, `apply_system_cache_control/2`, `apply_tool_cache_control/2`. The system prompt (whether passed as a string or as a list of content blocks) gets wrapped/marked with `cache_control: %{type: "ephemeral"}`. The last tool definition gets the same marker. `parse_chat_response/3` was already extracting `cache_creation_input_tokens` and `cache_read_input_tokens` into `Response.usage` (Phase 5 prep) — no change needed there.
+**Files modified (agentic):**
+- `lib/agentic/llm/transport.ex` — extended `canonical_params` typespec to include `optional(:cache_control) => map() | nil`. Updated moduledoc to describe how transports may opt into provider-side prompt caching by reading `cache_control.prefix_changed`.
+- `lib/agentic/llm/provider.ex` — `build_canonical/2` now reads `cache_control` from the input params (both atom and string keys) via a new `normalize_cache_control/1` helper. The normalized form is `%{stable_hash:, prefix_changed:}` regardless of input key style.
+- `lib/agentic/llm/transport/anthropic_messages.ex` — `build_chat_request/2` now applies cache breakpoints when `cache_control.prefix_changed == false`. New helpers `cache_breakpoint_enabled?/1`, `apply_system_cache_control/2`, `apply_tool_cache_control/2`. The system prompt (whether passed as a string or as a list of content blocks) gets wrapped/marked with `cache_control: %{type: "ephemeral"}`. The last tool definition gets the same marker. `parse_chat_response/3` was already extracting `cache_creation_input_tokens` and `cache_read_input_tokens` into `Response.usage` (Phase 5 prep) — no change needed there.
 
-**Files created (agent_ex):**
-- `test/agent_ex/llm/transport/anthropic_messages_test.exs` — 9 new tests covering: `id/0`, no cache breakpoints when `cache_control` absent, no breakpoints when `prefix_changed: true`, system prompt cache marker when `prefix_changed: false`, last-tool cache marker, string-keyed cache_control map, nil-system handling, cache token extraction, and cache token defaults to 0.
+**Files created (agentic):**
+- `test/agentic/llm/transport/anthropic_messages_test.exs` — 9 new tests covering: `id/0`, no cache breakpoints when `cache_control` absent, no breakpoints when `prefix_changed: true`, system prompt cache marker when `prefix_changed: false`, last-tool cache marker, string-keyed cache_control map, nil-system handling, cache token extraction, and cache token defaults to 0.
 
 **Key design decisions:**
 
 1. **Cache the system prompt and the last tool definition.** Anthropic's prompt cache works in cumulative segments — a `cache_control` marker tells the API "cache everything up to and including this point." System prompt and tools change least often across turns, so caching them gets ~70% of the benefit per the plan's deliverable target. Per-message cache breakpoints would catch more savings but require knowing the stable/volatile message split, which lives in `LLMCall` and isn't exposed to the transport. Deferred as a refinement.
-2. **`cache_control` flows in via canonical params, not via opts.** `LLMCall` already builds `base_params["cache_control"] = %{"stable_hash" => ..., "prefix_changed" => ...}`. `Worth.LLM.chat_with_route` passes the params through `AgentEx.LLM.Provider.chat/3` which calls `build_canonical/2`. The new `build_canonical/2` reads `cache_control` and adds it to the canonical params map. Transports that don't care (OpenAIChatCompletions, Ollama) ignore the field; AnthropicMessages reads it.
+2. **`cache_control` flows in via canonical params, not via opts.** `LLMCall` already builds `base_params["cache_control"] = %{"stable_hash" => ..., "prefix_changed" => ...}`. `Worth.LLM.chat_with_route` passes the params through `Agentic.LLM.Provider.chat/3` which calls `build_canonical/2`. The new `build_canonical/2` reads `cache_control` and adds it to the canonical params map. Transports that don't care (OpenAIChatCompletions, Ollama) ignore the field; AnthropicMessages reads it.
 3. **`normalize_cache_control/1` accepts both atom and string keys.** `LLMCall` uses string keys (`%{"prefix_changed" => false}`), but tests and direct callers may use atoms. The normalizer produces a uniform atom-keyed shape for the transport.
 4. **System prompt structure.** Anthropic accepts both `system: "string"` and `system: [%{type: "text", text: ..., cache_control: %{type: "ephemeral"}}]`. When caching is enabled, we wrap a string into the structured form so we can attach the cache_control marker. When disabled, we leave the string as-is so the wire format stays minimal.
 5. **Tool cache marker is key-style-agnostic.** `apply_tool_cache_control/2` checks whether the tool map uses atom or string keys (`Map.has_key?(last, :name)`) and inserts `cache_control` with the matching key style. Jason serializes both the same way on the wire, but mixing key styles within a single map looks ugly in iex/inspect. This keeps tools consistent.
@@ -1466,7 +1466,7 @@ repos; `agent_ex` 363 tests / `worth` 123 tests, 0 failures.
 
 **Judgment calls / follow-ups:**
 
-1. **Cache hit ratio in the sidebar.** `Worth.Metrics` already accumulates `cache_read`/`cache_write` totals via the existing `[:agent_ex, :llm_call, :stop]` telemetry handler. The `:usage` sidebar tab shows them as raw counts (`Cache: N read / N write`). A "hit ratio" or "savings" line on top of those is straightforward to add but deferred — gets tracked in `BACKLOG.md`.
+1. **Cache hit ratio in the sidebar.** `Worth.Metrics` already accumulates `cache_read`/`cache_write` totals via the existing `[:agentic, :llm_call, :stop]` telemetry handler. The `:usage` sidebar tab shows them as raw counts (`Cache: N read / N write`). A "hit ratio" or "savings" line on top of those is straightforward to add but deferred — gets tracked in `BACKLOG.md`.
 2. **Per-message cache breakpoints.** The current implementation caches up through tools. For very long system prompts that include workspace snapshots or large core instructions, this captures most of the savings. For long conversation histories where the early messages are stable, an additional cache breakpoint on the last stable user message would help. Requires plumbing the stable/volatile split point through to the transport — deferred as a future refinement.
 3. **No real-world verification yet.** Tests cover the request shape and the parse path but not actual Anthropic API behavior. A live smoke test (with `LIVE_TESTS=1` env gate) is in `BACKLOG.md` under "Test infrastructure".
 4. **No per-call opt-out.** Cache breakpoints are always added when `prefix_changed: false`. There's no way to disable caching for a specific call. The `cache_control` field could grow a `:disabled` flag if a future caller needs it, but no caller does today.

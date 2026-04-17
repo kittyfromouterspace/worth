@@ -13,7 +13,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | [vision.md](docs/vision.md) | What worth is and why it exists |
 | [architecture.md](docs/architecture.md) | System architecture, dependency graph, component overview |
 | [beam-architecture.md](docs/beam-architecture.md) | Supervision tree, ETS/:persistent_term strategy, telemetry, PubSub, error handling |
-| [database-layer.md](docs/database-layer.md) | Ash + AshPostgres analysis, coexistence with mneme, skill lifecycle modeling |
+| [database-layer.md](docs/database-layer.md) | Ash + AshPostgres analysis, coexistence with recollect, skill lifecycle modeling |
 | [memory.md](docs/memory.md) | Unified global memory, workspace overlays, knowledge lifecycle |
 | [brain.md](docs/brain.md) | The central brain GenServer, callbacks, system prompt assembly |
 | [workspaces.md](docs/workspaces.md) | Workspace model, types, lifecycle, directory structure |
@@ -43,9 +43,9 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | Mix project setup with dependencies | Done | `mix.exs`, `config/*.exs` |
 | `Worth.Application` -- supervision tree | Done | `lib/worth/application.ex` |
 | `Worth.Config` -- runtime config loading | Done | `lib/worth/config.ex` |
-| `Worth.Repo` -- Ecto Repo for Mneme | Done | `lib/worth/repo.ex` |
+| `Worth.Repo` -- Ecto Repo for Recollect | Done | `lib/worth/repo.ex` |
 | `Worth.UI.Commands` -- pure command parser (used by LiveView) | Done | `lib/worth/ui/commands.ex` |
-| `Worth.Brain` -- GenServer, AgentEx integration | Done | `lib/worth/brain.ex`, `lib/worth/brain/supervisor.ex` |
+| `Worth.Brain` -- GenServer, Agentic integration | Done | `lib/worth/brain.ex`, `lib/worth/brain/supervisor.ex` |
 | `Worth.LLM` -- multi-provider dispatch (Anthropic, OpenAI, OpenRouter, Groq) | Done | `lib/worth/llm.ex` |
 | `Worth.CLI` -- CLI entry point | Done | `lib/worth/cli.ex` |
 | `Worth.Telemetry` -- telemetry span helper | Done | `lib/worth/telemetry.ex` |
@@ -61,9 +61,9 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 
 1. **Phoenix LiveView UI**: Uses `Phoenix.LiveView` with `mount/3`, `handle_event/3`, `handle_info/2` callbacks. The main view is `WorthWeb.ChatLive`. Templates use HEEx with `~H` sigils. App served via Bandit HTTP server, browser opens automatically on startup.
 
-2. **mneme dependency override**: mneme is a path dep for worth but a git dep for agent_ex. Added `override: true` in worth's mix.exs to resolve the conflict.
+2. **recollect dependency override**: recollect is a path dep for worth but a git dep for agentic. Added `override: true` in worth's mix.exs to resolve the conflict.
 
-3. **Brain async execution**: Brain delegates AgentEx.run to Task.Supervisor to keep the GenServer responsive. Agent events flow back via `Phoenix.PubSub.broadcast/3`.
+3. **Brain async execution**: Brain delegates Agentic.run to Task.Supervisor to keep the GenServer responsive. Agent events flow back via `Phoenix.PubSub.broadcast/3`.
 
 4. **PubSub event streaming**: The LiveView subscribes to `Worth.PubSub` for brain events. The Brain broadcasts via `Phoenix.PubSub.broadcast/3`. Events are handled in `ChatLive.handle_info/2`.
 
@@ -76,7 +76,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | `Worth.Workspace.Service` -- init, list, switch, create workspaces | Done | `lib/worth/workspace/service.ex` |
 | Workspace scaffolding (IDENTITY.md, AGENTS.md, .worth/skills.json) | Done | `lib/worth/workspace/service.ex` |
 | Brain switches to `:agentic` profile for code mode | Done | `lib/worth/brain.ex` (mode_to_profile/1) |
-| agent_ex's core file tools available via default `:execute_tool` | Done | (inherited from agent_ex) |
+| agentic's core file tools available via default `:execute_tool` | Done | (inherited from agentic) |
 | `Worth.Workspace.Context` -- system prompt assembly | Done | `lib/worth/workspace/context.ex` |
 | `Worth.Brain` -- mode switching, workspace switching, tool permissions | Done | `lib/worth/brain.ex` |
 | Tool permission system (`:on_tool_approval` callback) | Done | `lib/worth/brain.ex` (build_callbacks) |
@@ -94,11 +94,11 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 
 **Key decisions made during implementation:**
 
-1. **Mode/profile mapping**: `:code` -> `:agentic`, `:research` -> `:conversational`, `:planned` -> `:agentic_planned`, `:turn_by_turn` -> `:turn_by_turn`. Brain translates user-facing modes to agent_ex profiles.
+1. **Mode/profile mapping**: `:code` -> `:agentic`, `:research` -> `:conversational`, `:planned` -> `:agentic_planned`, `:turn_by_turn` -> `:turn_by_turn`. Brain translates user-facing modes to agentic profiles.
 
 2. **Tool permissions**: `bash` and `write_file` require approval by default. Everything else is auto-approved. The `:on_tool_approval` callback sends a notification to the UI and auto-approves for now (full human-in-the-loop approval UI comes in Phase 5).
 
-3. **Worth-specific tools** (web_fetch, git_diff, etc.) are defined as extension modules with `definitions/0` and `execute/3` functions. They'll be registered as agent_ex extensions when wiring up the full tool pipeline (Phase 3/4).
+3. **Worth-specific tools** (web_fetch, git_diff, etc.) are defined as extension modules with `definitions/0` and `execute/3` functions. They'll be registered as agentic extensions when wiring up the full tool pipeline (Phase 3/4).
 
 4. **Event draining**: The UI polls every 50ms and drains ALL pending events in one batch. This avoids event buildup and ensures tool_call/tool_result messages appear inline in the chat.
 
@@ -110,7 +110,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 
 | Step | Status | Files |
 |------|--------|-------|
-| Configure Mneme with global scope UUID | Done | `config/config.exs`, `config/dev.exs`, `config/test.exs` |
+| Configure Recollect with global scope UUID | Done | `config/config.exs`, `config/dev.exs`, `config/test.exs` |
 | `Worth.Memory.Manager` -- global retrieval with workspace boosting | Done | `lib/worth/memory/manager.ex` |
 | `Worth.Memory.FactExtractor` -- response/tool fact extraction (LLM + deterministic) | Done | `lib/worth/memory/fact_extractor.ex` |
 | Implement `:on_response_facts` callback (async fact extraction + storage) | Done | `lib/worth/brain.ex` (build_callbacks) |
@@ -118,7 +118,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | Wire `:knowledge_search/:create/:recent` through Memory.Manager | Done | `lib/worth/brain.ex` (build_callbacks) |
 | System prompt integration: memory context within budget | Done | `lib/worth/workspace/context.ex` |
 | WorkingMemory (ContextKeeper) per workspace: push/read/clear/flush | Done | `lib/worth/memory/manager.ex` (working_*) |
-| Workspace deactivation flush: WorkingMemory -> global Mneme | Done | `lib/worth/brain.ex` (switch_workspace, flush_working_memory) |
+| Workspace deactivation flush: WorkingMemory -> global Recollect | Done | `lib/worth/brain.ex` (switch_workspace, flush_working_memory) |
 | `Worth.Tools.Memory` -- memory_query, memory_write, memory_note, memory_recall | Done | `lib/worth/tools/memory.ex` |
 | Wire memory tools into Brain execute_external_tool/search_tools/get_tool_schema | Done | `lib/worth/brain.ex` (build_callbacks) |
 | `/memory query`, `/memory note`, `/memory recent` slash commands | Done | `lib/worth_web/live/commands/memory_commands.ex` |
@@ -126,22 +126,22 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | User message pushed to working memory on each turn | Done | `lib/worth/brain.ex` (execute_agent_loop) |
 | Worth.Config added to supervision tree (was missing) | Done | `lib/worth/application.ex` |
 | PostgrexTypes for pgvector support | Done | `lib/worth/postgrex_types.ex`, `lib/worth/repo.ex` |
-| Mneme migrations copied to worth | Done | `priv/repo/migrations/*.exs` |
+| Recollect migrations copied to worth | Done | `priv/repo/migrations/*.exs` |
 | Tests: Memory.Manager, FactExtractor, Tools.Memory | Done | `test/worth/memory/`, `test/worth/tools/memory_test.exs` |
 
 **Key decisions made during implementation:**
 
-1. **Scope UUID**: Mneme's `scope_id` is `:binary_id` (UUID), not a string. Worth uses a fixed UUID `"00000000-0000-0000-0000-000000000001"` as the global scope. Workspace provenance is stored in entry `metadata.workspace`.
+1. **Scope UUID**: Recollect's `scope_id` is `:binary_id` (UUID), not a string. Worth uses a fixed UUID `"00000000-0000-0000-0000-000000000001"` as the global scope. Workspace provenance is stored in entry `metadata.workspace`.
 
 2. **Memory context in system prompt**: `Worth.Workspace.Context.build_system_prompt/2` now accepts an optional `user_message` parameter. When provided, it runs a memory search against the query; otherwise, it loads the 5 most recent entries. Memory context is capped at 4KB.
 
 3. **Fact extraction**: `on_response_facts` and `on_tool_facts` run fact extraction asynchronously via `Task.Supervisor.start_child`. Extraction uses LLM when available (via a `llm_fn` closure), falling back to deterministic pattern matching for preference/commit-convention patterns.
 
-4. **Working memory flush**: When switching workspaces, the Brain calls `flush_working_memory/1` which promotes high-importance (>=0.5) working memory entries to the global Mneme store with adjusted confidence.
+4. **Working memory flush**: When switching workspaces, the Brain calls `flush_working_memory/1` which promotes high-importance (>=0.5) working memory entries to the global Recollect store with adjusted confidence.
 
-5. **PostgrexTypes**: Worth defines `Worth.PostgrexTypes` using `Postgrex.Types.define` with `Pgvector.extensions()`. This is required for any query that touches the `embedding` field in mneme tables.
+5. **PostgrexTypes**: Worth defines `Worth.PostgrexTypes` using `Postgrex.Types.define` with `Pgvector.extensions()`. This is required for any query that touches the `embedding` field in recollect tables.
 
-6. **Mneme migrations**: All 7 mneme migrations copied to `priv/repo/migrations/` to ensure all enhancement columns (emotional_valence, half_life_days, pinned, context_hints, handoffs, mipmaps) are available.
+6. **Recollect migrations**: All 7 recollect migrations copied to `priv/repo/migrations/` to ensure all enhancement columns (emotional_valence, half_life_days, pinned, context_hints, handoffs, mipmaps) are available.
 
 ### Phase 4: Skills & Research Mode -- COMPLETE
 
@@ -166,7 +166,7 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 
 **Key decisions made during implementation:**
 
-1. **YAML frontmatter parsing**: Used `yaml_elixir` (transitive dep from agent_ex) for YAML parsing. Custom YAML serialization for `to_frontmatter_string/1` since `yaml_elixir` doesn't support writing.
+1. **YAML frontmatter parsing**: Used `yaml_elixir` (transitive dep from agentic) for YAML parsing. Custom YAML serialization for `to_frontmatter_string/1` since `yaml_elixir` doesn't support writing.
 
 2. **Core skills location**: `priv/core_skills/` bundled with the app. User skills at `~/.worth/skills/`. Learned skills at `~/.worth/skills/learned/`. Path resolution checks core → user → learned in order.
 
@@ -186,13 +186,13 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 | `Worth.Skill.Versioner` -- version management, rollback, history | Done | `lib/worth/skills/versioner.ex` |
 | `Worth.LLM` -- multi-provider dispatch (streaming + chat_tier) | Done | `lib/worth/llm.ex` |
 | `Worth.Theme` -- configurable themes with Worth.Theme behaviour | Done | `lib/worth/theme/*.ex` |
-| `Worth.Brain.Session` -- session resumption via AgentEx.resume/1 | Done | `lib/worth/brain/session.ex` |
+| `Worth.Brain.Session` -- session resumption via Agentic.resume/1 | Done | `lib/worth/brain/session.ex` |
 | Wire Refiner into Brain (skill failure -> reactive refinement, proactive review after turns) | Done | `lib/worth/brain.ex` |
 | Wire Versioner into Brain (skill_history, skill_rollback) + UI commands | Done | `lib/worth/brain.ex`, `lib/worth_web/live/commands/skill_commands.ex` |
 | Wire Session into Brain (resume_session, list_sessions) + UI commands | Done | `lib/worth/brain.ex`, `lib/worth_web/live/commands/session_commands.ex` |
 | Theme integration in UI rendering (header, messages, tool calls, thinking) | Done | `lib/worth_web/components/*.ex` |
 | Cost limit enforcement (warns on cost events, checks against config limit) | Done | `lib/worth/brain.ex` |
-| Memory-skill provenance (Mneme entries tagged with skill via metadata) | Done | `lib/worth/memory/manager.ex` |
+| Memory-skill provenance (Recollect entries tagged with skill via metadata) | Done | `lib/worth/memory/manager.ex` |
 | Fix compile errors (refiner missing end, adapter_for private, Style module, Transcript arity) | Done | Multiple files |
 | UI commands: /skill history, /skill rollback, /skill refine, /session list, /session resume | Done | `lib/worth_web/live/commands/*.ex` |
 | `Worth.LLM.adapter_for/1` made public for Router access | Done | `lib/worth/llm.ex` |
@@ -203,15 +203,15 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 
 1. **Refiner integration**: Brain triggers `Worth.Skill.Refiner.refine/2` (with LLM assistance) when skill tool failures are detected and `should_refine?` is true. Proactive review runs after every completed agent turn, checking all learned skills for the 20-use review cycle.
 
-2. **Cost limit enforcement**: The `handle_info({:agent_event, {:cost, amount}}` handler checks cumulative cost against `config[:cost_limit]` (default $5.0). When exceeded, an error event is sent to the UI. The actual abort is handled by AgentEx's built-in `cost_limit` option.
+2. **Cost limit enforcement**: The `handle_info({:agent_event, {:cost, amount}}` handler checks cumulative cost against `config[:cost_limit]` (default $5.0). When exceeded, an error event is sent to the UI. The actual abort is handled by Agentic's built-in `cost_limit` option.
 
 3. **Theme system**: `Worth.Theme` modules implement the `Worth.Theme` behaviour, providing `colors/0` and optional `css/0`. Three presets (Standard, Cyberdeck, Fifth Element). Theme selection stored in encrypted settings (`Worth.Settings`) and resolved via `Worth.Theme.Registry`.
 
-4. **Session resumption**: `Worth.Brain.Session.resume/4` builds callbacks matching the main Brain's callback structure and calls `AgentEx.resume/1` with transcript backend. The `/session list` command reads from `Worth.Persistence.Transcript`.
+4. **Session resumption**: `Worth.Brain.Session.resume/4` builds callbacks matching the main Brain's callback structure and calls `Agentic.resume/1` with transcript backend. The `/session list` command reads from `Worth.Persistence.Transcript`.
 
 5. **Skill version history**: `Worth.Skill.Versioner` saves skill snapshots to `.worth/history/vN.md` before any modification. Rollback restores a previous version while saving the current state first.
 
-6. **LLM Router**: tier routing (`:primary` / `:lightweight`) lives in `AgentEx.ModelRouter`, which discovers free OpenRouter models via `AgentEx.ModelRouter.Free` and attaches the resolved route to LLM call params under `"_route"`. `Worth.LLM.chat/2` honors that key first, dispatching to the matching adapter (e.g. `Worth.LLM.OpenRouter` with `OPENROUTER_API_KEY`), and falls back to the statically configured provider only when no route is present or the route call fails.
+6. **LLM Router**: tier routing (`:primary` / `:lightweight`) lives in `Agentic.ModelRouter`, which discovers free OpenRouter models via `Agentic.ModelRouter.Free` and attaches the resolved route to LLM call params under `"_route"`. `Worth.LLM.chat/2` honors that key first, dispatching to the matching adapter (e.g. `Worth.LLM.OpenRouter` with `OPENROUTER_API_KEY`), and falls back to the statically configured provider only when no route is present or the route call fails.
 
 ### Phase 6: MCP Integration -- NOT STARTED
 
@@ -276,6 +276,6 @@ Single-user, terminal-native AI assistant. One central brain operating across mu
 
 3. **Kit→Skill mapping**: Installed kit skills get `trust_level: :installed` and `provenance: :kit` with kit metadata. They flow through the existing skill system (Registry, progressive disclosure). No separate code path needed.
 
-4. **Planned/Turn-by-turn modes**: Already wired in Phases 1-2 (`mode_to_agent_mode/1` maps `:planned` → `:agentic_planned`, `:turn_by_turn` → `:turn_by_turn`). AgentEx handles the loop behavior. Worth's Brain and UI already support mode switching via `/mode`.
+4. **Planned/Turn-by-turn modes**: Already wired in Phases 1-2 (`mode_to_agent_mode/1` maps `:planned` → `:agentic_planned`, `:turn_by_turn` → `:turn_by_turn`). Agentic handles the loop behavior. Worth's Brain and UI already support mode switching via `/mode`.
 
-5. **Sub-agent delegation**: Available via `AgentEx.Subagent.Coordinator` (transitive dep). Worth can delegate tasks by starting sub-agents with scoped callbacks. Not yet wired into tools (future enhancement).
+5. **Sub-agent delegation**: Available via `Agentic.Subagent.Coordinator` (transitive dep). Worth can delegate tasks by starting sub-agents with scoped callbacks. Not yet wired into tools (future enhancement).

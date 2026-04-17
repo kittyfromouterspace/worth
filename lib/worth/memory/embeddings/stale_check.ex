@@ -2,16 +2,16 @@ defmodule Worth.Memory.Embeddings.StaleCheck do
   @moduledoc """
   Boot-time check that compares the configured embedding model id
   against the model recorded on the most recently embedded row in
-  the mneme tables. When they differ, logs a warning suggesting
+  the recollect tables. When they differ, logs a warning suggesting
   `/memory reembed`. Does not auto-trigger — re-embedding is a
   potentially expensive operation that the user should approve.
   """
 
-  alias Mneme.Config
+  alias Recollect.Config
 
   require Logger
 
-  @tables ["mneme_chunks", "mneme_entries", "mneme_entities"]
+  @tables ["recollect_chunks", "recollect_entries", "recollect_entities"]
 
   def run do
     repo = Config.repo()
@@ -42,7 +42,7 @@ defmodule Worth.Memory.Embeddings.StaleCheck do
   end
 
   defp current_model_id do
-    case Mneme.EmbeddingProvider.model_id() do
+    case Recollect.EmbeddingProvider.model_id() do
       id when is_binary(id) -> id
       _ -> nil
     end

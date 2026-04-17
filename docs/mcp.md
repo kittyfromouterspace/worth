@@ -40,7 +40,7 @@ MCP (Model Context Protocol) is worth's primary extensibility mechanism for conn
 
 ## Library: hermes_mcp
 
-Worth uses hermes_mcp (~> 0.14.1), the same library used by homunculus. It's already a transitive dependency through agent_ex.
+Worth uses hermes_mcp (~> 0.14.1), the same library used by homunculus. It's already a transitive dependency through agentic.
 
 Capabilities:
 - Protocol versions: `2024-11-05`, `2025-03-26`, `2025-06-18` (auto-negotiation)

@@ -4,7 +4,7 @@
 
 ## Problem
 
-Worth is a Phoenix LiveView web app currently launched via `mix worth` or `mix run --no-halt`, which starts the BEAM VM, boots the supervision tree, and opens a browser to `localhost:4000`. There is no way to distribute Worth as a self-contained desktop application. Users must have Elixir/OTP installed and clone the repo (plus sibling repos `mneme` and `agent_ex`).
+Worth is a Phoenix LiveView web app currently launched via `mix worth` or `mix run --no-halt`, which starts the BEAM VM, boots the supervision tree, and opens a browser to `localhost:4000`. There is no way to distribute Worth as a self-contained desktop application. Users must have Elixir/OTP installed and clone the repo (plus sibling repos `recollect` and `agentic`).
 
 ## Goal
 
@@ -49,7 +49,7 @@ Ship Worth as a native desktop application (`Worth.app` / `worth.exe` / `worth.A
 | Proposal | Actual | Why |
 |----------|--------|-----|
 | ElixirKit for PubSub | Direct TCP (custom binary protocol) | Simpler, fewer deps, full control |
-| PostgreSQL support kept for server deployments | PostgreSQL removed entirely | Worth is desktop-first; mneme retains Postgres for its own server use |
+| PostgreSQL support kept for server deployments | PostgreSQL removed entirely | Worth is desktop-first; recollect retains Postgres for its own server use |
 | `"csp": null` | CSP set to restrict to self + localhost | Security hardening |
 | Tray: Open, Quit, Settings | Tray: Open, Quit | Settings accessible from web UI |
 | `tauri-plugin-deep-link` | Not yet added | Deferred to future |
@@ -57,7 +57,7 @@ Ship Worth as a native desktop application (`Worth.app` / `worth.exe` / `worth.A
 
 ### Database
 
-Worth uses **libSQL (SQLite) exclusively**. No PostgreSQL server needed. The database lives at `~/.worth/worth.db` and auto-migrates on desktop boot. The `pgvector` dependency remains as a transitive dep required by mneme schemas.
+Worth uses **libSQL (SQLite) exclusively**. No PostgreSQL server needed. The database lives at `~/.worth/worth.db` and auto-migrates on desktop boot. The `pgvector` dependency remains as a transitive dep required by recollect schemas.
 
 ## Implementation Status
 

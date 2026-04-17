@@ -146,7 +146,7 @@ defmodule Worth.Settings do
 
   defp clear_credentials do
     for {key, "secret"} <- list_keys() do
-      AgentEx.LLM.Credentials.delete(key)
+      Agentic.LLM.Credentials.delete(key)
     end
   rescue
     _ -> :ok

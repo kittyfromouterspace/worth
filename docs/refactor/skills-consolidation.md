@@ -1,8 +1,8 @@
-# Skills Consolidation: Worth + agent_ex
+# Skills Consolidation: Worth + agentic
 
 ## Problem
 
-Skill handling is split across Worth and agent_ex with overlapping responsibilities,
+Skill handling is split across Worth and agentic with overlapping responsibilities,
 dead code paths, and a non-functional evolution loop. Worth built higher-level
 features (evaluate, refine, promote, version) on top of its CRUD — but never wired
 them together. The usage tracking that feeds refinement and promotion was never
@@ -10,7 +10,7 @@ called, so the entire evolution loop was inert.
 
 ## Architecture Decision: Two Parsers, Intentional
 
-agent_ex's parser returns `%{meta: ..., body: ..., raw: ...}` with fields for
+agentic's parser returns `%{meta: ..., body: ..., raw: ...}` with fields for
 the agent runtime (type, core, parameters, source). Worth's parser returns a
 flat map with Worth-specific fields (evolution, trust_level, provenance,
 allowed_tools). These are different concerns — Worth's parser is not a duplicate
@@ -20,10 +20,10 @@ but a superset. Both parsers stay.
 
 | Concern | Owner | Rationale |
 |---------|-------|-----------|
-| SKILL.md format & parsing (runtime) | **agent_ex** | Format is agent_ex's spec |
+| SKILL.md format & parsing (runtime) | **agentic** | Format is agentic's spec |
 | SKILL.md parsing (evolution/trust) | **Worth** | Worth-specific fields |
-| Basic CRUD (install/remove/list/read) | **Both** | agent_ex for agent tools, Worth for UI/management |
-| Model tier analysis | **agent_ex** | Tied to LLM dispatch |
+| Basic CRUD (install/remove/list/read) | **Both** | agentic for agent tools, Worth for UI/management |
+| Model tier analysis | **agentic** | Tied to LLM dispatch |
 | In-memory registry + boot cache | **Worth** | Worth-specific app lifecycle |
 | Usage tracking & success rates | **Worth** | Worth owns sessions, sees outcomes |
 | Evaluation & promotion eligibility | **Worth** | Host-app policy decisions |
@@ -39,7 +39,7 @@ but a superset. Both parsers stay.
 **Files changed:** `lib/worth/brain.ex`
 
 - Fixed event shape mismatch: Brain was matching on `{:tool_result, %{name:, success:}}`
-  which never matched agent_ex's actual `{:tool_trace, name, input, output, is_error, ws}` events.
+  which never matched agentic's actual `{:tool_trace, name, input, output, is_error, ws}` events.
   The old refinement trigger was dead code due to this shape mismatch.
 - Added `track_skill_tool_usage/3` in the `execute_external_tool` callback — tracks
   usage when `skill_read` is called, recording the actual skill name from the args.
@@ -58,7 +58,7 @@ but a superset. Both parsers stay.
 ### Phase 3: Parser/CRUD consolidation -- KEPT SEPARATE
 
 After analysis, the parsers serve different purposes:
-- **agent_ex parser**: Runtime fields (type, core, parameters, source)
+- **agentic parser**: Runtime fields (type, core, parameters, source)
 - **Worth parser**: Evolution fields (usage_count, success_count, trust_level, provenance)
 
 Delegating would require adapter code more complex than the current implementation.
@@ -120,7 +120,7 @@ Both parsers stay, with clear ownership boundaries.
 - **`Evaluator.performance_summary/1`**: Useful for UI display — should be wired
   into the skills sidebar tab.
 - **`Trust.can_use_tool?/2`**: Tool access control per trust level — not wired
-  into agent_ex's tool permission system yet.
+  into agentic's tool permission system yet.
 - **Promotion UI**: PubSub event is broadcast but no UI handler listens for
   `{:skill_promotion_available, ...}` yet.
 

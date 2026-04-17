@@ -20,8 +20,8 @@ This document outlines a migration plan to replace PostgreSQL with libSQL (SQLit
 | Component | Current Database | PostgreSQL-Specific Features |
 |-----------|-----------------|------------------------------|
 | **Worth** | PostgreSQL + pgvector | `Worth.Repo` uses `Ecto.Adapters.Postgres`, Cloak encryption |
-| **Mneme** | PostgreSQL + pgvector | `Pgvector.Ecto.Vector` type, HNSW indexes, recursive CTEs for graph |
-| **AgentEx** | PostgreSQL (via mneme) | Depends on mneme for persistence |
+| **Recollect** | PostgreSQL + pgvector | `Pgvector.Ecto.Vector` type, HNSW indexes, recursive CTEs for graph |
+| **Agentic** | PostgreSQL (via recollect) | Depends on recollect for persistence |
 
 ### PostgreSQL-Specific Features in Use
 
@@ -31,7 +31,7 @@ This document outlines a migration plan to replace PostgreSQL with libSQL (SQLit
    - Distance operators: `<=>` (cosine distance)
    
 2. **Recursive CTEs** (Important)
-   - Used in `Mneme.Graph.PostgresGraph` for graph traversal
+   - Used in `Recollect.Graph.PostgresGraph` for graph traversal
    - PostgreSQL CTE syntax with `WITH RECURSIVE`
    
 3. **UUID Type** (Standard)
@@ -39,10 +39,10 @@ This document outlines a migration plan to replace PostgreSQL with libSQL (SQLit
    - SQLite/libSQL can use `BINARY(16)` or text UUIDs
    
 4. **Array Types** (Not used)
-   - No PostgreSQL arrays detected in Worth/mneme
+   - No PostgreSQL arrays detected in Worth/recollect
    
 5. **JSONB** (Not critical)
-   - Mneme uses `:map` type which maps to JSONB in PostgreSQL
+   - Recollect uses `:map` type which maps to JSONB in PostgreSQL
    - SQLite stores JSON as TEXT
 
 ---
@@ -96,7 +96,7 @@ This document outlines a migration plan to replace PostgreSQL with libSQL (SQLit
 
 ### Design Goals
 
-1. **Modularity**: Mneme and AgentEx should work with both PostgreSQL and libSQL
+1. **Modularity**: Recollect and Agentic should work with both PostgreSQL and libSQL
 2. **Backward Compatibility**: Existing PostgreSQL users can continue using it
 3. **Default Simplicity**: Worth should default to libSQL for new users
 4. **Migration Path**: Clear upgrade path for existing users
@@ -115,7 +115,7 @@ This document outlines a migration plan to replace PostgreSQL with libSQL (SQLit
 │           ┌───────────────┼───────────────┐                    │
 │           ▼               ▼               ▼                    │
 │  ┌─────────────────┐ ┌──────────────┐ ┌──────────────┐          │
-│  │ Worth.Repo      │ │ Worth.Repo   │ │ Mneme        │          │
+│  │ Worth.Repo      │ │ Worth.Repo   │ │ Recollect        │          │
 │  │ (libSQL mode)   │ │ (PG mode)    │ │ (via Worth)  │          │
 │  └─────────────────┘ └──────────────┘ └──────────────┘          │
 │                                                           │
@@ -138,15 +138,15 @@ This document outlines a migration plan to replace PostgreSQL with libSQL (SQLit
 
 ---
 
-## Mneme Modularization
+## Recollect Modularization
 
 ### 1. Database-Specific Adapters
 
 Create adapter modules that encapsulate database-specific operations:
 
 ```elixir
-# lib/mneme/database_adapter.ex
-defmodule Mneme.DatabaseAdapter do
+# lib/recollect/database_adapter.ex
+defmodule Recollect.DatabaseAdapter do
   @moduledoc """
   Behaviour for database-specific implementations.
   """
@@ -160,9 +160,9 @@ defmodule Mneme.DatabaseAdapter do
   @callback supports_vector_index?() :: boolean()
 end
 
-# lib/mneme/database_adapter/postgres.ex
-defmodule Mneme.DatabaseAdapter.Postgres do
-  @behaviour Mneme.DatabaseAdapter
+# lib/recollect/database_adapter/postgres.ex
+defmodule Recollect.DatabaseAdapter.Postgres do
+  @behaviour Recollect.DatabaseAdapter
   
   def vector_type(dimensions), do: "vector(#{dimensions})"
   def vector_index_sql(table, column) do
@@ -175,9 +175,9 @@ defmodule Mneme.DatabaseAdapter.Postgres do
   def supports_vector_index?, do: true
 end
 
-# lib/mneme/database_adapter/libsql.ex
-defmodule Mneme.DatabaseAdapter.LibSQL do
-  @behaviour Mneme.DatabaseAdapter
+# lib/recollect/database_adapter/libsql.ex
+defmodule Recollect.DatabaseAdapter.LibSQL do
+  @behaviour Recollect.DatabaseAdapter
   
   def vector_type(dimensions), do: "F32_BLOB(#{dimensions})"
   def vector_index_sql(table, column) do
@@ -196,28 +196,28 @@ end
 Replace static migrations with adapter-aware templates:
 
 ```elixir
-# lib/mneme/migration_generator.ex
-defmodule Mneme.MigrationGenerator do
+# lib/recollect/migration_generator.ex
+defmodule Recollect.MigrationGenerator do
   @moduledoc """
   Generates database-specific migrations at compile time or runtime.
   """
   
   def generate_migration(adapter, dimensions) do
     """
-    defmodule Mneme.Repo.Migrations.CreateMnemeTables do
+    defmodule Recollect.Repo.Migrations.CreateRecollectTables do
       use Ecto.Migration
       
       def up do
         #{if sql = adapter.create_vector_extension_sql(), do: "execute(\"#{sql}\")", else: ""}
         
-        create table(:mneme_entries, primary_key: false) do
+        create table(:recollect_entries, primary_key: false) do
           add(:id, :binary_id, primary_key: true)
           add(:scope_id, #{inspect(adapter.uuid_type())})
           add(:embedding, #{inspect(adapter.vector_type(dimensions))})
           # ... other fields
         end
         
-        execute(\"#{adapter.vector_index_sql(:mneme_entries, :embedding)}\")
+        execute(\"#{adapter.vector_index_sql(:recollect_entries, :embedding)}\")
       end
     end
     """
@@ -229,14 +229,14 @@ end
 
 ```elixir
 # config/runtime.exs or config.exs
-config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.LibSQL,  # or Postgres
+config :recollect,
+  database_adapter: Recollect.DatabaseAdapter.LibSQL,  # or Postgres
   repo: Worth.Repo
 
-# lib/mneme/config.ex - add adapter resolution
-defmodule Mneme.Config do
+# lib/recollect/config.ex - add adapter resolution
+defmodule Recollect.Config do
   def adapter do
-    Application.get_env(:mneme, :database_adapter, Mneme.DatabaseAdapter.LibSQL)
+    Application.get_env(:recollect, :database_adapter, Recollect.DatabaseAdapter.LibSQL)
   end
 end
 ```
@@ -263,7 +263,7 @@ end
 ```sql
 SELECT id, content,
   (1 - (embedding <=> $1::text::vector)) AS score
-FROM mneme_entries
+FROM recollect_entries
 WHERE scope_id = $2
   AND embedding IS NOT NULL
   AND (1 - (embedding <=> $1::text::vector)) >= $3
@@ -275,7 +275,7 @@ LIMIT $4
 ```sql
 SELECT id, content,
   (1 - vector_distance_cos(embedding, vector32($1))) AS score
-FROM mneme_entries
+FROM recollect_entries
 WHERE scope_id = $2
   AND embedding IS NOT NULL
   AND (1 - vector_distance_cos(embedding, vector32($1))) >= $3
@@ -287,8 +287,8 @@ Note: For approximate search with index:
 ```sql
 -- libSQL with vector index (more efficient)
 SELECT e.id, e.content, v.distance
-FROM vector_top_k('mneme_entries_embedding_idx', vector32($1), $4) AS v
-JOIN mneme_entries e ON e.rowid = v.id
+FROM vector_top_k('recollect_entries_embedding_idx', vector32($1), $4) AS v
+JOIN recollect_entries e ON e.rowid = v.id
 WHERE e.scope_id = $2
   AND (1 - v.distance) >= $3
 ```
@@ -302,7 +302,7 @@ PostgreSQL and libSQL both support recursive CTEs with similar syntax:
 WITH RECURSIVE graph_walk AS (
   -- Base case
   SELECT to_entity_id AS entity_id, 1 AS depth
-  FROM mneme_relations
+  FROM recollect_relations
   WHERE from_entity_id = ? AND owner_id = ?
   
   UNION ALL
@@ -310,7 +310,7 @@ WITH RECURSIVE graph_walk AS (
   -- Recursive case
   SELECT r.to_entity_id, gw.depth + 1
   FROM graph_walk gw
-  JOIN mneme_relations r ON r.from_entity_id = gw.entity_id
+  JOIN recollect_relations r ON r.from_entity_id = gw.entity_id
   WHERE gw.depth < ?
 )
 SELECT * FROM graph_walk;
@@ -342,23 +342,23 @@ add(:scope_id, :binary)  -- 16 bytes
 ### Phase 1: Foundation (2-3 weeks)
 
 **Goals:**
-- Make mneme database-agnostic
+- Make recollect database-agnostic
 - Create adapter behaviour and implementations
 - Add configuration system
 
 **Tasks:**
-1. **Mneme Core Changes**
-   - [ ] Create `Mneme.DatabaseAdapter` behaviour
+1. **Recollect Core Changes**
+   - [ ] Create `Recollect.DatabaseAdapter` behaviour
    - [ ] Implement `Postgres` adapter (extract current code)
    - [ ] Implement `LibSQL` adapter with new SQL dialect
-   - [ ] Update `Mneme.Config` to support adapter selection
-   - [ ] Refactor `Mneme.Search.Vector` to use adapter for SQL generation
-   - [ ] Refactor `Mneme.Graph.PostgresGraph` to use adapter (or create `LibSQLGraph`)
+   - [ ] Update `Recollect.Config` to support adapter selection
+   - [ ] Refactor `Recollect.Search.Vector` to use adapter for SQL generation
+   - [ ] Refactor `Recollect.Graph.PostgresGraph` to use adapter (or create `LibSQLGraph`)
 
 2. **Schema Updates**
    - [ ] Update all schemas to use adapter-provided types
    - [ ] Create migration template generator
-   - [ ] Update `mix mneme.gen.migration` task to support both databases
+   - [ ] Update `mix recollect.gen.migration` task to support both databases
 
 3. **Testing**
    - [ ] Ensure all tests pass with PostgreSQL (regression test)
@@ -379,7 +379,7 @@ add(:scope_id, :binary)  -- 16 bytes
 
 2. **Dependencies**
    - [ ] Add `ecto_libsql` to Worth's `mix.exs`
-   - [ ] Update `mneme` dependency to use modular version
+   - [ ] Update `recollect` dependency to use modular version
    - [ ] Make `postgrex` optional dependency
 
 3. **Schema Updates**
@@ -390,15 +390,15 @@ add(:scope_id, :binary)  -- 16 bytes
    - [ ] Verify Worth works with libSQL
    - [ ] Ensure backward compatibility with PostgreSQL
 
-### Phase 3: AgentEx Updates (1 week)
+### Phase 3: Agentic Updates (1 week)
 
 **Goals:**
-- Ensure AgentEx works with the updated mneme
-- Make AgentEx database-agnostic
+- Ensure Agentic works with the updated recollect
+- Make Agentic database-agnostic
 
 **Tasks:**
-- [ ] Update AgentEx dependencies
-- [ ] Test AgentEx with both database backends
+- [ ] Update Agentic dependencies
+- [ ] Test Agentic with both database backends
 - [ ] Update documentation
 
 ### Phase 4: Data Migration Tooling (1-2 weeks)
@@ -409,12 +409,12 @@ add(:scope_id, :binary)  -- 16 bytes
 
 **Tasks:**
 1. **Export Tool**
-   - [ ] Create `Mneme.Export` module
+   - [ ] Create `Recollect.Export` module
    - [ ] Export all data to JSON/JSONL format
    - [ ] Handle vector embeddings properly
 
 2. **Import Tool**
-   - [ ] Create `Mneme.Import` module
+   - [ ] Create `Recollect.Import` module
    - [ ] Import from JSON/JSONL to any supported database
    - [ ] Re-embed if needed (model compatibility)
 
@@ -431,7 +431,7 @@ add(:scope_id, :binary)  -- 16 bytes
 - [ ] Document configuration options
 - [ ] Create troubleshooting guide
 - [ ] Update Docker/CI configurations
-- [ ] Tag releases for mneme, agent_ex, and worth
+- [ ] Tag releases for recollect, agentic, and worth
 
 ---
 
@@ -449,8 +449,8 @@ config :worth, Worth.Repo,
   database: Path.join(System.user_home!(), ".worth/worth.db"),
   pool_size: 5
 
-config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.LibSQL,
+config :recollect,
+  database_adapter: Recollect.DatabaseAdapter.LibSQL,
   repo: Worth.Repo,
   embedding: [
     provider: Worth.Memory.Embeddings.Adapter,
@@ -474,8 +474,8 @@ config :worth, Worth.Repo,
   pool_size: 10,
   types: Worth.PostgrexTypes
 
-config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.Postgres,
+config :recollect,
+  database_adapter: Recollect.DatabaseAdapter.Postgres,
   repo: Worth.Repo
 ```
 
@@ -517,18 +517,18 @@ defp deps do
     {:ecto_libsql, "~> 0.9", optional: true},
     {:postgrex, "~> 0.19", optional: true},
     
-    # Mneme (updated version with adapter support)
-    {:mneme, path: "../mneme"},
+    # Recollect (updated version with adapter support)
+    {:recollect, path: "../recollect"},
     
     # ... rest of deps
   ]
 end
 ```
 
-### Mneme Changes
+### Recollect Changes
 
 ```elixir
-# mneme/mix.exs
+# recollect/mix.exs
 defp deps do
   [
     {:ecto_sql, "~> 3.12"},

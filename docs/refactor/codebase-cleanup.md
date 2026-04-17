@@ -166,7 +166,7 @@ end
 | `Mcp`, `Kits` | `input_schema:` (atom) |
 | `Git`, `Web`, `Workspace` | `"input_schema"` (string) |
 
-**Target:** Use string keys with `"input_schema"` everywhere, matching agent_ex's
+**Target:** Use string keys with `"input_schema"` everywhere, matching agentic's
 format (`%{"name" => ..., "input_schema" => ...}`).
 
 **Files to update:**
@@ -408,7 +408,7 @@ and cannot carry a reply, so the approval flow needs a dedicated mechanism.
 
 ### Implementation approach
 
-The `on_tool_approval` callback runs inside the AgentEx agent loop Task, so it can
+The `on_tool_approval` callback runs inside the Agentic agent loop Task, so it can
 block. The approval flow should:
 
 1. Brain's `on_tool_approval` callback broadcasts the request to PubSub
@@ -421,7 +421,7 @@ block. The approval flow should:
 
 ### Prerequisites
 
-- AgentEx must pass the tool approval callback result through to the agent loop
+- Agentic must pass the tool approval callback result through to the agent loop
   (verify this is implemented)
 - LiveView needs an approval dialog component
 - Need to decide on per-tool permission granularity (current `@default_tool_permissions`
@@ -440,10 +440,10 @@ modules. Consolidate:
 
 ```elixir
 @providers %{
-  "anthropic" => AgentEx.LLM.Provider.Anthropic,
-  "openai" => AgentEx.LLM.Provider.OpenAI,
-  "openrouter" => AgentEx.LLM.Provider.OpenRouter,
-  "groq" => AgentEx.LLM.Provider.Groq
+  "anthropic" => Agentic.LLM.Provider.Anthropic,
+  "openai" => Agentic.LLM.Provider.OpenAI,
+  "openrouter" => Agentic.LLM.Provider.OpenRouter,
+  "groq" => Agentic.LLM.Provider.Groq
 }
 
 defp provider_module(name), do: Map.get(@providers, name)

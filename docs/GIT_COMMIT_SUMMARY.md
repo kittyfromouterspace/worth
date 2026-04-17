@@ -5,7 +5,7 @@
 
 ## Repositories Updated
 
-### 1. Mneme (v0.2.0)
+### 1. Recollect (v0.2.0)
 **Commit:** `041ce23`  
 **Tag:** `v0.2.0`
 
@@ -21,7 +21,7 @@
 
 **Files Changed:** 27 (+4,827 lines)
 
-### 2. AgentEx (v0.1.1)
+### 2. Agentic (v0.1.1)
 **Commit:** `1714613`  
 **Tag:** `v0.1.1`
 
@@ -40,7 +40,7 @@
 - Updated Worth.Repo for dynamic adapter selection
 - Updated all configuration files (config.exs, dev.exs, test.exs)
 - Made libSQL the default database backend
-- Created adapter-aware Mneme migration
+- Created adapter-aware Recollect migration
 - Added export/import Mix tasks
 - Added automated migration task (migrate_to_libsql)
 - Updated README with libSQL-first installation
@@ -60,23 +60,23 @@
 5. **docs/MIGRATION_COMPLETE.md** - Final implementation summary
 6. **docs/MIGRATION_FIX_NOTES.md** - Migration troubleshooting
 
-### Mneme Documentation
+### Recollect Documentation
 1. **IMPLEMENTATION_SUMMARY.md** - Technical implementation details
 2. **BACKLOG.md** - Future work tracking
 
 ## Git Commands Used
 
 ```bash
-# Mneme
-cd /path/to/mneme
+# Recollect
+cd /path/to/recollect
 git add -A
 git commit -m "feat: add libSQL/SQLite support with database adapter pattern
 
 [full commit message]"
 git tag -a v0.2.0 -m "Release v0.2.0 - Database Adapter System"
 
-# AgentEx
-cd /path/to/agent_ex
+# Agentic
+cd /path/to/agentic
 git add -A
 git commit -m "feat: update dependencies for libSQL/SQLite support
 
@@ -95,8 +95,8 @@ git tag -a v0.2.0 -m "Release v0.2.0 - Zero Config Database"
 ## Verification
 
 All repositories have been committed and tagged:
-- ✅ Mneme: 27 files changed, v0.2.0 tag
-- ✅ AgentEx: 4 files changed, v0.1.1 tag
+- ✅ Recollect: 27 files changed, v0.2.0 tag
+- ✅ Agentic: 4 files changed, v0.1.1 tag
 - ✅ Worth: 52 files changed, v0.2.0 tag
 
 ## Next Steps (Optional)

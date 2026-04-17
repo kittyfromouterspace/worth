@@ -5,7 +5,7 @@ defmodule WorthWeb.LLMGatewayController do
   Mounts Anthropic-compatible and OpenAI-compatible routes so that
   Claude Code, OpenCode, Kimi, Codex and other agent CLIs can route
   their LLM traffic through Worth.  Every request/response is logged
-  to the X-Ray telemetry panel via `AgentEx.LLM.Gateway`.
+  to the X-Ray telemetry panel via `Agentic.LLM.Gateway`.
   """
 
   use WorthWeb, :controller
@@ -18,7 +18,7 @@ defmodule WorthWeb.LLMGatewayController do
   """
   def anthropic(conn, _params) do
     body = read_body!(conn)
-    {status, headers, resp_body} = AgentEx.LLM.Gateway.proxy(:anthropic, conn.request_path, conn.req_headers, body)
+    {status, headers, resp_body} = Agentic.LLM.Gateway.proxy(:anthropic, conn.request_path, conn.req_headers, body)
     send_response(conn, status, headers, resp_body)
   end
 
@@ -28,7 +28,7 @@ defmodule WorthWeb.LLMGatewayController do
   """
   def openai(conn, _params) do
     body = read_body!(conn)
-    {status, headers, resp_body} = AgentEx.LLM.Gateway.proxy(:openai, conn.request_path, conn.req_headers, body)
+    {status, headers, resp_body} = Agentic.LLM.Gateway.proxy(:openai, conn.request_path, conn.req_headers, body)
     send_response(conn, status, headers, resp_body)
   end
 

@@ -1,7 +1,7 @@
 defmodule Worth.Metrics do
   @moduledoc """
-  Per-session aggregator that listens to `[:agent_ex, :llm_call, :stop]`
-  and `[:agent_ex, :llm, :embed, :stop]` telemetry events and tracks
+  Per-session aggregator that listens to `[:agentic, :llm_call, :stop]`
+  and `[:agentic, :llm, :embed, :stop]` telemetry events and tracks
   cost / token / call counts for the current worth session.
 
   Resets on `/clear` and on workspace switch via `Worth.Brain` calling
@@ -69,8 +69,8 @@ defmodule Worth.Metrics do
     :telemetry.attach_many(
       @handler_id,
       [
-        [:agent_ex, :llm_call, :stop],
-        [:agent_ex, :llm, :embed, :stop]
+        [:agentic, :llm_call, :stop],
+        [:agentic, :llm, :embed, :stop]
       ],
       &__MODULE__.handle_event/4,
       nil
@@ -134,11 +134,11 @@ defmodule Worth.Metrics do
   # ----- telemetry handler -----
 
   @doc false
-  def handle_event([:agent_ex, :llm_call, :stop], measurements, metadata, _config) do
+  def handle_event([:agentic, :llm_call, :stop], measurements, metadata, _config) do
     GenServer.cast(__MODULE__, {:llm_call, measurements, metadata})
   end
 
-  def handle_event([:agent_ex, :llm, :embed, :stop], measurements, metadata, _config) do
+  def handle_event([:agentic, :llm, :embed, :stop], measurements, metadata, _config) do
     GenServer.cast(__MODULE__, {:embed, measurements, metadata})
   end
 

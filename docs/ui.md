@@ -45,9 +45,9 @@ User types message in browser
 Phoenix LiveView `handle_event("send_message", ...)` → Worth.Brain.send_message(text, workspace)
     │
     ▼
-Worth.Brain (GenServer) → AgentEx.run/1
+Worth.Brain (GenServer) → Agentic.run/1
     │
-    │  AgentEx emits events via :on_event callback:
+    │  Agentic emits events via :on_event callback:
     │  - {:text_chunk, "I'll read..."}
     │  - {:tool_call, %{name: "read_file", input: %{...}}}
     │  - {:tool_result, %{name: "read_file", output: "..."}}

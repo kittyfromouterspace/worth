@@ -2,7 +2,7 @@ defmodule Worth.Agent.Tracker do
   @moduledoc """
   Tracks active agent sessions (main + subagents) for the UI Agents panel.
 
-  Listens to AgentEx telemetry events to register/unregister sessions and
+  Listens to Agentic telemetry events to register/unregister sessions and
   update their status in real time.  The UI polls `list_active/0` on each
   render tick.
 
@@ -124,15 +124,15 @@ defmodule Worth.Agent.Tracker do
 
   defp attach_telemetry do
     events = [
-      [:agent_ex, :session, :start],
-      [:agent_ex, :session, :stop],
-      [:agent_ex, :session, :error],
-      [:agent_ex, :subagent, :spawn],
-      [:agent_ex, :subagent, :complete],
-      [:agent_ex, :subagent, :error],
-      [:agent_ex, :tool, :start],
-      [:agent_ex, :tool, :stop],
-      [:agent_ex, :llm_call, :stop]
+      [:agentic, :session, :start],
+      [:agentic, :session, :stop],
+      [:agentic, :session, :error],
+      [:agentic, :subagent, :spawn],
+      [:agentic, :subagent, :complete],
+      [:agentic, :subagent, :error],
+      [:agentic, :tool, :start],
+      [:agentic, :tool, :stop],
+      [:agentic, :llm_call, :stop]
     ]
 
     :telemetry.attach_many(
@@ -144,7 +144,7 @@ defmodule Worth.Agent.Tracker do
   end
 
   # Session lifecycle
-  def handle_telemetry([:agent_ex, :session, :start], _measurements, metadata, _config) do
+  def handle_telemetry([:agentic, :session, :start], _measurements, metadata, _config) do
     register(metadata.session_id,
       mode: Map.get(metadata, :mode),
       workspace: Map.get(metadata, :workspace),
@@ -152,16 +152,16 @@ defmodule Worth.Agent.Tracker do
     )
   end
 
-  def handle_telemetry([:agent_ex, :session, :stop], _measurements, metadata, _config) do
+  def handle_telemetry([:agentic, :session, :stop], _measurements, metadata, _config) do
     unregister(metadata.session_id)
   end
 
-  def handle_telemetry([:agent_ex, :session, :error], _measurements, metadata, _config) do
+  def handle_telemetry([:agentic, :session, :error], _measurements, metadata, _config) do
     update_field(metadata.session_id, :status, :error)
   end
 
   # Subagent lifecycle
-  def handle_telemetry([:agent_ex, :subagent, :spawn], _measurements, metadata, _config) do
+  def handle_telemetry([:agentic, :subagent, :spawn], _measurements, metadata, _config) do
     register(metadata.session_id,
       parent_session_id: Map.get(metadata, :parent_session_id),
       depth: Map.get(metadata, :depth, 1),
@@ -169,27 +169,27 @@ defmodule Worth.Agent.Tracker do
     )
   end
 
-  def handle_telemetry([:agent_ex, :subagent, :complete], _measurements, metadata, _config) do
+  def handle_telemetry([:agentic, :subagent, :complete], _measurements, metadata, _config) do
     update_field(metadata.session_id, :status, :done)
     # Keep for a moment so the UI can show "done", then clean up
     Process.send_after(__MODULE__, {:cleanup, metadata.session_id}, 5_000)
   end
 
-  def handle_telemetry([:agent_ex, :subagent, :error], _measurements, metadata, _config) do
+  def handle_telemetry([:agentic, :subagent, :error], _measurements, metadata, _config) do
     update_field(metadata.session_id, :status, :error)
   end
 
   # Tool tracking
-  def handle_telemetry([:agent_ex, :tool, :start], _measurements, metadata, _config) do
+  def handle_telemetry([:agentic, :tool, :start], _measurements, metadata, _config) do
     update_field(metadata.session_id, :current_tool, metadata.tool_name)
   end
 
-  def handle_telemetry([:agent_ex, :tool, :stop], _measurements, metadata, _config) do
+  def handle_telemetry([:agentic, :tool, :stop], _measurements, metadata, _config) do
     update_field(metadata.session_id, :current_tool, nil)
   end
 
   # Cost tracking from LLM calls
-  def handle_telemetry([:agent_ex, :llm_call, :stop], measurements, metadata, _config) do
+  def handle_telemetry([:agentic, :llm_call, :stop], measurements, metadata, _config) do
     cost = Map.get(measurements, :cost_usd, 0.0)
 
     if cost > 0 do

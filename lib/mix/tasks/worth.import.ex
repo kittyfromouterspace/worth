@@ -27,7 +27,7 @@ defmodule Mix.Tasks.Worth.Import do
 
   use Mix.Task
 
-  alias Mneme.Import
+  alias Recollect.Import
 
   @impl true
   def run(args) do

@@ -13,7 +13,7 @@ worth/
 │   │   ├── application.ex          # OTP Application
 │   │   ├── brain.ex                # Central brain GenServer
 │   │   ├── config.ex               # Config loading, validation, runtime cache
-│   │   ├── repo.ex                 # Ecto Repo (for Mneme)
+│   │   ├── repo.ex                 # Ecto Repo (for Recollect)
 │   │   ├── pubsub.ex               # Phoenix.PubSub instance
 │   │   ├── registry.ex             # Elixir Registry for process discovery
 │   │   ├── telemetry.ex            # Telemetry handlers + metrics reporter
@@ -118,7 +118,7 @@ worth/
 │   │   ├── IDENTITY.md
 │   │   ├── AGENTS.md
 │   │   └── skills.json
-│   └── repo/migrations/            # Mneme tables
+│   └── repo/migrations/            # Recollect tables
 │       └── 20260101000000_create_worth_tables.exs
 │
 └── test/

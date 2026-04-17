@@ -7,7 +7,7 @@ defmodule Worth.Orchestration.Strategies.Ecosystem do
   system prompt.
   """
 
-  @behaviour AgentEx.Strategy
+  @behaviour Agentic.Strategy
 
   defstruct [
     :workspace,

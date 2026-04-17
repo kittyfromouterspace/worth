@@ -29,10 +29,10 @@ defmodule Worth.Orchestration.ExperimentService do
 
     Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
       try do
-        agent_experiment = build_agent_experiment(experiment)
+        agenticperiment = build_agenticperiment(experiment)
 
-        result = AgentEx.Strategy.Experiment.run(agent_experiment)
-        comparison = AgentEx.Strategy.Experiment.compare(result)
+        result = Agentic.Strategy.Experiment.run(agenticperiment)
+        comparison = Agentic.Strategy.Experiment.compare(result)
 
         Repo.update!(Experiment.changeset(experiment, %{
           status: "complete",
@@ -62,8 +62,8 @@ defmodule Worth.Orchestration.ExperimentService do
     {:ok, experiment}
   end
 
-  defp build_agent_experiment(experiment) do
-    %AgentEx.Strategy.Experiment{
+  defp build_agenticperiment(experiment) do
+    %Agentic.Strategy.Experiment{
       id: experiment.id,
       name: experiment.name,
       description: experiment.description,

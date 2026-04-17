@@ -51,7 +51,7 @@ defmodule Worth.Learning.ProjectMapping do
   end
 
   def discover do
-    Worth.Learning.AgentConfig.provider_configs_for_mneme()
+    Worth.Learning.AgentConfig.provider_configs_for_recollect()
     |> Enum.filter(fn {mod, config} -> mod.available?(config) end)
     |> Enum.map(fn {mod, config} ->
       projects = discover_projects(mod, config)

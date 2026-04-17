@@ -1,9 +1,9 @@
 defmodule Worth.Orchestration.Strategies.Stigmergy do
   @moduledoc """
-  Stigmergy-based orchestration strategy using pheromone coordination via Mneme.
+  Stigmergy-based orchestration strategy using pheromone coordination via Recollect.
 
   Agents deposit digital pheromones (intention, completion, failure signals)
-  in Mneme's knowledge store. On each run, pheromone trails are fetched
+  in Recollect's knowledge store. On each run, pheromone trails are fetched
   and injected into the system prompt as coordination context.
 
   ## Hypothesis
@@ -12,7 +12,7 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
   on the right approach, reducing turns, tool backtracking, and cost.
   """
 
-  @behaviour AgentEx.Strategy
+  @behaviour Agentic.Strategy
 
   alias Worth.Memory.Manager
 

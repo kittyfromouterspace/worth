@@ -1,6 +1,6 @@
 # Tools
 
-## Core File Tools (from agent_ex)
+## Core File Tools (from agentic)
 
 | Tool | Purpose |
 |------|---------|
@@ -10,7 +10,7 @@
 | `bash` | Shell command execution |
 | `list_files` | Glob file listing |
 
-## Memory Tools (from agent_ex)
+## Memory Tools (from agentic)
 
 | Tool | Purpose |
 |------|---------|
@@ -19,7 +19,7 @@
 | `memory_note` | Store in ContextKeeper working set (session-local) |
 | `memory_recall` | Retrieve from ContextKeeper (session-local) |
 
-## Skill Tools (from agent_ex)
+## Skill Tools (from agentic)
 
 | Tool | Purpose |
 |------|---------|
@@ -40,7 +40,7 @@
 | `kit_info` | Get kit details and dependencies |
 | `kit_publish` | Package and publish a workflow as a kit |
 
-## Gateway Tools (from agent_ex)
+## Gateway Tools (from agentic)
 
 | Tool | Purpose |
 |------|---------|
@@ -52,13 +52,13 @@
 
 ## Worth-Specific Extensions
 
-Registered as agent_ex extension modules:
+Registered as agentic extension modules:
 
 ```elixir
-AgentEx.Tools.register_extension(Worth.Tools.Workspace)
-AgentEx.Tools.register_extension(Worth.Tools.Web)
-AgentEx.Tools.register_extension(Worth.Tools.Git)
-AgentEx.Tools.register_extension(Worth.Tools.Mcp)
+Agentic.Tools.register_extension(Worth.Tools.Workspace)
+Agentic.Tools.register_extension(Worth.Tools.Web)
+Agentic.Tools.register_extension(Worth.Tools.Git)
+Agentic.Tools.register_extension(Worth.Tools.Mcp)
 ```
 
 | Tool | Module | Purpose |

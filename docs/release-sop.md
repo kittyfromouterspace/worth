@@ -6,15 +6,15 @@ Standard operating procedure for releasing Worth. Covers switching between dev a
 
 Dependencies must be tagged first so their git refs can be referenced in downstream `mix.exs`:
 
-1. **mneme** — `git@github.com:kittyfromouterspace/mneme.git`
-2. **agent_ex** — `git@github.com:kittyfromouterspace/agent_ex.git`
+1. **recollect** — `git@github.com:kittyfromouterspace/recollect.git`
+2. **agentic** — `git@github.com:kittyfromouterspace/agentic.git`
 3. **worth** — `git@github.com:kittyfromouterspace/worth.git`
 
 ## Mode switching
 
 Worth's `mix.exs` uses the `WORTH_DEPS_MODE` environment variable to select between local dev (path deps) and prod (git deps with tags).
 
-- **Dev mode** (default): `WORTH_DEPS_MODE=dev` or unset — uses `path: "../mneme"` and `path: "../agent_ex"`
+- **Dev mode** (default): `WORTH_DEPS_MODE=dev` or unset — uses `path: "../recollect"` and `path: "../agentic"`
 - **Prod mode**: `WORTH_DEPS_MODE=prod` — uses git deps with tags from GitHub
 
 CI workflows set `WORTH_DEPS_MODE=prod` automatically.
@@ -60,16 +60,16 @@ Determine the new version numbers for each repo. Update them in order:
 
 | Repo | File to update | Notes |
 |------|---------------|-------|
-| mneme | `mix.exs` `version:` field | |
-| agent_ex | `mix.exs` `version:` field | |
+| recollect | `mix.exs` `version:` field | |
+| agentic | `mix.exs` `version:` field | |
 | worth | `mix.exs` `version:` field | Semver OK (e.g. `0.2.1-alpha.5`) |
 | worth | `rel/desktop/src-tauri/tauri.conf.json` `version` field | Must be valid semver (e.g. `0.2.1-alpha.5`) |
 | worth | `rel/desktop/src-tauri/tauri.conf.json` `bundle.windows.wix.version` | Must be numeric-only 4-part (e.g. `0.2.1.5`) — MSI/WiX rejects pre-release identifiers. Map: strip `-alpha.N` → `.N`, strip `-beta.N` → `.N`, stable → `.0` |
 
-### Step 2 — Commit and tag mneme
+### Step 2 — Commit and tag recollect
 
 ```bash
-cd ../mneme
+cd ../recollect
 git add mix.exs
 git commit -m "v0.x.y"
 git tag v0.x.y
@@ -78,11 +78,11 @@ git tag v0.x.y
 - If **releasing**: `git push origin main --tags`
 - If **dry run**: skip push
 
-### Step 3 — Commit and tag agent_ex
+### Step 3 — Commit and tag agentic
 
 ```bash
-cd ../agent_ex
-# Update mneme dep tag in mix.exs to the version from Step 2
+cd ../agentic
+# Update recollect dep tag in mix.exs to the version from Step 2
 git add mix.exs
 git commit -m "v0.x.y"
 git tag v0.x.y
@@ -143,7 +143,7 @@ mix compile
 
 Both CI workflows (`ci.yml` and `desktop-release.yml`) set `WORTH_DEPS_MODE=prod`, so they always resolve git deps regardless of what's in the local `mix.exs`. No manual dep swapping is needed before pushing to `main` or tagging.
 
-The git dep tags in `mix.exs` (currently `mneme v0.4.2`, `agent_ex v0.1.6`) must be kept up to date during releases — CI uses whatever tags are hardcoded there.
+The git dep tags in `mix.exs` (currently `recollect v0.4.2`, `agentic v0.1.6`) must be kept up to date during releases — CI uses whatever tags are hardcoded there.
 
 ## Quick reference
 
@@ -151,7 +151,7 @@ The git dep tags in `mix.exs` (currently `mneme v0.4.2`, `agent_ex v0.1.6`) must
 |--------|---------|
 | Local prod test | `WORTH_DEPS_MODE=prod rm -rf deps _build && mix deps.get && mix test` |
 | Switch to dev | Edit `mix.exs` (path deps), then `rm -rf deps _build && mix deps.get` |
-| Tag mneme | `git tag v0.x.y && git push origin main --tags` |
-| Tag agent_ex | `git tag v0.x.y && git push origin main --tags` |
+| Tag recollect | `git tag v0.x.y && git push origin main --tags` |
+| Tag agentic | `git tag v0.x.y && git push origin main --tags` |
 | Tag worth | `git tag v0.x.y && git push origin main --tags` |
 | Publish release | GitHub Releases page → publish draft |

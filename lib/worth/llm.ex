@@ -1,26 +1,26 @@
 defmodule Worth.LLM do
   @moduledoc """
-  Thin dispatch layer between Worth and AgentEx providers.
+  Thin dispatch layer between Worth and Agentic providers.
 
   All model selection, route walking, failover, and error classification
-  lives in `AgentEx`. This module only:
-  1. Extracts the route from params (injected by AgentEx's LLMCall stage)
+  lives in `Agentic`. This module only:
+  1. Extracts the route from params (injected by Agentic's LLMCall stage)
   2. Resolves the provider module and credentials
-  3. Dispatches to `AgentEx.LLM.Provider`
+  3. Dispatches to `Agentic.LLM.Provider`
 
   For background tasks (fact extraction, skill refinement) that need
   tier-based dispatch with failover, use `chat_tier/3` which delegates
-  to `AgentEx.LLM.chat_tier/3`.
+  to `Agentic.LLM.chat_tier/3`.
   """
 
-  alias AgentEx.LLM.Error
-  alias AgentEx.LLM.Provider
-  alias AgentEx.LLM.ProviderRegistry
+  alias Agentic.LLM.Error
+  alias Agentic.LLM.Provider
+  alias Agentic.LLM.ProviderRegistry
 
   # ----- stream_chat/2: streaming dispatch -----
 
   @doc """
-  Streaming dispatch for a single route. AgentEx's LLMCall stage
+  Streaming dispatch for a single route. Agentic's LLMCall stage
   resolves routes and injects `_route` into params. This function
   dispatches to the matching provider with credentials.
   """
@@ -85,10 +85,10 @@ defmodule Worth.LLM do
     Provider.chat(provider_module, params, opts)
   end
 
-  # ----- chat_tier/3: delegate to AgentEx -----
+  # ----- chat_tier/3: delegate to Agentic -----
 
   @doc """
-  Tier-based chat with full failover. Delegates to `AgentEx.LLM.chat_tier/3`
+  Tier-based chat with full failover. Delegates to `Agentic.LLM.chat_tier/3`
   which handles route resolution, walking, error classification, and health
   reporting. The `llm_chat` callback routes through this module so credentials
   are injected per-call.
@@ -98,7 +98,7 @@ defmodule Worth.LLM do
   def chat_tier(params, tier) when tier in [:primary, :lightweight, :any] do
     creds_cache = build_creds_cache()
 
-    AgentEx.LLM.chat_tier(params, tier, llm_chat: fn p -> dispatch_with_cache(p, creds_cache) end)
+    Agentic.LLM.chat_tier(params, tier, llm_chat: fn p -> dispatch_with_cache(p, creds_cache) end)
   end
 
   # ----- provider resolution -----
@@ -109,7 +109,7 @@ defmodule Worth.LLM do
 
   defp default_provider_and_model do
     provider_id = Worth.Config.get([:llm, :default_provider]) || :anthropic
-    provider_module = ProviderRegistry.get(provider_id) || AgentEx.LLM.Provider.Anthropic
+    provider_module = ProviderRegistry.get(provider_id) || Agentic.LLM.Provider.Anthropic
 
     model =
       Worth.Config.get([:llm, :providers, provider_id, :default_model]) ||

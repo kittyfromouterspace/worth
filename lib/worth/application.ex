@@ -36,13 +36,13 @@ defmodule Worth.Application do
 
     case Supervisor.start_link(children, strategy: :one_for_one, name: Worth.Supervisor) do
       {:ok, pid} ->
-        AgentEx.Sandbox.Platform.log_status()
+        Agentic.Sandbox.Platform.log_status()
 
         _ = start_init_task(:skill_registry_init, &Worth.Skill.Registry.init/0)
         _ = start_init_task(:mcp_auto_connect, &Broker.connect_auto/0)
         _ = start_init_task(:embeddings_stale_check, &Worth.Memory.Embeddings.StaleCheck.run/0)
         _ = start_init_task(:coding_agents_register, &Worth.CodingAgents.auto_register/0)
-        _ = start_init_task(:catalog_refresh, &AgentEx.LLM.Catalog.refresh/0)
+        _ = start_init_task(:catalog_refresh, &Agentic.LLM.Catalog.refresh/0)
         _ = start_init_task(:strategy_registration, &register_strategies/0)
 
         {:ok, pid}
@@ -80,6 +80,6 @@ defmodule Worth.Application do
   end
 
   defp register_strategies do
-    AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Stigmergy)
+    Agentic.Strategy.Registry.register(Worth.Orchestration.Strategies.Stigmergy)
   end
 end

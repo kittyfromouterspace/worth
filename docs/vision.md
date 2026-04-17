@@ -2,7 +2,7 @@
 
 Worth is a single-user, terminal-native AI assistant built on Elixir/BEAM. One central brain operates across multiple workspaces, can write code and do general research, and is extensible through a skills system with self-learning. Everything runs locally in one BEAM node -- no containers, no VMs, no web server.
 
-The design strips away the multi-user, billing, and deployment complexity of Homunculus while preserving its core agent architecture: the agent runtime (agent_ex), the memory engine (mneme), the skills system, and the workspace model.
+The design strips away the multi-user, billing, and deployment complexity of Homunculus while preserving its core agent architecture: the agent runtime (agentic), the memory engine (recollect), the skills system, and the workspace model.
 
 ## One Brain, One Memory
 
@@ -18,7 +18,7 @@ This means:
 
 - **Code**: Read, write, edit, refactor, run commands, manage git in any workspace
 - **Research**: Search the web, fetch URLs, analyze documents, synthesize information
-- **Remember**: Persistent knowledge across sessions via mneme (vector search + knowledge graph + memory decay)
+- **Remember**: Persistent knowledge across sessions via recollect (vector search + knowledge graph + memory decay)
 - **Learn**: Self-improving skills that get better with use (create, test, refine, promote)
 - **Extend**: Connect to external services via MCP (GitHub, databases, search, Slack, etc.)
 - **Adapt**: Multiple LLM providers with smart model routing (Anthropic, OpenAI, OpenRouter)

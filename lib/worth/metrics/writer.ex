@@ -2,8 +2,8 @@ defmodule Worth.Metrics.Writer do
   @moduledoc """
   Telemetry handler that persists orchestration metrics to SQLite.
 
-  Attaches to `[:agent_ex, :session, :start]`, `[:agent_ex, :session, :stop]`,
-  `[:agent_ex, :orchestration, :turn]`, and `[:agent_ex, :orchestration, :tool_executed]`
+  Attaches to `[:agentic, :session, :start]`, `[:agentic, :session, :stop]`,
+  `[:agentic, :orchestration, :turn]`, and `[:agentic, :orchestration, :tool_executed]`
   events and writes corresponding rows to the metrics tables.
   """
 
@@ -76,28 +76,28 @@ defmodule Worth.Metrics.Writer do
   defp attach_handlers do
     :telemetry.attach(
       @handler_id <> "_session_start",
-      [:agent_ex, :session, :start],
+      [:agentic, :session, :start],
       &__MODULE__.handle_session_start/4,
       nil
     )
 
     :telemetry.attach(
       @handler_id <> "_session_stop",
-      [:agent_ex, :session, :stop],
+      [:agentic, :session, :stop],
       &__MODULE__.handle_session_stop/4,
       nil
     )
 
     :telemetry.attach(
       @handler_id <> "_turn",
-      [:agent_ex, :orchestration, :turn],
+      [:agentic, :orchestration, :turn],
       &__MODULE__.handle_turn/4,
       nil
     )
 
     :telemetry.attach(
       @handler_id <> "_tool",
-      [:agent_ex, :orchestration, :tool_executed],
+      [:agentic, :orchestration, :tool_executed],
       &__MODULE__.handle_tool_executed/4,
       nil
     )

@@ -3,12 +3,12 @@ defmodule Worth.CodingAgents do
   Service for discovering and managing local coding agent CLIs.
 
   Supports auto-discovery of installed coding agents (Claude Code, OpenCode, etc.)
-  and integrates them with AgentEx's pluggable protocol infrastructure.
+  and integrates them with Agentic's pluggable protocol infrastructure.
   """
 
   require Logger
 
-  alias AgentEx.Protocol.ACP.Discovery
+  alias Agentic.Protocol.ACP.Discovery
 
   @doc "Discover all available coding agents on the system."
   def discover do
@@ -40,7 +40,7 @@ defmodule Worth.CodingAgents do
     end
   end
 
-  @doc "Get the AgentEx profile atom for a coding agent."
+  @doc "Get the Agentic profile atom for a coding agent."
   def profile_for(protocol) do
     case protocol do
       :claude -> :claude_code
@@ -60,33 +60,33 @@ defmodule Worth.CodingAgents do
       entry ->
         %{
           command: entry.command,
-          args: entry.args || ["acp"],
+          args: entry.args,
           workspace: workspace
         }
     end
   end
 
-  @doc "List all registered protocol names (from AgentEx Registry)."
+  @doc "List all registered protocol names (from Agentic Registry)."
   def list_registered do
-    AgentEx.Protocol.Registry.for_transport(:local_agent)
+    Agentic.Protocol.Registry.for_transport(:local_agent)
   end
 
   @doc "Check if a protocol is both registered and available."
   def active?(protocol) do
-    AgentEx.Protocol.Registry.available?(protocol)
+    Agentic.Protocol.Registry.available?(protocol)
   end
 
-  @doc "Register a protocol with AgentEx.Registry."
+  @doc "Register a protocol with Agentic.Registry."
   def register_protocol(protocol_module, protocol_atom) do
     name = inspect(protocol_atom)
 
-    case AgentEx.Protocol.Registry.lookup(protocol_atom) do
+    case Agentic.Protocol.Registry.lookup(protocol_atom) do
       {:ok, _} ->
         Logger.info("Protocol #{name} already registered")
         :ok
 
       :error ->
-        AgentEx.Protocol.Registry.register(protocol_atom, protocol_module)
+        Agentic.Protocol.Registry.register(protocol_atom, protocol_module)
         Logger.info("Registered coding agent protocol: #{name}")
     end
   end
@@ -96,29 +96,29 @@ defmodule Worth.CodingAgents do
     discovered = discover()
 
     # Ensure generic ACP protocol is registered
-    register_protocol(AgentEx.Protocol.ACP, {:acp, :generic})
+    register_protocol(Agentic.Protocol.ACP, {:acp, :generic})
 
     for agent <- discovered do
       case agent.protocol do
         :claude ->
-          register_protocol(AgentEx.Protocol.ClaudeCode, :claude_code)
+          register_protocol(Agentic.Protocol.ClaudeCode, :claude_code)
           add_to_config(:claude_code, "Claude Code")
 
         :claude_code ->
-          register_protocol(AgentEx.Protocol.ClaudeCode, :claude_code)
+          register_protocol(Agentic.Protocol.ClaudeCode, :claude_code)
           add_to_config(:claude_code, "Claude Code")
 
         :opencode ->
-          register_protocol(AgentEx.Protocol.OpenCode, :opencode)
+          register_protocol(Agentic.Protocol.OpenCode, :opencode)
           add_to_config(:opencode, "OpenCode")
 
         :codex ->
-          register_protocol(AgentEx.Protocol.Codex, :codex)
+          register_protocol(Agentic.Protocol.Codex, :codex)
           add_to_config(:codex, "Codex CLI")
 
         protocol ->
           # Register ACP-based agents under {:acp, protocol}
-          register_protocol(AgentEx.Protocol.ACP, {:acp, protocol})
+          register_protocol(Agentic.Protocol.ACP, {:acp, protocol})
           add_to_config(protocol, agent.display_name)
       end
     end

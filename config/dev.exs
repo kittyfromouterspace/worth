@@ -10,8 +10,8 @@ worth_data_dev =
 config :logger, :default_formatter, format: "[$level] $message\n"
 config :logger, level: :debug
 
-config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.SQLiteVec
+config :recollect,
+  database_adapter: Recollect.DatabaseAdapter.SQLiteVec
 
 config :phoenix, :plug_init_mode, :runtime
 config :phoenix, :stacktrace_depth, 20

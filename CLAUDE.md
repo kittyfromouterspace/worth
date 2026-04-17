@@ -6,6 +6,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Worth is an AI assistant built on Elixir/BEAM with a Phoenix LiveView web UI. It is a single OTP application that wraps an agent loop, persistent memory, a self-learning skill system, and MCP client/server integration.
 
+## Agent Skills & Usage Rules
+
+Worth depends on two internal libraries that ship with their own usage rules and agent skills:
+- **Agentic** — the agent loop engine (`Agentic.run/1`)
+- **Recollect** — vector search + knowledge graph backing memory
+
+Auto-generated usage rules for these libraries (and Elixir/OTP) live in [`AGENTS.md`](AGENTS.md). Consult it for detailed API conventions, callback patterns, and extension points.
+
+Agent skills are available in `.claude/skills/`:
+- `agentic-runtime` — pre-built skill from the agentic package
+- `recollect-memory` — pre-built skill from the recollect package
+- `use-agentic` — auto-generated skill referencing agentic docs
+- `use-recollect` — auto-generated skill referencing recollect docs
+- `worth-memory` — composed skill combining both libraries for Worth-specific work
+
 ## Common commands
 
 ```bash
@@ -22,11 +37,11 @@ mix run --no-halt -- --init NAME          # scaffold a workspace and exit
 mix worth                                 # alias for the web UI launcher
 ```
 
-Database: PostgreSQL **with the pgvector extension** is required (used by Mneme for vector search). Tests automatically run `ecto.create --quiet && ecto.migrate --quiet` before executing (see `mix.exs` aliases).
+Database: PostgreSQL **with the pgvector extension** is required (used by Recollect for vector search). Tests automatically run `ecto.create --quiet && ecto.migrate --quiet` before executing (see `mix.exs` aliases).
 
 Two unusual deps live as **path dependencies** outside this repo and must exist as siblings of `worth/`:
-- `../agent_ex` — the agent loop engine (`AgentEx.run/1`)
-- `../mneme` — vector search + knowledge graph backing memory
+- `../agentic` — the agent loop engine (`Agentic.run/1`)
+- `../recollect` — vector search + knowledge graph backing memory
 
 ## Architecture
 
@@ -46,14 +61,14 @@ The system is organized around per-workspace GenServers (`Worth.Brain`) that eac
 
 ### Brain → agent loop
 
-`Worth.Brain` (lib/worth/brain.ex) is a per-workspace GenServer registered via `{:via, Registry, {Worth.Registry, {:brain, workspace}}}`. It holds `current_workspace`, `session_id`, `history`, `mode`, `tool_permissions`, `active_tools`, etc. It exposes a sync API (`send_message/2`, `get_status/1`, `switch_mode/2`, `switch_workspace/2`, `resume_session/2`, …) that takes a `workspace` argument. Each turn invokes `AgentEx.run/1` which iterates LLM ↔ tool calls. Tool permissions are per-tool `:auto` or `:approve` (see `@default_tool_permissions`); approval-gated tools park in `pending_approval` until the UI calls `approve_tool/deny_tool`.
+`Worth.Brain` (lib/worth/brain.ex) is a per-workspace GenServer registered via `{:via, Registry, {Worth.Registry, {:brain, workspace}}}`. It holds `current_workspace`, `session_id`, `history`, `mode`, `tool_permissions`, `active_tools`, etc. It exposes a sync API (`send_message/2`, `get_status/1`, `switch_mode/2`, `switch_workspace/2`, `resume_session/2`, …) that takes a `workspace` argument. Each turn invokes `Agentic.run/1` which iterates LLM ↔ tool calls. Tool permissions are per-tool `:auto` or `:approve` (see `@default_tool_permissions`); approval-gated tools park in `pending_approval` until the UI calls `approve_tool/deny_tool`.
 
 Modes (code, research, planned, turn_by_turn) change the agent's prompt + autonomy profile, not its toolset.
 
 ### Subsystems (each is a small service called from the Brain)
 
 - **lib/worth/llm/** — `Adapter` behaviour with `Anthropic`, `OpenAI`, `OpenRouter` implementations and a `Router` that picks primary vs lightweight models. `Cost` tracks per-turn dollars against `cost_limit`.
-- **lib/worth/memory/** — `Memory.Manager` orchestrates retrieval against Mneme (vector + knowledge graph). `FactExtractor` pulls facts from agent turns. Memory is **global**, shared across all workspaces; working memory per workspace is flushed to global on switch.
+- **lib/worth/memory/** — `Memory.Manager` orchestrates retrieval against Recollect (vector + knowledge graph). `FactExtractor` pulls facts from agent turns. Memory is **global**, shared across all workspaces; working memory per workspace is flushed to global on switch.
 - **lib/worth/skills/** — Skills are agentskills.io-compatible `SKILL.md` files with `trust_level` ∈ {core, installed, learned}.
   - `Parser`/`Validator` parse + statically check skills
   - `Registry` caches metadata in `:persistent_term` + ETS index, init runs async at boot
@@ -88,7 +103,7 @@ Modes (code, research, planned, turn_by_turn) change the agent's prompt + autono
 - MCP tools must always be referenced with their `server:tool` namespace inside `ToolIndex` and the gateway.
 - Skill mutations should go through `Worth.Skill.Service` (not `Registry` directly) so versioning, validation, and the in-memory index stay coherent.
 - Memory writes go through `Worth.Memory.Manager` so fact extraction, embedding, and confidence decay are applied consistently.
-- New tools belong under `lib/worth/tools/` and are wired into the agent via the tool registry the Brain hands to `AgentEx.run/1`.
+- New tools belong under `lib/worth/tools/` and are wired into the agent via the tool registry the Brain hands to `Agentic.run/1`.
 
 ## Theme System
 

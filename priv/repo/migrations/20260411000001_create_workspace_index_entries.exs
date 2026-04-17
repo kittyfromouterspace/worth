@@ -10,7 +10,7 @@ defmodule Worth.Repo.Migrations.CreateWorkspaceIndexEntries do
       add(:content_hash, :string, null: false)
       add(:file_size, :integer)
       add(:last_modified, :utc_datetime_usec)
-      add(:mneme_entry_ids, :map, default: %{})
+      add(:recollect_entry_ids, :map, default: %{})
       add(:indexed_at, :utc_datetime_usec, null: false)
       add(:status, :string, default: "indexed")
 

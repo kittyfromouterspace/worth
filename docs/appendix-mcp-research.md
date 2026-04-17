@@ -51,7 +51,7 @@ Capabilities:
 - Request timeout/cancellation with progress notifications
 - Component system for registering tools/resources/prompts at runtime
 
-This library is already a transitive dependency through agent_ex -- no additional hex dependency needed.
+This library is already a transitive dependency through agentic -- no additional hex dependency needed.
 
 ## B.3 MCP Server Ecosystem
 

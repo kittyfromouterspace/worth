@@ -258,18 +258,18 @@ end
 
 ### 4.2  Telemetry hooks
 
-Attach to existing AgentEx telemetry events in `Worth.Telemetry` (or a new
+Attach to existing Agentic telemetry events in `Worth.Telemetry` (or a new
 `Worth.Agent.TelemetryHandler`):
 
 | Telemetry event | Handler action |
 |-----------------|----------------|
-| `[:agent_ex, :session, :start]` | `Tracker.register/2` |
-| `[:agent_ex, :session, :stop]` | `Tracker.unregister/1` |
-| `[:agent_ex, :subagent, :spawn]` | `Tracker.register/2` with parent_session_id |
-| `[:agent_ex, :subagent, :complete]` | `Tracker.unregister/1` |
-| `[:agent_ex, :subagent, :error]` | `Tracker.update_status/2` → :error |
-| `[:agent_ex, :tool, :start]` | `Tracker.update_tool/2` |
-| `[:agent_ex, :tool, :stop]` | `Tracker.update_tool/2` → nil |
+| `[:agentic, :session, :start]` | `Tracker.register/2` |
+| `[:agentic, :session, :stop]` | `Tracker.unregister/1` |
+| `[:agentic, :subagent, :spawn]` | `Tracker.register/2` with parent_session_id |
+| `[:agentic, :subagent, :complete]` | `Tracker.unregister/1` |
+| `[:agentic, :subagent, :error]` | `Tracker.update_status/2` → :error |
+| `[:agentic, :tool, :start]` | `Tracker.update_tool/2` |
+| `[:agentic, :tool, :stop]` | `Tracker.update_tool/2` → nil |
 
 ### 4.3  PubSub broadcast
 
@@ -278,7 +278,7 @@ On every Tracker state change, broadcast to `"agents:updates"` via
 
 ### 4.4  Wire into Brain
 
-When `Worth.Brain` calls `AgentEx.run/1`, pass a `:session_id` and ensure the
+When `Worth.Brain` calls `Agentic.run/1`, pass a `:session_id` and ensure the
 brain's callbacks forward tool events with the session_id so the Tracker can
 correlate.
 

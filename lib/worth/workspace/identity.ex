@@ -24,7 +24,7 @@ defmodule Worth.Workspace.Identity do
   Resolution order (highest priority first):
     1. Workspace `IDENTITY.md` frontmatter `llm:` block
     2. Global `~/.worth/config.exs` `[:llm, :tiers]` setting
-    3. Compile-time provider defaults in `agent_ex`
+    3. Compile-time provider defaults in `agentic`
   """
 
   @frontmatter_delimiter ~r/^-{3,}\s*$/
@@ -77,7 +77,7 @@ defmodule Worth.Workspace.Identity do
   Extract just the LLM tier overrides from a workspace path.
 
   Returns a map like `%{primary: "anthropic/claude-sonnet-4", lightweight: "openai/gpt-4o-mini"}`
-  suitable for passing to `AgentEx.ModelRouter.set_tier_overrides/1`.
+  suitable for passing to `Agentic.ModelRouter.set_tier_overrides/1`.
   """
   def tier_overrides(workspace_path) do
     case load(workspace_path) do

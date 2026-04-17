@@ -6,7 +6,7 @@ defmodule WorthWeb.Commands.ModelCommands do
   import Phoenix.Component, only: [assign: 3]
   import WorthWeb.Commands.Helpers
 
-  alias AgentEx.LLM.Catalog
+  alias Agentic.LLM.Catalog
 
   def handle({:model, :status}, socket) do
     routing = current_routing()
@@ -221,7 +221,7 @@ defmodule WorthWeb.Commands.ModelCommands do
   defp resolve_coding_agent(input) do
     input = String.trim(input) |> String.downcase()
 
-    agents = AgentEx.Protocol.ACP.Discovery.known_agents()
+    agents = Agentic.Protocol.ACP.Discovery.known_agents()
 
     case Enum.find(agents, fn a ->
            to_string(a.name) == input or

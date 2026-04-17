@@ -84,7 +84,7 @@
 
 ### Options
 - [x] **A.** Replace all instances with `String.to_existing_atom/1` plus a safe fallback to a default atom.
-- [ ] **B.** Change downstream APIs (e.g., `AgentEx.LLM.Catalog.lookup/2`) to accept strings instead of atoms.
+- [ ] **B.** Change downstream APIs (e.g., `Agentic.LLM.Catalog.lookup/2`) to accept strings instead of atoms.
 - [ ] **C.** Maintain a whitelist map of allowed strings → atoms and reject everything else.
 
 ### Decision
@@ -318,10 +318,10 @@
 
 ## Build Blocker Resolved
 
-### Mneme compilation failure after lockfile cleanup
-- **Problem:** After `mix deps.unlock --unused`, `mneme` failed to compile with `unknown type Mneme.EmbeddingType for field :embedding` because `pgvector` was no longer compiled before `mneme`.
-- **Root cause:** `Mneme.EmbeddingType.load/1` pattern-matched on `%Pgvector{}`, which requires the module to be loaded at compile time. Without `pgvector` in the build path, `EmbeddingType` failed to compile, and all schemas referencing it failed.
-- **Fix:** Changed the struct match in `../mneme/lib/mneme/embedding_type.ex` to `%{__struct__: Pgvector} = vec` (runtime map match) and removed a stale temporary stub in `worth/lib/worth/mneme_embedding_type_fix.ex`.
+### Recollect compilation failure after lockfile cleanup
+- **Problem:** After `mix deps.unlock --unused`, `recollect` failed to compile with `unknown type Recollect.EmbeddingType for field :embedding` because `pgvector` was no longer compiled before `recollect`.
+- **Root cause:** `Recollect.EmbeddingType.load/1` pattern-matched on `%Pgvector{}`, which requires the module to be loaded at compile time. Without `pgvector` in the build path, `EmbeddingType` failed to compile, and all schemas referencing it failed.
+- **Fix:** Changed the struct match in `../recollect/lib/recollect/embedding_type.ex` to `%{__struct__: Pgvector} = vec` (runtime map match) and removed a stale temporary stub in `worth/lib/worth/recollect_embedding_type_fix.ex`.
 - **Status:** ✅ **Complete.** `mix compile` clean; 127 tests passing.
 
 ---
@@ -348,14 +348,14 @@
 
 ---
 
-## P2.2 Unpublished path dependencies (`mneme`, `agent_ex`)
+## P2.2 Unpublished path dependencies (`recollect`, `agentic`)
 
-- **Problem:** `mix.exs` references `../mneme` and `../agent_ex`. The repo is unbuildable for anyone except the original developer.
+- **Problem:** `mix.exs` references `../recollect` and `../agentic`. The repo is unbuildable for anyone except the original developer.
 - **Evidence:** Root `mix.exs`
 - **Risk:** Prevents CI, onboarding, and open-source collaboration.
 
 ### Options
-- [ ] **A.** Publish `mneme` and `agent_ex` to a private Hex organization or GitHub Packages.
+- [ ] **A.** Publish `recollect` and `agentic` to a private Hex organization or GitHub Packages.
 - [ ] **B.** Vendor the two libraries into `deps/` or `lib/vendor/` as git submodules.
 - [ ] **C.** Document the sibling-repo requirement in `README.md` and accept the limitation for now.
 
@@ -365,7 +365,7 @@
 - **Target PR:** ___
 
 ### Status
-✅ **Complete.** `mix.exs` already contains commented `git` dependency lines for `mneme` and `agent_ex` that can be switched on release.
+✅ **Complete.** `mix.exs` already contains commented `git` dependency lines for `recollect` and `agentic` that can be switched on release.
 
 ---
 
@@ -404,7 +404,7 @@
 - [ ] **C.** Replace Credo with `mix format --check-formatted` + a custom script for complexity.
 
 ### Decision
-- **Chosen option:** C — standardize on `mix check` + `styler` (same as `mneme` and `agent_ex`). Credo is no longer the primary quality gate.
+- **Chosen option:** C — standardize on `mix check` + `styler` (same as `recollect` and `agentic`). Credo is no longer the primary quality gate.
 - **Owner:** ___
 - **Target PR:** ___
 

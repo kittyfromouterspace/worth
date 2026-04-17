@@ -1,6 +1,6 @@
 defmodule Worth.Workspace.IndexEntry do
   @moduledoc """
-  Tracks which content from a workspace has been indexed into Mneme.
+  Tracks which content from a workspace has been indexed into Recollect.
 
   Each record represents a file or data source that has been processed
   and stored in memory. The content_hash allows detecting changes.
@@ -17,7 +17,7 @@ defmodule Worth.Workspace.IndexEntry do
     field(:content_hash, :string)
     field(:file_size, :integer)
     field(:last_modified, :utc_datetime_usec)
-    field(:mneme_entry_ids, :map, default: %{})
+    field(:recollect_entry_ids, :map, default: %{})
     field(:indexed_at, :utc_datetime_usec)
     field(:status, :string, default: "indexed")
 
@@ -38,7 +38,7 @@ defmodule Worth.Workspace.IndexEntry do
       :content_hash,
       :file_size,
       :last_modified,
-      :mneme_entry_ids,
+      :recollect_entry_ids,
       :indexed_at,
       :status
     ])

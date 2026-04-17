@@ -176,7 +176,7 @@ defmodule Worth.Brain do
     GenServer.call(pid, {:switch_to_coding_agent, protocol})
   end
 
-  def list_strategies, do: AgentEx.Strategy.Registry.all()
+  def list_strategies, do: Agentic.Strategy.Registry.all()
 
   # These don't need a workspace — they're global services
   def mcp_connect(name, config), do: Broker.connect(name, config)
@@ -208,7 +208,7 @@ defmodule Worth.Brain do
     }
 
     tiers = Worth.Workspace.Identity.tier_overrides(state.workspace_path)
-    AgentEx.ModelRouter.set_tier_overrides(tiers)
+    Agentic.ModelRouter.set_tier_overrides(tiers)
 
     Logger.info("[Brain] Started for workspace=#{workspace}, pid=#{inspect(self())}")
     {:ok, state}
@@ -257,8 +257,8 @@ defmodule Worth.Brain do
   end
 
   def handle_call({:switch_strategy, strategy_id, opts}, _from, state) do
-    # Validation only — AgentEx.run handles strategy init to avoid double-init
-    case AgentEx.Strategy.Registry.fetch(strategy_id) do
+    # Validation only — Agentic.run handles strategy init to avoid double-init
+    case Agentic.Strategy.Registry.fetch(strategy_id) do
       nil ->
         {:reply, {:error, :unknown_strategy}, state}
 
@@ -382,7 +382,7 @@ defmodule Worth.Brain do
   end
 
   def handle_info({:model_selected, _model_info}, state) do
-    # AgentEx ModelRouter broadcasts model selection events; ignore in Brain
+    # Agentic ModelRouter broadcasts model selection events; ignore in Brain
     {:noreply, state}
   end
 
@@ -495,9 +495,9 @@ defmodule Worth.Brain do
       label: "main agent"
     )
 
-    Logger.info("[Brain] Calling AgentEx.run (profile=#{state.profile})")
+    Logger.info("[Brain] Calling Agentic.run (profile=#{state.profile})")
 
-    case AgentEx.run(run_opts) do
+    case Agentic.run(run_opts) do
       {:ok, response} ->
         store_outcome_feedback(response)
         {:ok, response}

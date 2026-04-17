@@ -1,8 +1,8 @@
-defmodule Mneme.Repo.Migrations.AddMemoryEnhancements do
+defmodule Recollect.Repo.Migrations.AddMemoryEnhancements do
   use Ecto.Migration
 
   def change do
-    alter table(:mneme_entries) do
+    alter table(:recollect_entries) do
       add(:half_life_days, :float, default: 7.0, null: false)
       add(:pinned, :boolean, default: false, null: false)
       add(:emotional_valence, :string, default: "neutral", null: false)
@@ -11,9 +11,9 @@ defmodule Mneme.Repo.Migrations.AddMemoryEnhancements do
       add(:confidence_state, :string, default: "active", null: false)
     end
 
-    create(index(:mneme_entries, [:half_life_days]))
-    create(index(:mneme_entries, [:emotional_valence]))
-    create(index(:mneme_entries, [:schema_fit]))
-    create(index(:mneme_entries, [:confidence_state]))
+    create(index(:recollect_entries, [:half_life_days]))
+    create(index(:recollect_entries, [:emotional_valence]))
+    create(index(:recollect_entries, [:schema_fit]))
+    create(index(:recollect_entries, [:confidence_state]))
   end
 end

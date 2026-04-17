@@ -26,7 +26,7 @@ Worth.Application
 │   Resolved config values, :persistent_term for hot reads
 │
 ├── Worth.Telemetry                     (telemetry_metrics reporter)
-│   Attaches to [:worth, ...], [:agent_ex, ...], [:mneme, ...]
+│   Attaches to [:worth, ...], [:agentic, ...], [:recollect, ...]
 │
 ├── Worth.Brain.Supervisor              (Supervisor, rest_for_one)
 │   ├── Worth.Brain                     (GenServer)
@@ -77,12 +77,12 @@ This means:
 | Skill full content (L2) | Filesystem (read on demand) | Large, read occasionally. OS page cache is sufficient. |
 | MCP tool index | ETS (`:set`, `write_concurrency: true`) | Updated on connect/disconnect, read on every tool call. |
 | Working memory facts | ETS (owned by GenServer) | Concurrent reads from brain, bounded writes. |
-| Circuit breaker state | ETS (already in agent_ex) | Lock-free, no GenServer bottleneck. |
+| Circuit breaker state | ETS (already in agentic) | Lock-free, no GenServer bottleneck. |
 | Cost tracking | ETS (`:set`, `read_concurrency: true`) | Updated every turn, read by UI at 60fps. |
 | Resolved config | Agent + `:persistent_term` | Rarely changes after startup. |
-| Global knowledge | PostgreSQL (via Mneme) | Durable, queryable, vector search. |
+| Global knowledge | PostgreSQL (via Recollect) | Durable, queryable, vector search. |
 | Session transcripts | JSONL files | Append-only, simple, no DB overhead. |
-| Skill evolution stats | PostgreSQL (via Mneme) | Mneme entries tagged with skill provenance. |
+| Skill evolution stats | PostgreSQL (via Recollect) | Recollect entries tagged with skill provenance. |
 
 ### :persistent_term for Skill Metadata
 
@@ -120,15 +120,15 @@ Cost accumulates every turn but the LiveView reads it on each render. A GenServe
 
 ## Telemetry & Observability
 
-Both agent_ex and mneme emit telemetry events. Worth extends this with its own events and wires up a metrics reporter.
+Both agentic and recollect emit telemetry events. Worth extends this with its own events and wires up a metrics reporter.
 
 ### Event Hierarchy
 
 ```
-[:mneme, :search, :stop]                    # from mneme
-[:mneme, :remember, :stop]                  # from mneme
-[:agent_ex, :llm_call, :stop]               # from agent_ex
-[:agent_ex, :tool, :stop]                   # from agent_ex
+[:recollect, :search, :stop]                    # from recollect
+[:recollect, :remember, :stop]                  # from recollect
+[:agentic, :llm_call, :stop]               # from agentic
+[:agentic, :tool, :stop]                   # from agentic
 [:worth, :brain, :turn, :start | :stop]     # from worth
 [:worth, :brain, :turn, :exception]         # from worth
 [:worth, :mcp, :connect, :start | :stop]    # from worth
@@ -186,11 +186,11 @@ Worth.Telemetry.attach_default_handler()
 
 ### Why Telemetry Matters
 
-Without telemetry, we're flying blind. The `[:agent_ex, :llm_call, :stop]` event already carries `duration`, `tokens`, and `cost`. Worth just needs to attach handlers. The LiveView status display (cost, turn count, model) reads from telemetry, not from polling the brain.
+Without telemetry, we're flying blind. The `[:agentic, :llm_call, :stop]` event already carries `duration`, `tokens`, and `cost`. Worth just needs to attach handlers. The LiveView status display (cost, turn count, model) reads from telemetry, not from polling the brain.
 
 ## PubSub
 
-AgentEx uses direct PID messaging (`send/2`). Mneme uses none. But worth needs cross-component events:
+Agentic uses direct PID messaging (`send/2`). Recollect uses none. But worth needs cross-component events:
 
 | Event | Publisher | Subscribers |
 |-------|-----------|-------------|
@@ -222,7 +222,7 @@ Phoenix.PubSub is the standard Elixir solution for this. It's lightweight (no Ph
 
 ## Error Handling Conventions
 
-Both agent_ex and mneme use `{:ok, value} | {:error, reason}` tuples. Worth follows the same convention and adds structure:
+Both agentic and recollect use `{:ok, value} | {:error, reason}` tuples. Worth follows the same convention and adds structure:
 
 ```elixir
 defmodule Worth.Error do
@@ -280,7 +280,7 @@ def execute_mcp_tool(client, name, args) do
 end
 ```
 
-This is the same pattern agent_ex and mneme use internally. Wrapping boundaries in try/rescue and converting exceptions to error tuples prevents crashes from propagating up the supervision tree.
+This is the same pattern agentic and recollect use internally. Wrapping boundaries in try/rescue and converting exceptions to error tuples prevents crashes from propagating up the supervision tree.
 
 ## Configuration Strategy
 
@@ -378,24 +378,24 @@ end
 
 | Library | Purpose | Why |
 |---------|---------|-----|
-| `telemetry` | Event emission | Already a transitive dep (mneme). Worth emits its own events. |
+| `telemetry` | Event emission | Already a transitive dep (recollect). Worth emits its own events. |
 | `telemetry_metrics` | Metrics aggregation | Standard Elixir metrics library. Powers cost/tokens/latency tracking. |
 | `phoenix_pubsub` | Cross-component events | Lightweight (no Phoenix dependency). Process-down cleanup. Topic routing. |
 | `nimble_options` | Config validation | Established pattern (used by LiveView, Oban, etc.). Compile-time schema. |
 | `owl` | Rich CLI output | For `worth init`, `worth --help`, error messages outside the TUI. |
-| `yamerl` | YAML parsing | Already a transitive dep (agent_ex uses yaml_elixir). For SKILL.md frontmatter. |
+| `yamerl` | YAML parsing | Already a transitive dep (agentic uses yaml_elixir). For SKILL.md frontmatter. |
 
 ### Already Available (transitive)
 
 | Library | Via | Used By |
 |---------|-----|---------|
-| `telemetry` | mneme | Mneme.Telemetry, agent_ex inline events |
-| `jason` | mneme, hermes_mcp | JSON parsing everywhere |
-| `req` | mneme | HTTP calls (LLM, embedding, GitHub) |
+| `telemetry` | recollect | Recollect.Telemetry, agentic inline events |
+| `jason` | recollect, hermes_mcp | JSON parsing everywhere |
+| `req` | recollect | HTTP calls (LLM, embedding, GitHub) |
 | `finch` | hermes_mcp | Streamable HTTP transport for MCP |
-| `yaml_elixir` | agent_ex | Config parsing |
-| `ecto_sql` + `postgrex` | mneme | Database |
-| `pgvector` | mneme | Vector search |
+| `yaml_elixir` | agentic | Config parsing |
+| `ecto_sql` + `postgrex` | recollect | Database |
+| `pgvector` | recollect | Vector search |
 | `peri` | hermes_mcp | JSON Schema validation (for MCP tool schemas) |
 
 ### Explicitly NOT Added
@@ -496,7 +496,7 @@ The Brain is no longer a single monolithic GenServer. It delegates:
 Worth.Brain (GenServer)
 ├── Owns: current workspace, session state, agent loop reference
 ├── Delegates to:
-│   ├── Worth.Memory.Manager (module, no process) → Mneme calls
+│   ├── Worth.Memory.Manager (module, no process) → Recollect calls
 │   ├── Worth.Memory.WorkingMemory (per-workspace GenServer) → ETS reads/writes
 │   ├── Worth.Skills.Registry (module + :persistent_term) → metadata reads
 │   ├── Worth.Mcp.Gateway (module + ETS) → tool routing

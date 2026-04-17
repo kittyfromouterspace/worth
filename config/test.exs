@@ -2,11 +2,11 @@ import Config
 
 config :logger, level: :warning
 
-config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.SQLiteVec,
+config :recollect,
+  database_adapter: Recollect.DatabaseAdapter.SQLiteVec,
   repo: Worth.Repo,
   embedding: [
-    provider: Mneme.Embedding.Mock,
+    provider: Recollect.Embedding.Mock,
     mock: true,
     credentials_fn: nil
   ]

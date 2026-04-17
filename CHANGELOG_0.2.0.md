@@ -23,7 +23,7 @@ Worth now uses **libSQL** (SQLite with native vector support) as the default dat
 ## New Features
 
 ### Database Adapter System
-- **Mneme.DatabaseAdapter** behaviour for pluggable backends
+- **Recollect.DatabaseAdapter** behaviour for pluggable backends
 - **PostgreSQL adapter** - Full pgvector support (existing)
 - **libSQL adapter** - Native F32_BLOB vectors with DiskANN indexing
 - **Adapter-aware types** - `EmbeddingType` works with both backends
@@ -97,13 +97,13 @@ config :worth, Worth.Repo,
 
 ### Dependencies
 
-**Mneme v0.2.0:**
+**Recollect v0.2.0:**
 - Made `postgrex` and `pgvector` optional
 - Added `ecto_libsql` as optional dependency
 - New modules: `DatabaseAdapter`, `EmbeddingType`, `Export`, `Import`
 
-**AgentEx:**
-- Updated to work with Mneme's adapter system
+**Agentic:**
+- Updated to work with Recollect's adapter system
 - Optional database drivers
 
 **Worth:**
@@ -113,8 +113,8 @@ config :worth, Worth.Repo,
 
 ### Files Changed
 
-- **Mneme:** 27 files (+4,827 lines)
-- **AgentEx:** 4 files (+302 lines)
+- **Recollect:** 27 files (+4,827 lines)
+- **Agentic:** 4 files (+302 lines)
 - **Worth:** 51 files (+6,362 lines)
 
 ## Migration Guide

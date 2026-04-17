@@ -18,7 +18,7 @@ defmodule Mix.Tasks.Worth.Export do
       mix worth.export --output ~/worth_backup.jsonl
 
       # Export only entries and edges
-      mix worth.export --output ~/worth_entries.jsonl --tables mneme_entries,mneme_edges
+      mix worth.export --output ~/worth_entries.jsonl --tables recollect_entries,recollect_edges
 
       # Export specific workspace
       mix worth.export --output ~/workspace.jsonl --scope "my-workspace-id"
@@ -26,7 +26,7 @@ defmodule Mix.Tasks.Worth.Export do
 
   use Mix.Task
 
-  alias Mneme.Export
+  alias Recollect.Export
 
   @impl true
   def run(args) do

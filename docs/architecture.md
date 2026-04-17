@@ -10,16 +10,16 @@
 │  │  LiveView     │    │  Brain       │                   │
 │  │  (Phoenix)    │◄──►│  (GenServer) │                   │
 │  │              │    │              │                     │
-│  │  - Chat      │    │  - AgentEx   │                    │
+│  │  - Chat      │    │  - Agentic   │                    │
 │  │  - Input     │    │    .run/1    │                     │
-│  │  - PubSub    │    │  - Mneme     │                    │
+│  │  - PubSub    │    │  - Recollect     │                    │
 │  │              │    │  - Skills    │                    │
 │  └──────────────┘    │  - Workspaces│                    │
 │                      │  - MCP       │                    │
 │                      └──────┬───────┘                    │
 │                             │                            │
 │                      ┌──────▼───────┐                    │
-│                      │  AgentEx     │                    │
+│                      │  Agentic     │                    │
 │                      │  Loop Engine │                    │
 │                      │              │                    │
 │                      │  Stages:     │                    │
@@ -32,7 +32,7 @@
 │               ┌─────────────┼─────────────┐              │
 │               │             │             │              │
 │        ┌──────▼──┐  ┌──────▼──┐  ┌──────▼──┐           │
-│        │ Mneme   │  │ File    │  │ Skills  │  │ MCP     │           │
+│        │ Recollect   │  │ File    │  │ Skills  │  │ MCP     │           │
 │        │ Memory  │  │ Tools   │  │ System  │  │ Servers │            │
 │        └──────┬──┘  └─────────┘  └─────────┘  └─────────┘           │
 │               │                                           │
@@ -48,9 +48,9 @@
 | Layer | Library | Role |
 |-------|---------|------|
 | UI | Phoenix LiveView + Bandit | Web UI served over HTTP, HEEx templates, real-time via Phoenix channels |
-| Agent Runtime | `agent_ex` (local path) | Composable pipeline loop engine with stages, profiles, tools |
-| Memory | `mneme` (local path, via agent_ex) | Three-tier memory: working memory, knowledge graph, vector search |
-| Database | PostgreSQL + pgvector or libSQL | Database for mneme (adapter selected at compile time) |
+| Agent Runtime | `agentic` (local path) | Composable pipeline loop engine with stages, profiles, tools |
+| Memory | `recollect` (local path, via agentic) | Three-tier memory: working memory, knowledge graph, vector search |
+| Database | PostgreSQL + pgvector or libSQL | Database for recollect (adapter selected at compile time) |
 | MCP | `hermes_mcp` (~> 0.14.1) | MCP client/server, JSON-RPC 2.0, stdio + Streamable HTTP |
 | HTTP | `req` (~> 0.5) | LLM API calls, embedding API calls, GitHub API |
 | LLM | OpenRouter / Anthropic / OpenAI | Configurable provider routing |
@@ -68,18 +68,18 @@ worth
 ├── phoenix           (hex, ~> 1.7)
 ├── phoenix_live_view (hex, ~> 1.0)
 ├── bandit            (hex, ~> 1.0)
-├── agent_ex          (path: ../agent_ex)
-│   └── mneme         (path: ../mneme, transitive)
+├── agentic          (path: ../agentic)
+│   └── recollect         (path: ../recollect, transitive)
 │       ├── ecto_sql + postgrex (or libsql)
 │       └── req
-├── hermes_mcp        (hex, ~0.14.1) -- also transitive via agent_ex
+├── hermes_mcp        (hex, ~0.14.1) -- also transitive via agentic
 │   ├── finch         (HTTP client for Streamable HTTP transport)
 │   ├── peri          (JSON Schema validation)
 │   └── jason
 ├── phoenix_pubsub    (hex, ~> 2.1)
 ├── ash               (hex, ~> 3.23)
 ├── ash_postgres      (hex, ~> 2.8)
-├── telemetry         (hex) -- already transitive via mneme
+├── telemetry         (hex) -- already transitive via recollect
 ├── telemetry_metrics (hex)
 ├── nimble_options    (hex)
 ├── owl               (hex)
@@ -94,7 +94,7 @@ A single GenServer coordinates the agent loop. It delegates state to specialized
 
 ### One Memory
 
-One Mneme instance, one database, one `scope_id: "worth"`. Workspaces provide context boosts, not memory silos. See [memory.md](memory.md).
+One Recollect instance, one database, one `scope_id: "worth"`. Workspaces provide context boosts, not memory silos. See [memory.md](memory.md).
 
 ### Lazy Discovery
 
@@ -106,7 +106,7 @@ The UI follows Phoenix LiveView patterns: `mount/3`, `handle_event/3`, `handle_i
 
 ### Callback Composition
 
-AgentEx's callback system provides clean separation. Worth provides integration callbacks (LLM, memory, tools, streaming) without modifying the loop engine. This means agent_ex improvements flow into worth automatically.
+Agentic's callback system provides clean separation. Worth provides integration callbacks (LLM, memory, tools, streaming) without modifying the loop engine. This means agentic improvements flow into worth automatically.
 
 ### Supervision & Fault Tolerance
 
@@ -114,4 +114,4 @@ Each subsystem has its own supervisor. An MCP server crash does not kill the web
 
 ### Observability
 
-All subsystems emit `:telemetry` events. Worth consumes events from agent_ex (`[:agent_ex, ...]`), mneme (`[:mneme, ...]`), and its own (`[:worth, ...]`). Metrics drive the LiveView status display (cost, tokens, latency) without polling. See [beam-architecture.md](beam-architecture.md) for the event hierarchy.
+All subsystems emit `:telemetry` events. Worth consumes events from agentic (`[:agentic, ...]`), recollect (`[:recollect, ...]`), and its own (`[:worth, ...]`). Metrics drive the LiveView status display (cost, tokens, latency) without polling. See [beam-architecture.md](beam-architecture.md) for the event hierarchy.

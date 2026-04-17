@@ -13,28 +13,28 @@ commit. Kept for historical reference._
 
 - ~~`worth/lib/worth/llm/{anthropic,openai,openrouter,shim,adapter,cost}.ex`~~ — **deleted**.
 - ~~`worth/lib/worth/brain.ex` `state.cost_total` field + dead `{:cost, amount}` handler~~ — **deleted**. UI consumers now read from `Worth.Metrics.session_cost/0`.
-- ~~`agent_ex/lib/agent_ex/model_router/free.ex`~~ — **deleted** along with its supervision tree entry.
+- ~~`agentic/lib/agentic/model_router/free.ex`~~ — **deleted** along with its supervision tree entry.
 
 ## Worth.LLM projection layer retirement
 
 _Resolved: projection layer deleted, all consumers migrated to struct field access._
 
-- ~~**`Worth.LLM.project_result/1` / `project_block/1`**~~ — **deleted** from `worth/lib/worth/llm.ex`. The 4 dispatch paths (`chat_with_route`, `chat_with_configured`, `stream_chat_with_route`, `stream_chat_with_configured`) now return `%AgentEx.LLM.Response{}` directly.
-- ~~Every place that did `response["stop_reason"]` / `response["content"]` / `response["usage"]`~~ — **migrated** to struct field access (`response.stop_reason`, `response.content`, `response.usage`). Scope: `agent_ex/lib/agent_ex/loop/stages/{mode_router,llm_call,transcript_recorder,plan_tracker,commitment_gate}.ex`, `agent_ex/lib/agent_ex/loop/{helpers,context}.ex`, `agent_ex/lib/agent_ex/loop/stages/cli_executor.ex`, `agent_ex/lib/agent_ex/model_router/analyzer.ex`, `agent_ex/lib/agent_ex/memory/{memory_manager,fact_extractor}.ex`.
-- **`AgentEx.LLM.Response` struct** gained a `cost: nil` field so `LLMCall` can set cost without mutating a map.
+- ~~**`Worth.LLM.project_result/1` / `project_block/1`**~~ — **deleted** from `worth/lib/worth/llm.ex`. The 4 dispatch paths (`chat_with_route`, `chat_with_configured`, `stream_chat_with_route`, `stream_chat_with_configured`) now return `%Agentic.LLM.Response{}` directly.
+- ~~Every place that did `response["stop_reason"]` / `response["content"]` / `response["usage"]`~~ — **migrated** to struct field access (`response.stop_reason`, `response.content`, `response.usage`). Scope: `agentic/lib/agentic/loop/stages/{mode_router,llm_call,transcript_recorder,plan_tracker,commitment_gate}.ex`, `agentic/lib/agentic/loop/{helpers,context}.ex`, `agentic/lib/agentic/loop/stages/cli_executor.ex`, `agentic/lib/agentic/model_router/analyzer.ex`, `agentic/lib/agentic/memory/{memory_manager,fact_extractor}.ex`.
+- **`Agentic.LLM.Response` struct** gained a `cost: nil` field so `LLMCall` can set cost without mutating a map.
 - **`Context.last_response`** typed as `Response.t() | nil` (was `map() | nil`).
 - **`Helpers.extract_text/1` and `extract_tool_calls/1`** now use atom keys (`&1.type == :text`) instead of string keys (`&1["type"] == "text"`).
-- **15 test files** updated to use `%AgentEx.LLM.Response{}` fixtures instead of string-keyed maps. All 428 tests pass.
+- **15 test files** updated to use `%Agentic.LLM.Response{}` fixtures instead of string-keyed maps. All 428 tests pass.
 
 ## Embedding cost telemetry
 
-Phase 5 ships with `[:agent_ex, :llm, :embed, :stop]` events but `cost_usd` is hardcoded to `0.0`. Real embedding cost requires:
+Phase 5 ships with `[:agentic, :llm, :embed, :stop]` events but `cost_usd` is hardcoded to `0.0`. Real embedding cost requires:
 
 1. **Parse usage out of each transport's embedding response.** OpenAI returns `usage.total_tokens` in the `/embeddings` response. Ollama's `/api/embed` doesn't return token counts. The `parse_embedding_response/3` callback should return `{:ok, vectors, usage_map}` with token counts when available.
 2. **Extend `Model.cost` for embedding models.** Chat-style `%{input:, output:}` doesn't fit — embeddings have a single per-token rate. Either add `cost.embedding` or use `cost.input` for the per-1M-token rate (current OpenAI provider already does this).
-3. **Wire `compute_embedding_cost/2` into `AgentEx.LLM.execute_embed/3`** mirroring the chat-side `compute_cost/2`.
+3. **Wire `compute_embedding_cost/2` into `Agentic.LLM.execute_embed/3`** mirroring the chat-side `compute_cost/2`.
 
-## Async ownership warnings in Mneme.Pipeline.Embedder
+## Async ownership warnings in Recollect.Pipeline.Embedder
 
 `embed_entry_async` spawns a `Task.Supervisor` task to write embeddings, but in test environments the spawned task can't see the test's Ecto sandbox connection. Result: a `DBConnection.OwnershipError` is logged on every call, the embedding is dropped, and tests pass anyway because the warnings are non-fatal. Pre-existed Phase 4 — Phase 4's added column made the failing UPDATE more visible but didn't introduce the bug.
 
@@ -42,7 +42,7 @@ Phase 5 ships with `[:agent_ex, :llm, :embed, :stop]` events but `cost_usd` is h
 
 ## Reembed performance
 
-`Mneme.Maintenance.Reembed.run/1` is now sync-within-transaction, walking rows one at a time through `embedding_fn`. Fine for typical memory store sizes; pathological for large stores.
+`Recollect.Maintenance.Reembed.run/1` is now sync-within-transaction, walking rows one at a time through `embedding_fn`. Fine for typical memory store sizes; pathological for large stores.
 
 - **Batched COPY upserts** would be faster: build the (id, embedding, model_id) tuples in memory, then `COPY ... FROM STDIN` in one round trip.
 - **The HTTP call to the embedding provider dominates anyway** — batching has to happen at the embedding API call level (e.g., `OpenAI.generate(texts)` with N=100) before COPY upserts matter.
@@ -50,7 +50,7 @@ Phase 5 ships with `[:agent_ex, :llm, :embed, :stop]` events but `cost_usd` is h
 
 ## Catalog hardening
 
-- ~~**Atomic catalog persistence.**~~ — **resolved** (already uses tmp+rename in `AgentEx.LLM.Catalog.save_to_disk/1`).
+- ~~**Atomic catalog persistence.**~~ — **resolved** (already uses tmp+rename in `Agentic.LLM.Catalog.save_to_disk/1`).
 - **Schema versioning** is at `v1`. Bump to `v2` whenever the `Model` struct gains/changes a field, and drop the cache on mismatch (already wired, just remember to do it).
 - **Catalog merge conflict logging.** When a user override claims a model has different capabilities than discovery says, log a warning. Currently silent — user wins without comment.
 
@@ -64,7 +64,7 @@ Phase 5 ships with `[:agent_ex, :llm, :embed, :stop]` events but `cost_usd` is h
 
 ## UsageManager refinements
 
-- **Live config reload.** The 5-minute poll interval is read once at boot. Changing `:agent_ex, :usage, :refresh_interval_ms` requires a restart. Acceptable for an observability cache, fixable with a `set_interval/1` GenServer call.
+- **Live config reload.** The 5-minute poll interval is read once at boot. Changing `:agentic, :usage, :refresh_interval_ms` requires a restart. Acceptable for an observability cache, fixable with a `set_interval/1` GenServer call.
 - **Anthropic fetch_usage.** Currently `:not_supported` because the `/v1/organizations/<id>/usage` endpoint requires OAuth admin credentials. Wire when OAuth lands (see future iterations).
 - **OpenRouter rate-limit windows.** OpenRouter exposes `data.rate_limit.{requests, interval}` (the *limit*) but no `used` counter. Sidebar shows `?/<limit>` until either OpenRouter ships a `used` field or we track it locally via successful-call counters keyed off telemetry events.
 - **Per-provider usage error display.** `%Usage{error: ...}` exists in the struct but the sidebar doesn't render it — failed fetches are silently dropped. Show a `(stale)` or `(error)` marker next to the provider label.
@@ -81,7 +81,7 @@ _The TermUI TUI was replaced by Phoenix LiveView. Items referencing `lib/worth/u
 ## Test infrastructure
 
 - **Provider smoke test harness.** Every provider module should have a `live_test` that hits `Credentials.resolve/1` and `fetch_catalog/1` against the real service when an env-var-gated `LIVE_TESTS=1` is set. Catches "did this provider ever actually work" regressions.
-- **Phase 4 `agent_ex/test/agent_ex/llm_test.exs`** has only minimal coverage — extend it once `embed_tier/3` resolution stabilizes.
+- **Phase 4 `agentic/test/agentic/llm_test.exs`** has only minimal coverage — extend it once `embed_tier/3` resolution stabilizes.
 - **No worth-side tests for `Worth.Metrics`, `Worth.Memory.Embeddings.Adapter`, or `Worth.Memory.Embeddings.StaleCheck`.** Each is small and well-scoped; add unit tests when there's bandwidth.
 - **No worth-side tests for the new `:usage` sidebar tab or the `/usage` slash command.** The existing `test/worth/ui/sidebar_test.exs` (untracked since session start) is the natural home.
 
@@ -89,7 +89,7 @@ _The TermUI TUI was replaced by Phoenix LiveView. Items referencing `lib/worth/u
 
 The telemetry path already reads `cache_read`/`cache_write` defensively, so Phase 6 mostly needs transport changes:
 
-1. **`AgentEx.LLM.Transport.AnthropicMessages.build_chat_request/2`** must add `cache_control: %{type: "ephemeral"}` to the last block of the stable prefix when `params["cache_control"]["prefix_changed"] == false`. The `stable_hash`/`prefix_changed` already flow through `LLMCall` (see `base_params["cache_control"]`).
+1. **`Agentic.LLM.Transport.AnthropicMessages.build_chat_request/2`** must add `cache_control: %{type: "ephemeral"}` to the last block of the stable prefix when `params["cache_control"]["prefix_changed"] == false`. The `stable_hash`/`prefix_changed` already flow through `LLMCall` (see `base_params["cache_control"]`).
 2. **`parse_chat_response/3`** must extract `usage.cache_creation_input_tokens` and `usage.cache_read_input_tokens` and put them on `Response.usage` (under `:cache_write` and `:cache_read` keys to match what `LLMCall.compute_cost/2` already reads).
 3. **Cost computation already uses `cost.cache_read`/`cost.cache_write`** from `Model.cost`. Anthropic provider's `default_models/0` already populates these fields. Phase 6 just needs to make sure the values flow.
 4. **`Worth.Metrics`** already accumulates `cache_read`/`cache_write` totals — sidebar and `/usage` will start showing real numbers once the transport populates them.
@@ -99,8 +99,8 @@ The telemetry path already reads `cache_read`/`cache_write` defensively, so Phas
 
 - **`docs/llm-provider-abstraction-plan.md`** has accumulated 6 phase progress entries and is approaching 1500 lines. Consider splitting the progress log into a separate `docs/llm-provider-abstraction-progress.md` file once Phase 6 lands.
 - **README.md** doesn't mention any of the new slash commands (`/provider list/enable/disable`, `/catalog refresh`, `/memory reembed`, `/usage`, `/usage refresh`). Either drop them in or wait for the user-facing docs sweep.
-- **`Worth.Memory.Embeddings.Adapter` moduledoc** describes the tier resolution logic but the actual logic lives in `AgentEx.LLM.embed_tier/3`. Cross-reference.
-- **`agent_ex/lib/agent_ex/llm/usage_manager.ex` config block.** The `:agent_ex, :usage, :refresh_interval_ms` key isn't documented in `AgentEx.Config`'s `nimble_options` schema. Add it.
+- **`Worth.Memory.Embeddings.Adapter` moduledoc** describes the tier resolution logic but the actual logic lives in `Agentic.LLM.embed_tier/3`. Cross-reference.
+- **`agentic/lib/agentic/llm/usage_manager.ex` config block.** The `:agentic, :usage, :refresh_interval_ms` key isn't documented in `Agentic.Config`'s `nimble_options` schema. Add it.
 
 ## libSQL Migration Test Fixes (Phase 1-2 Post-Implementation)
 
@@ -133,8 +133,8 @@ status = Worth.Brain.get_status(session_id)
 **Issue:** Several modules call `Worth.Repo.query/2` directly, but this function is not defined in `Worth.Repo`. The query functions are provided by `Ecto.Adapters.SQL` and need to be imported or required.
 
 **Affected Modules:**
-- `lib/mneme/search/vector.ex` - Line 204: `repo.query(sql, params)`
-- `lib/mneme/pipeline/embedder.ex` - Line 143: `repo.query("UPDATE...", [...])`
+- `lib/recollect/search/vector.ex` - Line 204: `repo.query(sql, params)`
+- `lib/recollect/pipeline/embedder.ex` - Line 143: `repo.query("UPDATE...", [...])`
 - Various test modules calling `Worth.Repo.query/2`
 
 **Fix:** Add `require Ecto.Adapters.SQL` to modules that need raw query access:
@@ -148,7 +148,7 @@ defmodule Worth.Repo do
 end
 
 # Or in calling modules:
-defmodule Mneme.Search.Vector do
+defmodule Recollect.Search.Vector do
   import Ecto.Adapters.SQL, only: [query: 3]
   
   # Then use query(repo, sql, params)
@@ -185,7 +185,7 @@ Failed to validate LLM config: invalid NimbleOptions schema.
 Reason: invalid value for :type option: unknown type {:map, :string}.
 ```
 
-**Location:** Likely in `Worth.Config` or `AgentEx.Config` schema definitions.
+**Location:** Likely in `Worth.Config` or `Agentic.Config` schema definitions.
 
 **Fix:** Update the NimbleOptions schema to use valid type definitions:
 ```elixir
@@ -198,13 +198,13 @@ type: {:map, :string, :string}  # if supported
 # Or define a custom type
 ```
 
-### 5. Mneme Pipeline Embedder Async Sandbox Issues
+### 5. Recollect Pipeline Embedder Async Sandbox Issues
 
 **Related to existing backlog item above** - `embed_entry_async` spawns tasks that can't access the Ecto sandbox connection in tests. This causes `DBConnection.OwnershipError` warnings and embeddings are dropped.
 
-**Location:** `Mneme.Pipeline.Embedder.embed_entry_async/1`
+**Location:** `Recollect.Pipeline.Embedder.embed_entry_async/1`
 
-**Status:** Already documented in backlog under "Async ownership warnings in Mneme.Pipeline.Embedder" - fix that item and this will be resolved.
+**Status:** Already documented in backlog under "Async ownership warnings in Recollect.Pipeline.Embedder" - fix that item and this will be resolved.
 
 ## Future iterations (deferred from the plan)
 

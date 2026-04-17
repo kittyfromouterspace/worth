@@ -1,9 +1,9 @@
 defmodule Worth.EmbeddingTest do
   @moduledoc """
   Tests the embedding pipeline end-to-end:
-  Worth.Memory.Embeddings.Adapter → Mneme → vector store → similarity search.
+  Worth.Memory.Embeddings.Adapter → Recollect → vector store → similarity search.
 
-  These tests use the Mneme.Embedding.Mock provider configured in test.exs
+  These tests use the Recollect.Embedding.Mock provider configured in test.exs
   to avoid hitting external APIs during CI.
   """
 
@@ -12,24 +12,24 @@ defmodule Worth.EmbeddingTest do
   @moduletag :embedding
 
   describe "embedding provider configuration" do
-    test "Mneme is configured with an embedding provider" do
-      provider = Mneme.Config.embedding_provider()
+    test "Recollect is configured with an embedding provider" do
+      provider = Recollect.Config.embedding_provider()
       assert provider
     end
 
     test "embedding dimensions are configured" do
-      dims = Mneme.Config.dimensions()
+      dims = Recollect.Config.dimensions()
       assert is_integer(dims)
       assert dims > 0
     end
   end
 
   describe "memory store and retrieve (mock embeddings)" do
-    test "Mneme.remember/2 stores an entry" do
+    test "Recollect.remember/2 stores an entry" do
       scope_id = Ecto.UUID.generate()
 
       result =
-        Mneme.remember("The deploy script is at scripts/deploy.sh",
+        Recollect.remember("The deploy script is at scripts/deploy.sh",
           scope_id: scope_id,
           entry_type: "observation"
         )
@@ -42,7 +42,7 @@ defmodule Worth.EmbeddingTest do
       scope_id = Ecto.UUID.generate()
 
       {:ok, entry} =
-        Mneme.remember("Elixir uses the BEAM virtual machine",
+        Recollect.remember("Elixir uses the BEAM virtual machine",
           scope_id: scope_id,
           entry_type: "observation"
         )

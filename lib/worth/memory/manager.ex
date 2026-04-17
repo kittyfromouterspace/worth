@@ -5,7 +5,7 @@ defmodule Worth.Memory.Manager do
   def search(query, opts \\ []) do
     unless_disabled(opts, fn ->
       search_opts = build_search_opts(opts)
-      context_pack = Mneme.search(query, search_opts)
+      context_pack = Recollect.search(query, search_opts)
       track_retrieved(context_pack)
       apply_workspace_boost(context_pack, opts)
     end)
@@ -30,35 +30,35 @@ defmodule Worth.Memory.Manager do
           fn {_k, v} -> is_nil(v) end
         )
 
-      Mneme.remember(content, merged)
+      Recollect.remember(content, merged)
     end)
   end
 
   def recent(opts \\ []) do
     unless_disabled(opts, fn ->
       limit = opts[:limit] || 20
-      Mneme.Knowledge.recent(@scope_uuid, limit: limit)
+      Recollect.Knowledge.recent(@scope_uuid, limit: limit)
     end)
   end
 
   def working_push(content, opts \\ []) do
     unless_disabled(opts, fn ->
       scope = working_scope(opts)
-      Mneme.WorkingMemory.push(scope, content, opts)
+      Recollect.WorkingMemory.push(scope, content, opts)
     end)
   end
 
   def working_read(opts \\ []) do
     unless_disabled(opts, fn ->
       scope = working_scope(opts)
-      Mneme.WorkingMemory.read(scope)
+      Recollect.WorkingMemory.read(scope)
     end)
   end
 
   def working_clear(opts \\ []) do
     unless_disabled(opts, fn ->
       scope = working_scope(opts)
-      Mneme.WorkingMemory.clear(scope)
+      Recollect.WorkingMemory.clear(scope)
     end)
   end
 
@@ -66,7 +66,7 @@ defmodule Worth.Memory.Manager do
     unless_disabled(opts, fn ->
       scope = working_scope(opts)
 
-      case Mneme.WorkingMemory.read(scope) do
+      case Recollect.WorkingMemory.read(scope) do
         {:ok, entries} ->
           flushed =
             entries
@@ -80,7 +80,7 @@ defmodule Worth.Memory.Manager do
               )
             end)
 
-          Mneme.WorkingMemory.clear(scope)
+          Recollect.WorkingMemory.clear(scope)
           {:ok, length(flushed)}
 
         error ->
@@ -91,20 +91,20 @@ defmodule Worth.Memory.Manager do
 
   def outcome_good(opts \\ []) do
     unless_disabled(opts, fn ->
-      Mneme.Outcome.good(@scope_uuid)
+      Recollect.Outcome.good(@scope_uuid)
     end)
   end
 
   def outcome_bad(opts \\ []) do
     unless_disabled(opts, fn ->
-      Mneme.Outcome.bad(@scope_uuid)
+      Recollect.Outcome.bad(@scope_uuid)
     end)
   end
 
   def build_memory_context(query, opts \\ []) do
     case search(query, opts) do
       {:ok, context_pack} ->
-        text = Mneme.Search.ContextFormatter.format(context_pack)
+        text = Recollect.Search.ContextFormatter.format(context_pack)
 
         if text == "" do
           {:ok, nil}
@@ -147,7 +147,7 @@ defmodule Worth.Memory.Manager do
 
   defp track_retrieved({:ok, %{entries: entries}}) when is_list(entries) do
     ids = Enum.map(entries, & &1.id)
-    if ids != [], do: Mneme.OutcomeTracker.set(@scope_uuid, ids)
+    if ids != [], do: Recollect.OutcomeTracker.set(@scope_uuid, ids)
     {:ok, %{entries: entries}}
   end
 
@@ -158,7 +158,7 @@ defmodule Worth.Memory.Manager do
 
     if workspace do
       current_ctx = %{workspace: workspace}
-      boosted_entries = Mneme.Search.ContextBooster.apply_boost(context_pack.entries, current_ctx)
+      boosted_entries = Recollect.Search.ContextBooster.apply_boost(context_pack.entries, current_ctx)
       {:ok, %{context_pack | entries: boosted_entries}}
     else
       {:ok, context_pack}
@@ -185,7 +185,7 @@ defmodule Worth.Memory.Manager do
   end
 
   defp build_context_hints(opts) do
-    hints = Mneme.Context.Detector.detect()
+    hints = Recollect.Context.Detector.detect()
 
     if opts[:workspace] do
       Map.put(hints, :workspace, opts[:workspace])

@@ -2,7 +2,7 @@
 
 ## Approach
 
-Worth is tested at three levels: unit (isolated modules), integration (subsystem interactions), and acceptance (end-to-end scenarios). Tests run against real dependencies where possible (no mocks for agent_ex, mneme, hermes_mcp) with sandboxed databases and fake LLM responses.
+Worth is tested at three levels: unit (isolated modules), integration (subsystem interactions), and acceptance (end-to-end scenarios). Tests run against real dependencies where possible (no mocks for agentic, recollect, hermes_mcp) with sandboxed databases and fake LLM responses.
 
 ## Test Structure
 
@@ -139,7 +139,7 @@ end
 
 ### BrainCase
 
-Spins up a test Brain with a fake LLM that returns canned responses. Used for acceptance tests that verify the full loop (input → brain → agent_ex → tools → output) without hitting real LLM APIs.
+Spins up a test Brain with a fake LLM that returns canned responses. Used for acceptance tests that verify the full loop (input → brain → agentic → tools → output) without hitting real LLM APIs.
 
 ### McpCase
 

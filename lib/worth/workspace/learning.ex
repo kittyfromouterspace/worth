@@ -5,7 +5,7 @@ defmodule Worth.Workspace.Learning do
   When a workspace is switched to or created, this module:
   1. Scans for new/changed content
   2. Reports findings to the user
-  3. If approved, ingests content into Mneme
+  3. If approved, ingests content into Recollect
   4. Tracks what has been indexed
   """
 
@@ -76,7 +76,7 @@ defmodule Worth.Workspace.Learning do
   end
 
   @doc """
-  Ingests content from a workspace into Mneme memory.
+  Ingests content from a workspace into Recollect memory.
 
   This should be called after the user approves learning. It:
   1. Processes each new/modified item through the appropriate pipeline
@@ -122,9 +122,9 @@ defmodule Worth.Workspace.Learning do
 
   defp run_git_learning(scope_id, since) do
     result =
-      Mneme.learn(
+      Recollect.learn(
         scope_id: scope_id,
-        sources: [Mneme.Learner.Git],
+        sources: [Recollect.Learner.Git],
         since: since
       )
 
@@ -154,7 +154,7 @@ defmodule Worth.Workspace.Learning do
       )
 
     {:ok, run_result} =
-      Mneme.learn(
+      Recollect.learn(
         scope_id: scope_id,
         sources: [coding_agent_module()]
       )
@@ -288,7 +288,7 @@ defmodule Worth.Workspace.Learning do
           content_hash: item.hash,
           file_size: item.size,
           last_modified: item.modified,
-          mneme_entry_ids: [],
+          recollect_entry_ids: [],
           indexed_at: DateTime.utc_now(),
           status: "installed"
         }
@@ -319,7 +319,7 @@ defmodule Worth.Workspace.Learning do
 
   defp process_item(item, workspace_name, _opts) do
     case ingest_by_type(item, workspace_name) do
-      {:ok, mneme_entries} ->
+      {:ok, recollect_entries} ->
         # Record that we indexed this
         entry_attrs = %{
           workspace_name: workspace_name,
@@ -328,7 +328,7 @@ defmodule Worth.Workspace.Learning do
           content_hash: item.hash,
           file_size: item.size,
           last_modified: item.modified,
-          mneme_entry_ids: mneme_entries,
+          recollect_entry_ids: recollect_entries,
           indexed_at: DateTime.utc_now(),
           status: "indexed"
         }
@@ -347,7 +347,7 @@ defmodule Worth.Workspace.Learning do
           |> Repo.insert!()
         end
 
-        {:ok, %{path: item.path, type: item.type, entries: mneme_entries}}
+        {:ok, %{path: item.path, type: item.type, entries: recollect_entries}}
 
       {:error, reason} ->
         {:error, %{path: item.path, type: item.type, reason: reason}}
@@ -362,18 +362,18 @@ defmodule Worth.Workspace.Learning do
     # Read and process source file
     case File.read(item.path) do
       {:ok, content} ->
-        # Store in Mneme as a document
+        # Store in Recollect as a document
         {:ok, doc} =
-          Mneme.ingest(Path.basename(item.path), content,
+          Recollect.ingest(Path.basename(item.path), content,
             source_type: "artifact",
             source_id: item.path,
             owner_id: workspace_scope_id(workspace_name)
           )
 
         # Process through pipeline
-        {:ok, _run} = Mneme.process(doc)
+        {:ok, _run} = Recollect.process(doc)
 
-        # Return entry IDs (in a real implementation, we'd get these from Mneme)
+        # Return entry IDs (in a real implementation, we'd get these from Recollect)
         {:ok, [doc.id]}
 
       {:error, reason} ->
@@ -385,7 +385,7 @@ defmodule Worth.Workspace.Learning do
     case File.read(item.path) do
       {:ok, content} ->
         result =
-          Mneme.ingest(Path.basename(item.path), content,
+          Recollect.ingest(Path.basename(item.path), content,
             source_type: "manual",
             source_id: item.path,
             owner_id: workspace_scope_id(workspace_name)
@@ -396,7 +396,7 @@ defmodule Worth.Workspace.Learning do
             {:ok, []}
 
           {:ok, doc} ->
-            {:ok, _run} = Mneme.process(doc)
+            {:ok, _run} = Recollect.process(doc)
             {:ok, [doc.id]}
 
           {:error, _} = error ->
@@ -412,7 +412,7 @@ defmodule Worth.Workspace.Learning do
     case File.read(item.path) do
       {:ok, _content} ->
         result =
-          Mneme.learn(
+          Recollect.learn(
             scope_id: workspace_scope_id(workspace_name),
             sources: [item.path]
           )
@@ -428,9 +428,9 @@ defmodule Worth.Workspace.Learning do
   end
 
   defp ingest_by_type(%{type: :git_history} = _item, workspace_name) do
-    # Use Mneme's git learning capabilities
+    # Use Recollect's git learning capabilities
     result =
-      Mneme.learn(
+      Recollect.learn(
         scope_id: workspace_scope_id(workspace_name),
         sources: [:git]
       )
@@ -446,7 +446,7 @@ defmodule Worth.Workspace.Learning do
     case File.read(item.path) do
       {:ok, content} ->
         result =
-          Mneme.remember(content,
+          Recollect.remember(content,
             scope_id: workspace_scope_id(workspace_name),
             entry_type: to_string(item.type),
             source: item.path
@@ -481,6 +481,6 @@ defmodule Worth.Workspace.Learning do
   end
 
   defp coding_agent_module do
-    Mneme.Learner.CodingAgent
+    Recollect.Learner.CodingAgent
   end
 end

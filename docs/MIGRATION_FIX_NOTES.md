@@ -15,7 +15,7 @@ Have completely separate migration files for PostgreSQL and libSQL.
 
 I'll update the key migrations to support both backends:
 
-1. **20240101000000_create_mneme_tables.exs** - Make adapter-aware
+1. **20240101000000_create_recollect_tables.exs** - Make adapter-aware
 2. **20260408000000_embedding_model_id_and_1536_dim.exs** - Make adapter-aware
 3. **All other migrations** - Check for PostgreSQL-specific syntax
 

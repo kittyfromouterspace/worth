@@ -6,8 +6,8 @@
 
 ## Key Decisions
 
-- **Git deps with tags** for `agent_ex` and `mneme` — keeps them in sync across all projects that use them
-- **libSQL only** — PostgreSQL support removed from Worth (mneme retains Postgres for server deployments)
+- **Git deps with tags** for `agentic` and `recollect` — keeps them in sync across all projects that use them
+- **libSQL only** — PostgreSQL support removed from Worth (recollect retains Postgres for server deployments)
 - **No ElixirKit** — direct TCP PubSub between Rust and Elixir (simpler, fewer deps)
 - **Feature-flagged** via `WORTH_DESKTOP=1` env var — web/CLI path is untouched
 - **Unused deps removed** — ash, ash_postgres, dns_cluster, owl, lazy_html all removed
@@ -16,18 +16,18 @@
 
 ## Phase 0: Prerequisites
 
-### 0.1 Convert `agent_ex` and `mneme` to git dependencies
-- [x] Verify git repos have tags (`agent_ex` → `v0.1.1`, `mneme` → `v0.2.0`)
+### 0.1 Convert `agentic` and `recollect` to git dependencies
+- [x] Verify git repos have tags (`agentic` → `v0.1.1`, `recollect` → `v0.2.0`)
 - [x] Push tags to remote (`git push origin v0.x.x` in each repo)
 - [x] Update `mix.exs` to use `git:` + `tag:` instead of `path:`
-- [x] Add `override: true` on mneme dep (agent_ex also depends on mneme via path)
+- [x] Add `override: true` on recollect dep (agentic also depends on recollect via path)
 - [x] Verify `mix deps.get` and `mix compile` still work
 
 ### 0.2 Add release configuration
 - [x] Add `:releases` key to `mix.exs` (worth + desktop release configs)
 - [x] Create `rel/env.sh.eex` with desktop-specific env vars
 - [x] Create `rel/vm.args.eex` (minimal, no distribution)
-- [x] Move mneme anonymous function config to module capture (`&Worth.Memory.Embeddings.Adapter.credentials/0`)
+- [x] Move recollect anonymous function config to module capture (`&Worth.Memory.Embeddings.Adapter.credentials/0`)
 - [x] Verify `MIX_ENV=prod mix release worth` produces artifact (92MB)
 
 ### 0.3 Desktop-specific runtime config
@@ -49,7 +49,7 @@
 - [x] Deleted `Worth.PostgrexTypes` and `Mix.Tasks.Worth.MigrateToLibSQL`
 - [x] Simplified `Worth.Repo` to hardcoded libSQL adapter
 - [x] Cleaned all config files of postgres conditional branches
-- [x] pgvector stays as transitive dep (required by mneme schemas)
+- [x] pgvector stays as transitive dep (required by recollect schemas)
 
 ---
 

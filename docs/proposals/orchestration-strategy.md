@@ -4,33 +4,33 @@
 **Created:** 2026-04-14
 **Source:** `docs/orchestration_reasearch.md` (nature-inspired coordination research)
 
-A cross-repo plan for building a pluggable orchestration research framework into `agent_ex` and `worth`, enabling systematic experimentation with different multi-agent coordination approaches, with efficient local metrics storage in the Tauri desktop app for later analysis.
+A cross-repo plan for building a pluggable orchestration research framework into `agentic` and `worth`, enabling systematic experimentation with different multi-agent coordination approaches, with efficient local metrics storage in the Tauri desktop app for later analysis.
 
 ## Guiding Principle
 
-**agent_ex owns the abstraction** (behaviour, registry, metrics, experiment runner). Orchestration is about how the agent loop coordinates — agent_ex's domain. It already owns profiles, stages, phases, and the context struct. Strategy is the natural layer above profile: a strategy *selects and configures* profiles, decides how multiple agent runs compose, and controls iteration flow.
+**agentic owns the abstraction** (behaviour, registry, metrics, experiment runner). Orchestration is about how the agent loop coordinates — agentic's domain. It already owns profiles, stages, phases, and the context struct. Strategy is the natural layer above profile: a strategy *selects and configures* profiles, decides how multiple agent runs compose, and controls iteration flow.
 
-**worth owns the implementations** — concrete strategies (Stigmergy, Holonic, etc.) that depend on Mneme, workspace context, and the tool router. The Brain dispatches to the active strategy per workspace but doesn't own the abstraction.
+**worth owns the implementations** — concrete strategies (Stigmergy, Holonic, etc.) that depend on Recollect, workspace context, and the tool router. The Brain dispatches to the active strategy per workspace but doesn't own the abstraction.
 
-The split means orchestration approaches can be tested in agent_ex with mock callbacks, without Worth at all.
+The split means orchestration approaches can be tested in agentic with mock callbacks, without Worth at all.
 
 ---
 
-## Phase 0: Baseline Telemetry (agent_ex)
+## Phase 0: Baseline Telemetry (agentic)
 
 **Goal:** Start collecting per-turn metrics against the current system so we have data to compare against later. No behavior changes.
 
-### Changes in `agent_ex`
+### Changes in `agentic`
 
 #### 0a. Add strategy tag to Context
 
-`lib/agent_ex/loop/context.ex` — add field:
+`lib/agentic/loop/context.ex` — add field:
 
 ```elixir
 strategy: :default,  # atom identifying the active strategy
 ```
 
-Populated in `AgentEx.run/1` from a new optional `:strategy` key in opts (default `:default`). Included in all telemetry event metadata so downstream consumers can group by strategy.
+Populated in `Agentic.run/1` from a new optional `:strategy` key in opts (default `:default`). Included in all telemetry event metadata so downstream consumers can group by strategy.
 
 #### 0b. Emit structured turn-level telemetry
 
@@ -38,19 +38,19 @@ Add a telemetry event inside `ModeRouter` (after each routing decision) and `Too
 
 ```elixir
 :telemetry.execute(
-  [:agent_ex, :orchestration, :turn],
+  [:agentic, :orchestration, :turn],
   %{duration_ms: elapsed, tokens_in: n, tokens_out: n, tool_calls: n},
   %{strategy: ctx.strategy, mode: ctx.mode, phase: ctx.phase, stop_reason: reason}
 )
 ```
 
-Also emit `[:agent_ex, :orchestration, :tool_executed]` per tool call with name, duration, success/failure.
+Also emit `[:agentic, :orchestration, :tool_executed]` per tool call with name, duration, success/failure.
 
-These events exist partially today via `[:agent_ex, :pipeline, :stage, :stop]` but aren't aggregated in a way that makes comparison easy. The new events are strategy-aware from day one.
+These events exist partially today via `[:agentic, :pipeline, :stage, :stop]` but aren't aggregated in a way that makes comparison easy. The new events are strategy-aware from day one.
 
 #### 0c. Telemetry aggregation helper
 
-New module `lib/agent_ex/telemetry/aggregator.ex` — a GenServer that attaches to the above events and maintains running aggregates per `(strategy, mode)`:
+New module `lib/agentic/telemetry/aggregator.ex` — a GenServer that attaches to the above events and maintains running aggregates per `(strategy, mode)`:
 
 - `turn_count`, `total_duration_ms`, `total_tokens`, `total_cost`
 - `tool_call_count`, `tool_success_count`
@@ -60,25 +60,25 @@ Exposes `Aggregator.summary(strategy)` and `Aggregator.summary(strategy, mode)`.
 
 #### 0d. Session-level summary event
 
-In `AgentEx.run/1` (around line 186-201), add `strategy` to the existing `[:session, :stop]` event metadata. No new event needed — just ensure the tag is present.
+In `Agentic.run/1` (around line 186-201), add `strategy` to the existing `[:session, :stop]` event metadata. No new event needed — just ensure the tag is present.
 
 ### Deliverable
 No user-visible change. `Aggregator.summary/1` returns baseline stats for `:default` strategy after any run.
 
 ---
 
-## Phase 1: Strategy Abstraction (agent_ex)
+## Phase 1: Strategy Abstraction (agentic)
 
-**Goal:** Define the Strategy behaviour and integrate it into `AgentEx.run/1` so strategies can control the agent loop without modifying engine internals.
+**Goal:** Define the Strategy behaviour and integrate it into `Agentic.run/1` so strategies can control the agent loop without modifying engine internals.
 
 ### The Strategy Behaviour
 
-New file: `lib/agent_ex/strategy.ex`
+New file: `lib/agentic/strategy.ex`
 
 ```elixir
-defmodule AgentEx.Strategy do
+defmodule Agentic.Strategy do
   @type state :: struct()
-  @type ctx :: AgentEx.Loop.Context.t()
+  @type ctx :: Agentic.Loop.Context.t()
   @type opts :: keyword()
 
   @doc "Unique atom identifier for this strategy"
@@ -93,7 +93,7 @@ defmodule AgentEx.Strategy do
   @doc "Initialize strategy state before the first turn. Receives the full run opts."
   @callback init(opts :: keyword()) :: {:ok, state()} | {:error, term()}
 
-  @doc "Transform run opts before each AgentEx.run call. Can modify profile, mode, callbacks, system prompt, tool permissions, etc."
+  @doc "Transform run opts before each Agentic.run call. Can modify profile, mode, callbacks, system prompt, tool permissions, etc."
   @callback prepare_run(opts :: keyword(), state :: state()) ::
     {:ok, prepared_opts :: keyword(), new_state :: state()} | {:error, term()}
 
@@ -123,24 +123,24 @@ end
 
 | Callback | Maps to | Purpose |
 |---|---|---|
-| `init/1` | Before `AgentEx.run/1` | Strategy-specific setup (e.g., initialize pheromone trails, seed population) |
-| `prepare_run/2` | Inside `AgentEx.run/1`, before building Context | Modify profile, mode, callbacks, system prompt, tool permissions |
-| `handle_result/3` | After `AgentEx.run/1` returns | Decide whether to run again (multi-turn orchestration), record strategy-specific outcomes |
+| `init/1` | Before `Agentic.run/1` | Strategy-specific setup (e.g., initialize pheromone trails, seed population) |
+| `prepare_run/2` | Inside `Agentic.run/1`, before building Context | Modify profile, mode, callbacks, system prompt, tool permissions |
+| `handle_result/3` | After `Agentic.run/1` returns | Decide whether to run again (multi-turn orchestration), record strategy-specific outcomes |
 | `handle_event/2` | Hooked into `Context.emit_event/2` | Reactive adaptation (e.g., deposit pheromone on tool use, detect holon formation) |
 | `telemetry_tags/0` | In telemetry events | Strategy-specific dimensions for analysis |
 
 ### The Default Strategy
 
-New file: `lib/agent_ex/strategy/default.ex`
+New file: `lib/agentic/strategy/default.ex`
 
 ```elixir
-defmodule AgentEx.Strategy.Default do
-  @behaviour AgentEx.Strategy
+defmodule Agentic.Strategy.Default do
+  @behaviour Agentic.Strategy
 
   @impl true
   def id(), do: :default
   def display_name(), do: "Default"
-  def description(), do: "Passes opts through unchanged. Matches current AgentEx.run behavior."
+  def description(), do: "Passes opts through unchanged. Matches current Agentic.run behavior."
 
   @impl true
   def init(opts), do: {:ok, opts}
@@ -157,11 +157,11 @@ defmodule AgentEx.Strategy.Default do
 end
 ```
 
-This is the identity strategy — it does nothing. The current `AgentEx.run/1` behavior is preserved exactly when using `:default`.
+This is the identity strategy — it does nothing. The current `Agentic.run/1` behavior is preserved exactly when using `:default`.
 
-### Integration into AgentEx.run/1
+### Integration into Agentic.run/1
 
-Modify `AgentEx.run/1` (`lib/agent_ex.ex`):
+Modify `Agentic.run/1` (`lib/agentic.ex`):
 
 ```elixir
 def run(opts) do
@@ -213,24 +213,24 @@ end
 
 defp resolve_strategy(opts) do
   case Keyword.get(opts, :strategy) do
-    nil -> AgentEx.Strategy.Default
-    id when is_atom(id) -> AgentEx.Strategy.Registry.fetch!(id)
+    nil -> Agentic.Strategy.Default
+    id when is_atom(id) -> Agentic.Strategy.Registry.fetch!(id)
     mod when is_atom(mod) -> mod  # can pass module directly
   end
 end
 ```
 
-The existing `AgentEx.run/1` body becomes `run_single/1` (the same code, minus strategy wrapping). This keeps backward compatibility — callers who don't pass `:strategy` get the exact same behavior.
+The existing `Agentic.run/1` body becomes `run_single/1` (the same code, minus strategy wrapping). This keeps backward compatibility — callers who don't pass `:strategy` get the exact same behavior.
 
 ### Event Hook
 
-In `Context.emit_event/2` (`lib/agent_ex/loop/context.ex`), after the existing event emission, check if a strategy module is available and call `handle_event/2`:
+In `Context.emit_event/2` (`lib/agentic/loop/context.ex`), after the existing event emission, check if a strategy module is available and call `handle_event/2`:
 
 ```elixir
 def emit_event(%{strategy: strategy_id, strategy_module: mod, strategy_state: ss} = ctx, event) do
   # existing behavior
   if callback = ctx.callbacks[:on_event], do: callback.(event, ctx)
-  send(ctx.caller, {:agent_ex_event, event})
+  send(ctx.caller, {:agentic_event, event})
 
   # strategy hook
   if mod do
@@ -249,13 +249,13 @@ This requires adding `strategy_module` and `strategy_state` to the Context struc
 
 ### Strategy Registry
 
-New file: `lib/agent_ex/strategy/registry.ex`
+New file: `lib/agentic/strategy/registry.ex`
 
 ```elixir
-defmodule AgentEx.Strategy.Registry do
+defmodule Agentic.Strategy.Registry do
   use Agent
 
-  def start_link(_), do: Agent.start_link(fn -> %{default: AgentEx.Strategy.Default} end, name: __MODULE__)
+  def start_link(_), do: Agent.start_link(fn -> %{default: Agentic.Strategy.Default} end, name: __MODULE__)
 
   def register(mod) when is_atom(mod) do
     Agent.update(__MODULE__, &Map.put(&1, mod.id(), mod))
@@ -267,12 +267,12 @@ defmodule AgentEx.Strategy.Registry do
 end
 ```
 
-Added to `AgentEx.Application` supervision tree, before the protocol registry.
+Added to `Agentic.Application` supervision tree, before the protocol registry.
 
-### File layout in agent_ex
+### File layout in agentic
 
 ```
-lib/agent_ex/
+lib/agentic/
   strategy.ex                    # behaviour definition
   strategy/
     registry.ex                  # process registry for strategies
@@ -282,25 +282,25 @@ lib/agent_ex/
 
 ### Tests
 
-- `test/agent_ex/strategy/default_test.exs` — verifies Default passes through unchanged
-- `test/agent_ex/strategy/registry_test.exs` — register, fetch, all
-- `test/agent_ex/strategy/integration_test.exs` — full `AgentEx.run(strategy: :default)` matches `AgentEx.run()` output
+- `test/agentic/strategy/default_test.exs` — verifies Default passes through unchanged
+- `test/agentic/strategy/registry_test.exs` — register, fetch, all
+- `test/agentic/strategy/integration_test.exs` — full `Agentic.run(strategy: :default)` matches `Agentic.run()` output
 
 ### Deliverable
-`AgentEx.run(strategy: :default, ...)` produces identical results to `AgentEx.run(...)`. The abstraction is in place, no existing code breaks.
+`Agentic.run(strategy: :default, ...)` produces identical results to `Agentic.run(...)`. The abstraction is in place, no existing code breaks.
 
 ---
 
-## Phase 2: Experiment Runner (agent_ex)
+## Phase 2: Experiment Runner (agentic)
 
 **Goal:** A module that can run the same prompt through multiple strategies, collect results, and compute comparison metrics.
 
 ### Experiment Definition
 
-New file: `lib/agent_ex/strategy/experiment.ex`
+New file: `lib/agentic/strategy/experiment.ex`
 
 ```elixir
-defmodule AgentEx.Strategy.Experiment do
+defmodule Agentic.Strategy.Experiment do
   defstruct [
     :id,                  # unique atom or UUID
     :name,                # human name
@@ -322,7 +322,7 @@ defmodule AgentEx.Strategy.Experiment do
         |> Keyword.put(:strategy, strategy)
 
       start = System.monotonic_time(:millisecond)
-      result = AgentEx.run(opts)
+      result = Agentic.run(opts)
       elapsed = System.monotonic_time(:millisecond) - start
 
       %{
@@ -385,12 +385,12 @@ comparison = Experiment.compare(results)
 ### File layout addition
 
 ```
-lib/agent_ex/strategy/
+lib/agentic/strategy/
   experiment.ex            # experiment definition + runner + comparison
 ```
 
 ### Deliverable
-Can run head-to-head strategy comparisons with statistical aggregation, entirely within agent_ex, using mock callbacks.
+Can run head-to-head strategy comparisons with statistical aggregation, entirely within agentic, using mock callbacks.
 
 ---
 
@@ -416,7 +416,7 @@ The key change. Currently (line 416-443):
 defp execute_agent_loop(text, state, brain_pid) do
   callbacks = build_callbacks(state, brain_pid)
   run_opts = build_run_opts(text, state, brain_pid, workspace_path, callbacks, system_prompt)
-  AgentEx.run(run_opts)
+  Agentic.run(run_opts)
 end
 ```
 
@@ -431,7 +431,7 @@ defp execute_agent_loop(text, state, brain_pid) do
     |> Keyword.put(:strategy, state.strategy)
     |> Keyword.put(:strategy_opts, state.strategy_opts)
 
-  AgentEx.run(opts)
+  Agentic.run(opts)
 end
 ```
 
@@ -451,7 +451,7 @@ Handler:
 
 ```elixir
 def handle_call({:switch_strategy, strategy_id, opts}, _from, state) do
-  case AgentEx.Strategy.Registry.fetch(strategy_id) do
+  case Agentic.Strategy.Registry.fetch(strategy_id) do
     nil ->
       {:reply, {:error, :unknown_strategy}, state}
 
@@ -493,7 +493,7 @@ Worth runs with any registered strategy. `/strategy default` switches back to ba
 
 ## Phase 4: Stigmergy Strategy (worth)
 
-**Goal:** Implement the first research strategy using pheromone-based coordination via Mneme.
+**Goal:** Implement the first research strategy using pheromone-based coordination via Recollect.
 
 ### Strategy Module
 
@@ -501,7 +501,7 @@ New file: `lib/worth/orchestration/strategies/stigmergy.ex`
 
 ```elixir
 defmodule Worth.Orchestration.Strategies.Stigmergy do
-  @behaviour AgentEx.Strategy
+  @behaviour Agentic.Strategy
 
   defstruct [
     :workspace,
@@ -561,14 +561,14 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
   # --- Private ---
 
   defp fetch_pheromones(workspace, limit) do
-    Mneme.search("pheromone type:intention scope:#{workspace}",
+    Recollect.search("pheromone type:intention scope:#{workspace}",
       limit: limit,
       scope_id: "worth:stigmergy:#{workspace}"
     )
   end
 
   defp deposit_completion_pheromone(result, workspace) do
-    Mneme.remember("pheromone completion: #{binary.part(result.text, 0, min(byte_size(result.text), 200))}", %{
+    Recollect.remember("pheromone completion: #{binary.part(result.text, 0, min(byte_size(result.text), 200))}", %{
       scope_id: "worth:stigmergy:#{workspace}",
       entry_type: "pheromone_completion",
       metadata: %{signal: :completion, cost: result.cost, workspace: workspace}
@@ -576,7 +576,7 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
   end
 
   defp deposit_failure_pheromone(reason, workspace) do
-    Mneme.remember("pheromone failure: #{inspect(reason)}", %{
+    Recollect.remember("pheromone failure: #{inspect(reason)}", %{
       scope_id: "worth:stigmergy:#{workspace}",
       entry_type: "pheromone_failure",
       metadata: %{signal: :failure, workspace: workspace}
@@ -584,7 +584,7 @@ defmodule Worth.Orchestration.Strategies.Stigmergy do
   end
 
   defp deposit_intention_pheromone(tool_name, workspace) do
-    Mneme.remember("pheromone intention: #{tool_name}", %{
+    Recollect.remember("pheromone intention: #{tool_name}", %{
       scope_id: "worth:stigmergy:#{workspace}",
       entry_type: "pheromone_intention",
       metadata: %{signal: :intention, tool: tool_name, workspace: workspace}
@@ -606,7 +606,7 @@ end
 In `Worth.Application`, after skill init:
 
 ```elixir
-AgentEx.Strategy.Registry.register(Worth.Orchestration.Strategies.Stigmergy)
+Agentic.Strategy.Registry.register(Worth.Orchestration.Strategies.Stigmergy)
 ```
 
 ### What This Tests
@@ -652,7 +652,7 @@ Recursive agent composition. The strategy configures `delegate_task` with specif
 
 ```elixir
 defmodule Worth.Orchestration.Strategies.Holonic do
-  @behaviour AgentEx.Strategy
+  @behaviour Agentic.Strategy
 
   defstruct [:workspace, holon_capacity: 3, active_holons: 0, holon_history: []]
 
@@ -671,7 +671,7 @@ Maintains a population of solution candidates. Uses `{:rerun, opts, state}` retu
 
 ```elixir
 defmodule Worth.Orchestration.Strategies.Evolutionary do
-  @behaviour AgentEx.Strategy
+  @behaviour Agentic.Strategy
 
   defstruct [
     :workspace,
@@ -698,7 +698,7 @@ Particle Swarm Optimization. Multiple concurrent agent runs adjust toward person
 
 ```elixir
 defmodule Worth.Orchestration.Strategies.Swarm do
-  @behaviour AgentEx.Strategy
+  @behaviour Agentic.Strategy
 
   defstruct [
     :workspace,
@@ -724,7 +724,7 @@ Niche specialization with predator-prey error detection. Two agent roles: builde
 
 ```elixir
 defmodule Worth.Orchestration.Strategies.Ecosystem do
-  @behaviour AgentEx.Strategy
+  @behaviour Agentic.Strategy
 
   defstruct [
     :workspace,
@@ -753,7 +753,7 @@ strategies = [
   Worth.Orchestration.Strategies.Swarm,
   Worth.Orchestration.Strategies.Ecosystem
 ]
-Enum.each(strategies, &AgentEx.Strategy.Registry.register/1)
+Enum.each(strategies, &Agentic.Strategy.Registry.register/1)
 ```
 
 ### Deliverable
@@ -809,17 +809,17 @@ Full experiment lifecycle from creation to comparison, accessible via UI and CLI
 
 ## Summary: Cross-Repo File Layout
 
-### agent_ex (new files)
+### agentic (new files)
 
 ```
-lib/agent_ex/
+lib/agentic/
   strategy.ex                           # behaviour
   strategy/
     registry.ex                         # process registry
     default.ex                          # identity strategy
     experiment.ex                       # experiment runner + comparison
     metrics.ex                          # telemetry aggregation
-test/agent_ex/strategy/
+test/agentic/strategy/
   default_test.exs
   registry_test.exs
   integration_test.exs
@@ -846,13 +846,13 @@ priv/repo/migrations/
 
 | Repo | File | Change |
 |---|---|---|
-| agent_ex | `lib/agent_ex.ex` | Strategy wrapping around `run/1`, extract body to `run_single/1` |
-| agent_ex | `lib/agent_ex/loop/context.ex` | Add `strategy`, `strategy_module`, `strategy_state` fields |
-| agent_ex | `lib/agent_ex/loop/context.ex` | `emit_event/2` hooks into strategy `handle_event/2` |
-| agent_ex | `lib/agent_ex/application.ex` | Add `Strategy.Registry` to supervision tree |
-| agent_ex | `lib/agent_ex/loop/stages/mode_router.ex` | Add strategy-aware telemetry events |
-| agent_ex | `lib/agent_ex/loop/stages/tool_executor.ex` | Add strategy-aware telemetry events |
-| worth | `lib/worth/brain.ex` | Add strategy fields to struct, pass strategy to `AgentEx.run`, `switch_strategy/3` |
+| agentic | `lib/agentic.ex` | Strategy wrapping around `run/1`, extract body to `run_single/1` |
+| agentic | `lib/agentic/loop/context.ex` | Add `strategy`, `strategy_module`, `strategy_state` fields |
+| agentic | `lib/agentic/loop/context.ex` | `emit_event/2` hooks into strategy `handle_event/2` |
+| agentic | `lib/agentic/application.ex` | Add `Strategy.Registry` to supervision tree |
+| agentic | `lib/agentic/loop/stages/mode_router.ex` | Add strategy-aware telemetry events |
+| agentic | `lib/agentic/loop/stages/tool_executor.ex` | Add strategy-aware telemetry events |
+| worth | `lib/worth/brain.ex` | Add strategy fields to struct, pass strategy to `Agentic.run`, `switch_strategy/3` |
 | worth | `lib/worth/cli.ex` | `--strategy` flag |
 | worth | `lib/worth/ui/commands.ex` | `/strategy` command |
 | worth | `lib/worth/application.ex` | Register Worth strategies |
@@ -874,7 +874,7 @@ Phase 0 (telemetry) ──► Phase 1 (abstraction) ──► Phase 2 (experimen
                                                  Phase 6 (dashboard)
 ```
 
-Phases 0-2 are agent_ex only. Phase 3 is the bridge. Phases 4-6 are worth only. Each phase is independently mergeable and doesn't break existing behavior.
+Phases 0-2 are agentic only. Phase 3 is the bridge. Phases 4-6 are worth only. Each phase is independently mergeable and doesn't break existing behavior.
 
 ---
 
@@ -911,7 +911,7 @@ Two parallel paths, both writing to the same SQLite database:
 │                                                      │
 │  ┌──────────┐    telemetry events    ┌────────────┐  │
 │  │ BEAM VM   │ ────(Rust TCP bridge)──>│ Rust       │  │
-│  │ AgentEx   │                        │ Metrics    │  │
+│  │ Agentic   │                        │ Metrics    │  │
 │  │ Brain     │                        │ Writer     │  │
 │  └──────────┘                         └─────┬──────┘  │
 │                                              │         │
@@ -936,7 +936,7 @@ The Rust side receives telemetry events from the BEAM VM via the existing TCP br
 ### SQLite Schema
 
 ```sql
--- One row per agent session (maps to a single AgentEx.run call)
+-- One row per agent session (maps to a single Agentic.run call)
 CREATE TABLE session_metrics (
     id              INTEGER PRIMARY KEY,
     session_id      TEXT NOT NULL UNIQUE,
@@ -1135,7 +1135,7 @@ The existing `Worth.Desktop.Bridge` (`lib/worth/desktop/bridge.ex`) already comm
 
 ```elixir
 # In the :telemetry handler attached in Worth.Application
-def handle_event([:agent_ex, :orchestration, :turn], measurements, metadata, _config) do
+def handle_event([:agentic, :orchestration, :turn], measurements, metadata, _config) do
   if desktop_mode?() do
     Worth.Desktop.Bridge.send_metric(%{
       type: "turn_complete",

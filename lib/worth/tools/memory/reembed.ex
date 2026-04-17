@@ -1,8 +1,8 @@
 defmodule Worth.Tools.Memory.Reembed do
   @moduledoc """
   Re-embed all stored memories with the currently configured embedding
-  model. Wraps `Mneme.Maintenance.Reembed.run/1` and routes through
-  `AgentEx.LLM.embed_tier/3` so the same tier resolution that the
+  model. Wraps `Recollect.Maintenance.Reembed.run/1` and routes through
+  `Agentic.LLM.embed_tier/3` so the same tier resolution that the
   configured `Worth.Memory.Embeddings.Adapter` uses applies here.
 
   Triggered by:
@@ -12,7 +12,7 @@ defmodule Worth.Tools.Memory.Reembed do
     * agent tool `memory_reembed`
   """
 
-  alias AgentEx.LLM
+  alias Agentic.LLM
 
   @default_tier :embeddings
 
@@ -23,7 +23,7 @@ defmodule Worth.Tools.Memory.Reembed do
 
     * `:tier` — embedding tier to use (default: `:embeddings`)
     * `:scope` — `:nil_only` (default), `:all`, `{:stale_model, model_id}`
-    * `:tables` — list of mneme table names (default: all three)
+    * `:tables` — list of recollect table names (default: all three)
     * `:batch_size` — rows per batch (default: `100`)
     * `:progress_callback` — invoked once per batch
   """
@@ -40,11 +40,11 @@ defmodule Worth.Tools.Memory.Reembed do
 
     progress_cb = Keyword.get(opts, :progress_callback, fn _ -> :ok end)
 
-    Mneme.Maintenance.Reembed.run(
+    Recollect.Maintenance.Reembed.run(
       embedding_fn: embedding_fn,
       progress_callback: progress_cb,
       scope: Keyword.get(opts, :scope, :nil_only),
-      tables: Keyword.get(opts, :tables, ["mneme_chunks", "mneme_entries", "mneme_entities"]),
+      tables: Keyword.get(opts, :tables, ["recollect_chunks", "recollect_entries", "recollect_entities"]),
       batch_size: Keyword.get(opts, :batch_size, 100)
     )
   end

@@ -21,12 +21,12 @@ worth_data =
       nil
   end
 
-# --- AgentEx ---
-config :agent_ex,
+# --- Agentic ---
+config :agentic,
   providers: [
-    AgentEx.LLM.Provider.OpenRouter,
-    AgentEx.LLM.Provider.Anthropic,
-    AgentEx.LLM.Provider.OpenAI
+    Agentic.LLM.Provider.OpenRouter,
+    Agentic.LLM.Provider.Anthropic,
+    Agentic.LLM.Provider.OpenAI
   ],
   catalog: [persist_path: worth_data && Path.join(worth_data, "catalog.json")]
 
@@ -45,11 +45,11 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
 
-config :mneme,
-  database_adapter: Mneme.DatabaseAdapter.SQLiteVec,
+config :recollect,
+  database_adapter: Recollect.DatabaseAdapter.SQLiteVec,
   repo: Worth.Repo
 
-config :mneme,
+config :recollect,
   embedding: [
     provider: Adapter,
     tier: :embeddings,

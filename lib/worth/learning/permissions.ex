@@ -164,7 +164,7 @@ defmodule Worth.Learning.Permissions do
   end
 
   defp provider_configs_with_meta do
-    Worth.Learning.AgentConfig.provider_configs_for_mneme()
+    Worth.Learning.AgentConfig.provider_configs_for_recollect()
     |> Enum.map(fn {mod, config} ->
       name = mod.agent_name()
       available = mod.available?(config)

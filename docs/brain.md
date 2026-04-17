@@ -2,7 +2,7 @@
 
 ## Worth.Brain GenServer
 
-The brain is a per-workspace GenServer that owns the agent loop. It is the integration point between the Phoenix LiveView web UI (events in, PubSub out) and agent_ex (execution).
+The brain is a per-workspace GenServer that owns the agent loop. It is the integration point between the Phoenix LiveView web UI (events in, PubSub out) and agentic (execution).
 
 ```elixir
 defmodule Worth.Brain do
@@ -22,9 +22,9 @@ defmodule Worth.Brain do
 end
 ```
 
-## AgentEx Callbacks
+## Agentic Callbacks
 
-The brain bridges AgentEx's callback system to worth's subsystems:
+The brain bridges Agentic's callback system to worth's subsystems:
 
 ```elixir
 callbacks = %{
@@ -38,11 +38,11 @@ callbacks = %{
 
   # Global memory (unified model)
   knowledge_search: fn query, opts ->
-    Mneme.search(query, Keyword.put(opts, :scope_id, "worth"))
+    Recollect.search(query, Keyword.put(opts, :scope_id, "worth"))
   end,
 
   knowledge_create: fn params ->
-    Mneme.remember(params.content, %{
+    Recollect.remember(params.content, %{
       scope_id: "worth",
       content: params.content,
       entry_type: params[:entry_type] || "fact",
@@ -51,7 +51,7 @@ callbacks = %{
   end,
 
   knowledge_recent: fn _scope_id ->
-    Mneme.Knowledge.recent("worth")
+    Recollect.Knowledge.recent("worth")
   end,
 
   get_tool_schema: fn name ->
@@ -99,7 +99,7 @@ Priority order (highest to lowest):
 3. AGENTS.md (project-specific instructions)                                    [overlay]
 4. Always-loaded skills (agent-tools, human-agency, tool-discovery)                [overlay]
 5. On-demand skill listings (names only)                                        [overlay]
-6. Memory context (from global Mneme search + ContextKeeper)                   [global + overlay boost]
+6. Memory context (from global Recollect search + ContextKeeper)                   [global + overlay boost]
 7. Workspace snapshot (file tree, key files)                                [overlay]
 ```
 
@@ -107,7 +107,7 @@ Budget: 25% of context window for system prompt (min 32k chars). Memory/knowledg
 
 ## LLM Provider Routing
 
-Worth uses agent_ex's ModelRouter for smart model selection:
+Worth uses agentic's ModelRouter for smart model selection:
 
 ```elixir
 routes = %{
@@ -118,11 +118,11 @@ routes = %{
     %{provider_name: "anthropic", model_id: "claude-haiku-4-20250414", api_type: :anthropic_messages}
   ]
 }
-AgentEx.ModelRouter.set_routes(:primary, routes.primary)
-AgentEx.ModelRouter.set_routes(:lightweight, routes.lightweight)
+Agentic.ModelRouter.set_routes(:primary, routes.primary)
+Agentic.ModelRouter.set_routes(:lightweight, routes.lightweight)
 ```
 
-The Worth.LLM module wraps provider adapters (Anthropic, OpenAI, OpenRouter) and normalizes responses to agent_ex's expected format:
+The Worth.LLM module wraps provider adapters (Anthropic, OpenAI, OpenRouter) and normalizes responses to agentic's expected format:
 
 ```elixir
 %{
@@ -142,9 +142,9 @@ User types message in browser
 Phoenix LiveView handle_event → Worth.Brain.send_message(text, workspace)
     │
     ▼
-Worth.Brain (GenServer) → AgentEx.run/1
+Worth.Brain (GenServer) → Agentic.run/1
     │
-    │  AgentEx emits events via :on_event callback:
+    │  Agentic emits events via :on_event callback:
     │  - {:text_chunk, "I'll read..."}
     │  - {:tool_call, %{name: "read_file", input: %{...}}}
     │  - {:tool_result, %{name: "read_file", output: "..."}}
