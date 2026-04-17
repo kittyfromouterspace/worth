@@ -4,7 +4,7 @@ defmodule Worth.MixProject do
   def project do
     [
       app: :worth,
-      version: "0.2.1-alpha.8",
+      version: "0.2.1-alpha.9",
       elixir: "~> 1.19",
       description: "An AI assistant built on Elixir/BEAM",
       package: [
@@ -17,7 +17,8 @@ defmodule Worth.MixProject do
       listeners: [Phoenix.CodeReloader],
       aliases: aliases(),
       deps: deps(),
-      releases: releases()
+      releases: releases(),
+      usage_rules: usage_rules()
     ]
   end
 
@@ -61,13 +62,13 @@ defmodule Worth.MixProject do
     internal_deps =
       if worth_deps_mode == "prod" do
         [
-          {:mneme, git: "https://github.com/kittyfromouterspace/mneme.git", tag: "v0.4.4", override: true},
-          {:agent_ex, git: "https://github.com/kittyfromouterspace/agent_ex.git", tag: "v0.1.9"}
+          {:recollect, git: "https://github.com/kittyfromouterspace/recollect.git", tag: "v0.5.0", override: true},
+          {:agentic, git: "https://github.com/kittyfromouterspace/agentic.git", tag: "v0.2.1"}
         ]
       else
         [
-          {:mneme, path: "../mneme"},
-          {:agent_ex, path: "../agent_ex"}
+          {:recollect, path: "../recollect", override: true},
+          {:agentic, path: "../agentic"}
         ]
       end
 
@@ -117,7 +118,11 @@ defmodule Worth.MixProject do
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:doctor, "~> 0.22", only: [:dev], runtime: false},
       {:styler, ">= 0.11.0", only: [:dev, :test], runtime: false},
-      {:lazy_html, ">= 0.1.0", only: :test}
+      {:lazy_html, ">= 0.1.0", only: :test},
+
+      # Agent skills & usage rules
+      {:usage_rules, "~> 1.1", only: [:dev]},
+      {:igniter, "~> 0.6", only: [:dev]}
     ]
 
     internal_deps ++ other_deps
@@ -137,6 +142,25 @@ defmodule Worth.MixProject do
       "assets.build": ["compile", "tailwind worth", "esbuild worth"],
       "assets.deploy": ["tailwind worth --minify", "esbuild worth --minify", "phx.digest"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "ecto.migrate --quiet --repo Worth.Metrics.Repo", "test"]
+    ]
+  end
+
+  defp usage_rules do
+    [
+      file: "AGENTS.md",
+      usage_rules: [:usage_rules, :agentic, :recollect, :elixir, :otp],
+      skills: [
+        location: ".claude/skills",
+        deps: [:agentic, :recollect],
+        package_skills: [:agentic, :recollect],
+        build: [
+          "worth-memory": [
+            description:
+              "Use this skill when working with Worth's memory, knowledge, and agent systems. Combines agentic runtime and recollect memory patterns.",
+            usage_rules: [:agentic, :recollect]
+          ]
+        ]
+      ]
     ]
   end
 end

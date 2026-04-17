@@ -32,7 +32,7 @@ jobs:
             target: aarch64-apple-darwin
             os_name: darwin
           - platform: linux-x86_64
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             os_name: linux
           - platform: windows-x86_64
@@ -49,7 +49,7 @@ jobs:
 
       # --- System dependencies (Linux) ---
       - name: Install Linux dependencies
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -123,6 +123,11 @@ jobs:
       # --- Build Tauri with OTP release bundled as resource ---
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2"
+        if: matrix.os_name != 'linux'
+
+      - name: Install Tauri CLI (Linux - new AppImage format)
+        run: cargo install --git https://github.com/tauri-apps/tauri --branch feat/truly-portable-appimage tauri-cli
+        if: matrix.os_name == 'linux'
 
       - name: Build Tauri app
         working-directory: rel/desktop/src-tauri
@@ -150,7 +155,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload Linux artifacts
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         uses: actions/upload-artifact@v4
         with:
           name: worth-${{ matrix.platform }}
