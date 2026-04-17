@@ -39,6 +39,11 @@ defmodule Worth.Config.SetupTest do
     end)
 
     Worth.Config.put_setting([:workspace_directory], nil)
+
+    if Worth.Settings.has_password?() do
+      Worth.Repo.delete_all(Worth.Settings.MasterPassword)
+    end
+
     assert Setup.needs_setup?()
   end
 
