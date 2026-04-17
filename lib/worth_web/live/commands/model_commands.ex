@@ -37,6 +37,7 @@ defmodule WorthWeb.Commands.ModelCommands do
       |> Map.put(:mode, "auto")
 
     save_routing(new_routing)
+    restore_llm_mode(socket)
 
     socket
     |> assign(:model_routing, new_routing)
@@ -166,9 +167,11 @@ defmodule WorthWeb.Commands.ModelCommands do
                   |> Map.delete(:coding_agent)
 
                 save_routing(routing)
+                restore_llm_mode(socket)
 
                 socket
                 |> assign(:model_routing, routing)
+                |> assign(:mode, :turn_by_turn)
                 |> append_system("Model set to #{provider}/#{model_id} (manual mode)")
             end
 
@@ -202,12 +205,29 @@ defmodule WorthWeb.Commands.ModelCommands do
           current_routing()
           |> Map.put(:mode, "manual")
           |> Map.put(:manual_model, %{provider: to_string(provider), model_id: model_id})
+          |> Map.delete(:coding_agent)
 
         save_routing(routing)
+        restore_llm_mode(socket)
 
         socket
         |> assign(:model_routing, routing)
+        |> assign(:mode, :turn_by_turn)
         |> append_system("Model set to #{provider}/#{model_id} (manual mode)")
+    end
+  end
+
+  # When switching from a coding-agent back to an LLM model, the Brain
+  # GenServer needs its mode reset — otherwise it stays in :coding_agent
+  # and keeps routing prompts through the CLIExecutor stage.
+  defp restore_llm_mode(socket) do
+    workspace = socket.assigns[:workspace]
+
+    if workspace do
+      case Worth.Brain.get_status(workspace) do
+        %{mode: :coding_agent} -> Worth.Brain.switch_mode(workspace, :turn_by_turn)
+        _ -> :ok
+      end
     end
   end
 

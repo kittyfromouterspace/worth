@@ -45,8 +45,10 @@ defmodule Worth.CodingAgents do
     case protocol do
       :claude -> :claude_code
       :claude_code -> :claude_code
-      :opencode -> :opencode
       :codex -> :codex
+      # Everything else (opencode, kimi, gemini, cursor, goose, qwen, ...)
+      # runs over the generic Agent Client Protocol. Each CLI's specific
+      # launch command comes from `backend_config/2` via the Discovery DB.
       _ -> :acp
     end
   end
@@ -108,10 +110,6 @@ defmodule Worth.CodingAgents do
           register_protocol(Agentic.Protocol.ClaudeCode, :claude_code)
           add_to_config(:claude_code, "Claude Code")
 
-        :opencode ->
-          register_protocol(Agentic.Protocol.OpenCode, :opencode)
-          add_to_config(:opencode, "OpenCode")
-
         :codex ->
           register_protocol(Agentic.Protocol.Codex, :codex)
           add_to_config(:codex, "Codex CLI")
@@ -153,16 +151,33 @@ defmodule Worth.CodingAgents do
   configuration, skills, and logs. They do NOT include the Worth data directory.
   """
   def agent_private_dirs(protocol) when is_atom(protocol) do
-    case Discovery.agent_directories(protocol) do
-      nil ->
-        []
+    discovered =
+      case Discovery.agent_directories(protocol) do
+        nil -> []
+        dirs -> dirs.config ++ dirs.logs ++ dirs.cache
+      end
 
-      dirs ->
-        (dirs.config ++ dirs.logs ++ dirs.cache)
-        |> Enum.filter(&File.dir?/1)
-        |> Enum.uniq()
-    end
+    (discovered ++ extra_agent_paths(protocol))
+    |> Enum.filter(&File.exists?/1)
+    |> Enum.uniq()
   end
+
+  # Companion files/dirs the discovery database doesn't capture but the
+  # CLI still expects at its usual location (e.g. ~/.claude.json).
+  defp extra_agent_paths(:claude), do: extra_agent_paths(:claude_code)
+
+  defp extra_agent_paths(:claude_code) do
+    [Path.expand("~/.claude.json"), Path.expand("~/.claude.json.backup")]
+  end
+
+  # asdf-managed CLIs fall back to $HOME/.tool-versions when they can't
+  # walk up to a nearer one, so surface that file (and any local asdf
+  # config) into the sandbox.
+  defp extra_agent_paths(:codex) do
+    [Path.expand("~/.tool-versions"), Path.expand("~/.asdfrc")]
+  end
+
+  defp extra_agent_paths(_), do: []
 
   @doc "Convert a protocol atom to a display-friendly name."
   def display_name(protocol) when is_atom(protocol) do
