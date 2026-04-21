@@ -166,27 +166,37 @@ defmodule WorthWeb.Components.Chat do
             <span class={color(:primary)}>{@model_routing.coding_agent[:name]}</span>
             <div class={"#{color(:text_dim)} text-[10px]"}>coding agent · /model auto to switch back</div>
           </div>
-          <div :if={@model_routing[:mode] == "manual" and not is_nil(@model_routing[:manual_model]) and is_nil(@model_routing[:coding_agent])}>
+          <div :if={
+            @model_routing[:mode] == "manual" and not is_nil(@model_routing[:manual_model]) and
+              is_nil(@model_routing[:coding_agent])
+          }>
             <% actual = model_short(@models, :primary)
-               configured = manual_model_label(@model_routing.manual_model)
-               fallback = actual && actual != configured && actual %>
+            configured = manual_model_label(@model_routing.manual_model)
+            fallback = actual && actual != configured && actual %>
             <span class={color(:primary)}>{configured}</span>
             <div :if={fallback} class={"#{color(:info)} text-[10px]"}>→ {fallback}</div>
             <div class={"#{color(:text_dim)} text-[10px]"}>manual · /model auto to switch</div>
           </div>
-          <div :if={(@model_routing[:mode] != "manual" or is_nil(@model_routing[:manual_model])) and is_nil(@model_routing[:coding_agent])}>
+          <div :if={
+            (@model_routing[:mode] != "manual" or is_nil(@model_routing[:manual_model])) and
+              is_nil(@model_routing[:coding_agent])
+          }>
             <div class={color(:primary)}>primary</div>
             <div class={color(:text_muted)}>
               <%= case model_short(@models, :primary) do %>
-                <% nil -> %><span class="spinner"></span>
-                <% label -> %>{label}
+                <% nil -> %>
+                  <span class="spinner"></span>
+                <% label -> %>
+                  {label}
               <% end %>
             </div>
             <div class={"#{color(:primary)} mt-1"}>light</div>
             <div class={color(:text_muted)}>
               <%= case model_short(@models, :lightweight) do %>
-                <% nil -> %><span class="spinner"></span>
-                <% label -> %>{label}
+                <% nil -> %>
+                  <span class="spinner"></span>
+                <% label -> %>
+                  {label}
               <% end %>
             </div>
             <div class={"#{color(:text_dim)} text-[10px] mt-1"}>{routing_mode_label(@model_routing)}</div>
@@ -539,8 +549,6 @@ defmodule WorthWeb.Components.Chat do
     if label && label != "" do
       # Strip provider prefix like "Anthropic: " for brevity
       String.replace(label, ~r/^[A-Za-z]+:\s*/, "")
-    else
-      nil
     end
   end
 

@@ -46,7 +46,7 @@ defmodule Worth.Orchestration.Strategies.Holonic do
 
   @impl true
   def handle_result({:ok, result}, _opts, state) do
-    new_state = %{state | holon_history: state.holon_history |> Enum.take(50)}
+    new_state = %{state | holon_history: Enum.take(state.holon_history, 50)}
     {:done, result, new_state}
   end
 

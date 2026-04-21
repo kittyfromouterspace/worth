@@ -10,6 +10,8 @@ defmodule WorthWeb.LLMGatewayController do
 
   use WorthWeb, :controller
 
+  alias Agentic.LLM.Gateway
+
   require Logger
 
   @doc """
@@ -18,7 +20,7 @@ defmodule WorthWeb.LLMGatewayController do
   """
   def anthropic(conn, _params) do
     body = read_body!(conn)
-    {status, headers, resp_body} = Agentic.LLM.Gateway.proxy(:anthropic, conn.request_path, conn.req_headers, body)
+    {status, headers, resp_body} = Gateway.proxy(:anthropic, conn.request_path, conn.req_headers, body)
     send_response(conn, status, headers, resp_body)
   end
 
@@ -28,7 +30,7 @@ defmodule WorthWeb.LLMGatewayController do
   """
   def openai(conn, _params) do
     body = read_body!(conn)
-    {status, headers, resp_body} = Agentic.LLM.Gateway.proxy(:openai, conn.request_path, conn.req_headers, body)
+    {status, headers, resp_body} = Gateway.proxy(:openai, conn.request_path, conn.req_headers, body)
     send_response(conn, status, headers, resp_body)
   end
 

@@ -27,7 +27,17 @@ defmodule Worth.Orchestration.Experiment do
   @doc false
   def changeset(experiment, attrs) do
     experiment
-    |> cast(attrs, [:name, :description, :strategies, :prompts, :repetitions, :base_opts, :results, :comparison, :status])
+    |> cast(attrs, [
+      :name,
+      :description,
+      :strategies,
+      :prompts,
+      :repetitions,
+      :base_opts,
+      :results,
+      :comparison,
+      :status
+    ])
     |> validate_required([:name, :strategies, :prompts])
     |> validate_length(:strategies, min: 1)
     |> validate_length(:prompts, min: 1)

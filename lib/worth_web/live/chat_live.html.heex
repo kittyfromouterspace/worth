@@ -89,7 +89,10 @@
               <span class="text-ctp-blue font-bold shrink-0">ai</span>
               <div class="flex-1 min-w-0">
                 <% {thinking, visible} = split_streaming_thinking(@streaming_text) %>
-                <div :if={thinking != ""} class="text-xs italic mb-2 pl-3 border-l-2 border-ctp-overlay0 text-ctp-overlay1">
+                <div
+                  :if={thinking != ""}
+                  class="text-xs italic mb-2 pl-3 border-l-2 border-ctp-overlay0 text-ctp-overlay1"
+                >
                   {thinking}
                 </div>
                 <div :if={visible != ""} class="markdown-content">

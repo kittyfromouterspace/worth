@@ -9,8 +9,7 @@ defmodule Worth.Orchestration.ExperimentService do
   alias Worth.Repo
 
   def list do
-    from(e in Experiment, order_by: [desc: e.inserted_at])
-    |> Repo.all()
+    Repo.all(from(e in Experiment, order_by: [desc: e.inserted_at]))
   end
 
   def get!(id), do: Repo.get!(Experiment, id)
@@ -34,11 +33,13 @@ defmodule Worth.Orchestration.ExperimentService do
         result = Agentic.Strategy.Experiment.run(agenticperiment)
         comparison = Agentic.Strategy.Experiment.compare(result)
 
-        Repo.update!(Experiment.changeset(experiment, %{
-          status: "complete",
-          results: serialize_results(result.results),
-          comparison: comparison
-        }))
+        Repo.update!(
+          Experiment.changeset(experiment, %{
+            status: "complete",
+            results: serialize_results(result.results),
+            comparison: comparison
+          })
+        )
 
         Phoenix.PubSub.broadcast(
           Worth.PubSub,

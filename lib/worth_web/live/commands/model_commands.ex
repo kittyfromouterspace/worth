@@ -232,14 +232,13 @@ defmodule WorthWeb.Commands.ModelCommands do
   end
 
   defp find_model_by_id(model_id) do
-    Catalog.all()
-    |> Enum.find_value(fn model ->
-      if model.id == model_id, do: {model.provider, model}, else: nil
+    Enum.find_value(Catalog.all(), fn model ->
+      if model.id == model_id, do: {model.provider, model}
     end)
   end
 
   defp resolve_coding_agent(input) do
-    input = String.trim(input) |> String.downcase()
+    input = input |> String.trim() |> String.downcase()
 
     agents = Agentic.Protocol.ACP.Discovery.known_agents()
 
@@ -282,7 +281,7 @@ defmodule WorthWeb.Commands.ModelCommands do
         {:ok, provider, model_id}
 
       _ ->
-        if input != "", do: {:bare, input}, else: :error
+        if input == "", do: :error, else: {:bare, input}
     end
   end
 

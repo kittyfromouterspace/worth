@@ -34,7 +34,10 @@ defmodule WorthWeb.Components.Chat.Messages do
     <div class="flex gap-2">
       <span class="color(:primary) font-bold shrink-0">ai</span>
       <div class="flex-1 min-w-0">
-        <div :if={@thinking != ""} class={"text-xs italic mb-2 pl-3 border-l-2 #{color(:message_thinking_border)} #{color(:text_dim)}"}>
+        <div
+          :if={@thinking != ""}
+          class={"text-xs italic mb-2 pl-3 border-l-2 #{color(:message_thinking_border)} #{color(:text_dim)}"}
+        >
           {String.slice(@thinking, 0, 500)}{if String.length(@thinking) > 500, do: "…", else: ""}
         </div>
         <div class="markdown-content">{render_markdown(@response)}</div>
@@ -263,7 +266,7 @@ defmodule WorthWeb.Components.Chat.Messages do
   defp split_thinking(text) when is_binary(text) do
     case Regex.run(@think_regex, text) do
       [full_match, thinking] ->
-        response = String.replace(text, full_match, "") |> String.trim()
+        response = text |> String.replace(full_match, "") |> String.trim()
         {String.trim(thinking), response}
 
       nil ->

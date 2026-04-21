@@ -187,6 +187,7 @@ defmodule WorthWeb.Components.Chat.XRay do
   defp event_summary({:tool_result, %{name: name, status: status}}), do: "#{name} → #{status}"
 
   defp event_summary({:tool_exec, %{phase: :start, tool_name: name}}), do: name
+
   defp event_summary({:tool_exec, %{phase: :stop, tool_name: name} = info}) do
     dur = format_duration(info[:duration_ms])
     status = if info[:success] == false, do: "FAILED", else: "ok"
@@ -202,6 +203,7 @@ defmodule WorthWeb.Components.Chat.XRay do
 
   defp event_summary({:memory_ingest, %{fact_count: n}}), do: "#{n} facts ingested"
   defp event_summary({:memory_evict, info}), do: "evicted #{info[:evicted_count]}, #{info[:remaining_count]} remaining"
+
   defp event_summary({:memory_retrieval, info}) do
     dur = format_duration(info[:duration_ms])
     chars = info[:context_chars] || 0
@@ -257,6 +259,7 @@ defmodule WorthWeb.Components.Chat.XRay do
   end
 
   defp event_summary({:pipeline, %{phase: :start, stage: stage}}), do: "#{stage}"
+
   defp event_summary({:pipeline, %{phase: :stop, stage: stage} = info}) do
     "#{stage} #{format_duration(info[:duration_ms])}"
   end
@@ -277,6 +280,7 @@ defmodule WorthWeb.Components.Chat.XRay do
   defp event_summary({:route_fallback, %{reason: reason}}), do: "#{reason}"
 
   defp event_summary({:phase_transition, info}), do: "#{info[:from]} → #{info[:to]} (#{info[:mode]})"
+
   defp event_summary({:mode_route, info}) do
     "#{info[:mode]}/#{info[:phase]} stop=#{info[:stop_reason]} → #{info[:action]}"
   end
@@ -334,11 +338,13 @@ defmodule WorthWeb.Components.Chat.XRay do
 
     needs = collect_needs(info)
     parts = []
-    parts = if explanation != "", do: ["Analysis: #{explanation}" | parts], else: parts
-    parts = if needs != [], do: ["Needs: #{Enum.join(needs, ", ")}" | parts], else: parts
+    parts = if explanation == "", do: parts, else: ["Analysis: #{explanation}" | parts]
+    parts = if needs == [], do: parts, else: ["Needs: #{Enum.join(needs, ", ")}" | parts]
 
     parts =
-      if candidates != [] do
+      if candidates == [] do
+        parts
+      else
         candidate_lines =
           Enum.map_join(candidates, "\n", fn c ->
             free_tag = if c[:free], do: " [FREE]", else: ""
@@ -346,8 +352,6 @@ defmodule WorthWeb.Components.Chat.XRay do
           end)
 
         ["Ranked candidates:\n#{candidate_lines}" | parts]
-      else
-        parts
       end
 
     join_parts(parts)
@@ -385,23 +389,31 @@ defmodule WorthWeb.Components.Chat.XRay do
   defp event_detail({:auto_selected, info}) do
     needs = collect_needs(info)
     parts = []
-    parts = if needs != [], do: ["Needs: #{Enum.join(needs, ", ")}" | parts], else: parts
-    parts = if info[:estimated_input_tokens], do: ["Est. input tokens: #{info[:estimated_input_tokens]}" | parts], else: parts
+    parts = if needs == [], do: parts, else: ["Needs: #{Enum.join(needs, ", ")}" | parts]
+
+    parts =
+      if info[:estimated_input_tokens], do: ["Est. input tokens: #{info[:estimated_input_tokens]}" | parts], else: parts
+
     join_parts(parts)
   end
 
   defp event_detail({:model_analysis, info}) do
     needs = collect_needs(info)
     parts = []
-    parts = if needs != [], do: ["Needs: #{Enum.join(needs, ", ")}" | parts], else: parts
-    parts = if info[:estimated_input_tokens], do: ["Est. input tokens: #{info[:estimated_input_tokens]}" | parts], else: parts
+    parts = if needs == [], do: parts, else: ["Needs: #{Enum.join(needs, ", ")}" | parts]
+
+    parts =
+      if info[:estimated_input_tokens], do: ["Est. input tokens: #{info[:estimated_input_tokens]}" | parts], else: parts
+
     join_parts(parts)
   end
 
   defp event_detail({:model_scoring, %{top3: top3}}) when is_list(top3) and top3 != [] do
-    lines = Enum.map_join(top3, "\n", fn t ->
-      "  #{t[:score]}  #{t[:provider]}/#{t[:model_id]} #{t[:label]}"
-    end)
+    lines =
+      Enum.map_join(top3, "\n", fn t ->
+        "  #{t[:score]}  #{t[:provider]}/#{t[:model_id]} #{t[:label]}"
+      end)
+
     "Top candidates:\n#{lines}"
   end
 
@@ -434,7 +446,9 @@ defmodule WorthWeb.Components.Chat.XRay do
     parts = if info[:ttft_ms], do: ["TTFT: #{info[:ttft_ms]}ms" | parts], else: parts
     parts = if info[:chunk_count], do: ["Chunks: #{info[:chunk_count]}" | parts], else: parts
     parts = if info[:cache_read] && info[:cache_read] > 0, do: ["Cache read: #{info[:cache_read]}" | parts], else: parts
-    parts = if info[:cache_write] && info[:cache_write] > 0, do: ["Cache write: #{info[:cache_write]}" | parts], else: parts
+
+    parts =
+      if info[:cache_write] && info[:cache_write] > 0, do: ["Cache write: #{info[:cache_write]}" | parts], else: parts
 
     parts =
       case info[:raw_response] do

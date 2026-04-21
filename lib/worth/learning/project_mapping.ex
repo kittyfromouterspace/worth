@@ -89,7 +89,8 @@ defmodule Worth.Learning.ProjectMapping do
   end
 
   defp discover_projects(provider, config) do
-    provider.fetch_events(config)
+    config
+    |> provider.fetch_events()
     |> Enum.map(&Map.get(&1, :project))
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()

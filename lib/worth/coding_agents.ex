@@ -6,9 +6,11 @@ defmodule Worth.CodingAgents do
   and integrates them with Agentic's pluggable protocol infrastructure.
   """
 
-  require Logger
-
+  alias Agentic.Protocol.ACP
   alias Agentic.Protocol.ACP.Discovery
+  alias Agentic.Protocol.ClaudeCode
+
+  require Logger
 
   @doc "Discover all available coding agents on the system."
   def discover do
@@ -98,16 +100,16 @@ defmodule Worth.CodingAgents do
     discovered = discover()
 
     # Ensure generic ACP protocol is registered
-    register_protocol(Agentic.Protocol.ACP, {:acp, :generic})
+    register_protocol(ACP, {:acp, :generic})
 
     for agent <- discovered do
       case agent.protocol do
         :claude ->
-          register_protocol(Agentic.Protocol.ClaudeCode, :claude_code)
+          register_protocol(ClaudeCode, :claude_code)
           add_to_config(:claude_code, "Claude Code")
 
         :claude_code ->
-          register_protocol(Agentic.Protocol.ClaudeCode, :claude_code)
+          register_protocol(ClaudeCode, :claude_code)
           add_to_config(:claude_code, "Claude Code")
 
         :codex ->
@@ -116,7 +118,7 @@ defmodule Worth.CodingAgents do
 
         protocol ->
           # Register ACP-based agents under {:acp, protocol}
-          register_protocol(Agentic.Protocol.ACP, {:acp, protocol})
+          register_protocol(ACP, {:acp, protocol})
           add_to_config(protocol, agent.display_name)
       end
     end
