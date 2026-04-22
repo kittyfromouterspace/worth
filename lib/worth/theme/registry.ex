@@ -3,6 +3,7 @@ defmodule Worth.Theme.Registry do
   Theme registry - manages available themes and lookups.
   """
 
+  alias Worth.Theme.Bedrock
   alias Worth.Theme.Cyberdeck
   alias Worth.Theme.Daylight
   alias Worth.Theme.FifthElement
@@ -11,13 +12,14 @@ defmodule Worth.Theme.Registry do
   @setting_key "theme"
 
   @doc """
-  Returns all available themes
+  Returns all available themes. Bedrock first — it's the flagship brand theme.
   """
-  def list, do: [Standard, Daylight, Cyberdeck, FifthElement]
+  def list, do: [Bedrock, Standard, Daylight, Cyberdeck, FifthElement]
 
   @doc """
   Get a theme module by name
   """
+  def get("bedrock"), do: {:ok, Bedrock}
   def get("standard"), do: {:ok, Standard}
   def get("daylight"), do: {:ok, Daylight}
   def get("cyberdeck"), do: {:ok, Cyberdeck}
@@ -27,7 +29,7 @@ defmodule Worth.Theme.Registry do
   @doc """
   Returns the default theme
   """
-  def default, do: Standard
+  def default, do: Bedrock
 
   @doc """
   Get theme from settings, config, or return default.
@@ -68,7 +70,7 @@ defmodule Worth.Theme.Registry do
 
   defp app_config_theme do
     :theme
-    |> Worth.Config.get("standard")
+    |> Worth.Config.get("bedrock")
     |> to_string()
   end
 end

@@ -4,6 +4,7 @@ defmodule WorthWeb.Components.Settings do
   """
   use Phoenix.Component
 
+  import WorthWeb.Components.Brand, only: [worth_wordmark: 1]
   import WorthWeb.Components.Settings.Vault, only: [vault_forms: 1]
 
   @known_preferences [
@@ -496,8 +497,7 @@ defmodule WorthWeb.Components.Settings do
       <div class="max-w-lg w-full space-y-6">
         <%!-- Logo --%>
         <div class="text-center mb-8">
-          <div class="text-4xl font-bold text-ctp-blue mb-1">worth</div>
-          <div class="text-sm italic text-ctp-overlay0">Your ideas are WORTH more</div>
+          <.worth_wordmark size={:xl} show_tagline={true} />
         </div>
 
         <%!-- Step indicator --%>
@@ -645,11 +645,10 @@ defmodule WorthWeb.Components.Settings do
         <%!-- Step 4: User profile --%>
         <div :if={@step == 4} class="space-y-4">
           <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-6">
-            <h2 class="text-lg font-semibold text-ctp-text mb-2">Make It Yours</h2>
+            <h2 class="text-lg font-semibold text-ctp-text mb-2">Your profile</h2>
             <p class="text-sm text-ctp-subtext0 mb-4">
-              Tell Worth a bit about yourself so it can tailor its help to you.
-              This creates your <span class="font-semibold text-ctp-text">personal workspace</span>
-              — your home base for everything.
+              A few details so Worth has context. This also creates your
+              <span class="font-semibold text-ctp-text">personal workspace</span> — the default.
             </p>
 
             <form phx-submit="onboarding_save_profile" class="space-y-4">
@@ -710,8 +709,7 @@ defmodule WorthWeb.Components.Settings do
     <div class="flex-1 flex items-center justify-center p-8">
       <div class="max-w-lg w-full space-y-6">
         <div class="text-center mb-8">
-          <div class="text-4xl font-bold text-ctp-blue mb-1">worth</div>
-          <div class="text-sm italic text-ctp-overlay0">Your ideas are WORTH more</div>
+          <.worth_wordmark size={:xl} show_tagline={true} />
         </div>
 
         <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-6">

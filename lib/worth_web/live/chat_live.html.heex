@@ -108,10 +108,11 @@
             :if={@streaming_text == "" && @status == :idle && @turn == 0 && !@has_history}
             class="flex items-center justify-center h-full"
           >
-            <div class="text-center text-ctp-overlay0">
-              <div class="text-2xl mb-2">Worth</div>
-              <div class="text-sm italic mb-1">Your ideas are WORTH more</div>
-              <div class="text-xs">Type a message or /help for commands</div>
+            <div class="text-center">
+              <.worth_wordmark size={:lg} show_tagline={true} />
+              <div class="text-xs text-[#5A5A5F] mt-6" style="font-family: 'JetBrains Mono', monospace;">
+                type a message or /help for commands
+              </div>
             </div>
           </div>
         </div>

@@ -20,8 +20,8 @@ defmodule WorthWeb.Components.Chat.Messages do
   defp message_content(%{msg: %{type: :user}} = assigns) do
     ~H"""
     <div class="flex gap-2">
-      <span class="color(:success) font-bold shrink-0">you</span>
-      <span class="color(:text)">{@msg.content}</span>
+      <span class={"font-semibold shrink-0 #{color(:text_muted)}"}>you</span>
+      <span class={color(:text)}>{@msg.content}</span>
     </div>
     """
   end
@@ -32,7 +32,7 @@ defmodule WorthWeb.Components.Chat.Messages do
 
     ~H"""
     <div class="flex gap-2">
-      <span class="color(:primary) font-bold shrink-0">ai</span>
+      <span class={"font-semibold shrink-0 #{color(:text)}"}>ai</span>
       <div class="flex-1 min-w-0">
         <div
           :if={@thinking != ""}
@@ -58,9 +58,9 @@ defmodule WorthWeb.Components.Chat.Messages do
 
     ~H"""
     <div class="flex gap-2">
-      <span class="text-ctp-mauve font-bold shrink-0">sys</span>
+      <span class={"font-semibold shrink-0 #{color(:text_dim)}"}>sys</span>
       <div class="flex-1 min-w-0">
-        <pre class="color(:text_muted) whitespace-pre-wrap text-xs">{@msg.content}</pre>
+        <pre class={"whitespace-pre-wrap text-xs #{color(:text_muted)}"}>{@msg.content}</pre>
         <.learning_consent_actions :if={@has_consent} />
         <.permission_actions :if={@has_permission} agents={@msg.permission_agents} />
         <.project_mapping_actions :if={@has_mapping} projects={@msg.project_mapping} workspace={@msg.mapping_workspace} />
@@ -73,8 +73,8 @@ defmodule WorthWeb.Components.Chat.Messages do
   defp message_content(%{msg: %{type: :error}} = assigns) do
     ~H"""
     <div class="flex gap-2">
-      <span class="color(:error) font-bold shrink-0">err</span>
-      <span class="color(:error)">{@msg.content}</span>
+      <span class={"font-semibold shrink-0 #{color(:error)}"}>err</span>
+      <span class={color(:error)}>{@msg.content}</span>
     </div>
     """
   end
@@ -84,9 +84,9 @@ defmodule WorthWeb.Components.Chat.Messages do
 
     ~H"""
     <div class="flex items-center gap-2 text-xs">
-      <.icon name="hero-wrench-screwdriver" class="size-3 color(:info)" />
-      <span class="color(:info) font-semibold">{@name}</span>
-      <span :if={@msg.content[:status] == :running} class="spinner color(:accent)"></span>
+      <.icon name="hero-wrench-screwdriver" class={"size-3 #{color(:text_muted)}"} />
+      <span class={"font-semibold #{color(:text_muted)}"}>{@name}</span>
+      <span :if={@msg.content[:status] == :running} class={"spinner #{color(:warning)}"}></span>
     </div>
     """
   end
@@ -101,12 +101,12 @@ defmodule WorthWeb.Components.Chat.Messages do
     ~H"""
     <div class="text-xs">
       <div class="flex items-center gap-2">
-        <span class={if @status == :failed, do: "color(:error)", else: "color(:success)"}>
+        <span class={if @status == :failed, do: color(:error), else: color(:success)}>
           {if @status == :failed, do: "× ", else: "✓ "}
         </span>
-        <span class="color(:info)">{@name}</span>
+        <span class={color(:text_muted)}>{@name}</span>
       </div>
-      <pre :if={@output != ""} class="color(:text_dim) whitespace-pre-wrap ml-5 mt-1 max-h-32 overflow-y-auto">{@output}</pre>
+      <pre :if={@output != ""} class={"whitespace-pre-wrap ml-5 mt-1 max-h-32 overflow-y-auto #{color(:text_dim)}"}>{@output}</pre>
     </div>
     """
   end
@@ -114,15 +114,15 @@ defmodule WorthWeb.Components.Chat.Messages do
   defp message_content(%{msg: %{type: :thinking}} = assigns) do
     ~H"""
     <div class="flex gap-2 text-xs">
-      <span class="text-ctp-mauve italic shrink-0">thinking</span>
-      <span class="color(:text_dim) italic">{String.slice(@msg.content, 0, 200)}</span>
+      <span class={"italic shrink-0 #{color(:text_dim)}"}>thinking</span>
+      <span class={"italic #{color(:text_dim)}"}>{String.slice(@msg.content, 0, 200)}</span>
     </div>
     """
   end
 
   defp message_content(assigns) do
     ~H"""
-    <div class="color(:text_dim) text-xs">{inspect(@msg)}</div>
+    <div class={"text-xs #{color(:text_dim)}"}>{inspect(@msg)}</div>
     """
   end
 
@@ -163,7 +163,7 @@ defmodule WorthWeb.Components.Chat.Messages do
       <div class="space-y-1">
         <%= for agent <- @agents do %>
           <div class="flex items-center gap-2">
-            <span class="color(:text_muted) text-xs">{format_agent_name(agent.agent)} — {hd(agent.data_paths)}</span>
+            <span class={"text-xs #{color(:text_muted)}"}>{format_agent_name(agent.agent)} — {hd(agent.data_paths)}</span>
             <button
               phx-click="grant_agent_permission"
               phx-value-agent={agent.agent}
@@ -208,7 +208,7 @@ defmodule WorthWeb.Components.Chat.Messages do
       </div>
       <%= for {agent, projects} <- @projects do %>
         <div class="space-y-1">
-          <div class="color(:text) text-xs font-semibold">{format_agent_name(agent)}</div>
+          <div class={"text-xs font-semibold #{color(:text)}"}>{format_agent_name(agent)}</div>
           <div class="ml-2 flex flex-wrap gap-1">
             <%= for project <- projects do %>
               <button

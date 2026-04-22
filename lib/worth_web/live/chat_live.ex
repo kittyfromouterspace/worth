@@ -2,6 +2,7 @@ defmodule WorthWeb.ChatLive do
   @moduledoc false
   use WorthWeb, :live_view
 
+  import WorthWeb.Components.Brand
   import WorthWeb.Components.Chat
   import WorthWeb.Components.Chat.Messages
   import WorthWeb.Components.Chat.XRay

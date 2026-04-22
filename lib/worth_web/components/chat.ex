@@ -6,6 +6,7 @@ defmodule WorthWeb.Components.Chat do
   use Phoenix.Component
 
   import WorthWeb.CoreComponents, only: [icon: 1]
+  import WorthWeb.Components.Brand, only: [worth_mark: 1]
   import WorthWeb.ThemeHelper, only: [color: 1]
 
   # ── Header ──────────────────────────────────────────────────────
@@ -22,31 +23,32 @@ defmodule WorthWeb.Components.Chat do
 
   def chat_header(assigns) do
     ~H"""
-    <header class={"flex items-center gap-3 px-4 py-2 shrink-0 text-sm #{color(:background)} #{color(:border)} border-b"}>
+    <header class={"heat-seam flex items-center gap-3 px-4 py-2 shrink-0 text-sm #{color(:background)} #{color(:border)} border-b"}>
       <div class="flex items-center gap-2">
         <span class={status_class(@status)}>
           <.status_indicator status={@status} />
         </span>
-        <span class={"font-bold #{color(:primary)}"}>worth</span>
+        <.worth_mark size={16} />
+        <span class={"font-semibold tracking-tight #{color(:text)}"} style="font-family: 'Space Grotesk', sans-serif;">worth</span>
       </div>
 
       <span class={color(:text_dim)}>|</span>
-      <span class="color(:text)">{@workspace}</span>
+      <span class={color(:text)}>{@workspace}</span>
 
-      <span class="color(:text_dim)">|</span>
-      <span class="color(:secondary)">{@mode}</span>
+      <span class={color(:text_dim)}>|</span>
+      <span class={color(:text_muted)}>{@mode}</span>
 
-      <span class="color(:text_dim)">|</span>
-      <span class="color(:text_muted)">t{@turn}</span>
+      <span class={color(:text_dim)}>|</span>
+      <span class={"tabular #{color(:text_muted)}"}>t{@turn}</span>
 
-      <span class="color(:text_dim)">|</span>
-      <span class="color(:accent)">{cost_display(@cost)}</span>
+      <span class={color(:text_dim)}>|</span>
+      <span class={"tabular #{color(:text)}"}>{cost_display(@cost)}</span>
 
-      <span :if={model_label(@models)} class="color(:text_dim)">
+      <span :if={model_label(@models)} class={color(:text_dim)}>
         ({model_label(@models)})
       </span>
 
-      <span :if={length(@active_agents) > 0} class="color(:info)">
+      <span :if={length(@active_agents) > 0} class={color(:warning)}>
         <span class="spinner"></span> {@active_agents |> length()} agents
       </span>
 
@@ -54,7 +56,7 @@ defmodule WorthWeb.Components.Chat do
 
       <button
         phx-click="toggle_xray"
-        class={"transition-colors cursor-pointer #{if @xray, do: "color(:accent)", else: "color(:text_dim) hover:color(:accent)"}"}
+        class={"transition-colors cursor-pointer #{if @xray, do: color(:accent), else: "#{color(:text_dim)} hover:#{color(:text)}"}"}
         title="Toggle X-Ray debug mode"
       >
         <.icon name="hero-eye" class="w-4 h-4" />
@@ -72,9 +74,9 @@ defmodule WorthWeb.Components.Chat do
     """
   end
 
-  defp status_class(:running), do: "color(:primary)"
-  defp status_class(:error), do: "color(:error)"
-  defp status_class(_), do: "color(:text_dim)"
+  defp status_class(:running), do: color(:status_running)
+  defp status_class(:error), do: color(:status_error)
+  defp status_class(_), do: color(:status_idle)
 
   defp status_indicator(%{status: :running} = assigns) do
     ~H"""
@@ -482,7 +484,7 @@ defmodule WorthWeb.Components.Chat do
       <div :if={@coding_agents != []} class="px-3 py-2">
         <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Coding Agents</div>
         <div :for={agent <- @coding_agents} class="text-xs flex items-center gap-1">
-          <span class={if agent.available, do: "text-ctp-green", else: color(:text_dim)}>
+          <span class={if agent.available, do: color(:success), else: color(:text_dim)}>
             {if agent.available, do: "●", else: "○"}
           </span>
           <span class={color(:text_muted)}>{agent.display_name}</span>
@@ -500,9 +502,9 @@ defmodule WorthWeb.Components.Chat do
 
   def input_bar(assigns) do
     ~H"""
-    <div class="border-t color(:border) color(:background) px-4 py-3 shrink-0">
+    <div class={"border-t px-4 py-3 shrink-0 #{color(:border)} #{color(:background)}"}>
       <form phx-submit="submit" class="flex items-center gap-3">
-        <span class="color(:primary) font-bold text-sm">{@mode} ></span>
+        <span class={"#{color(:text_muted)} text-sm font-mono"}>{@mode} ></span>
         <input
           type="text"
           name="text"
@@ -516,7 +518,7 @@ defmodule WorthWeb.Components.Chat do
         <button
           :if={@status != :running}
           type="submit"
-          class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_primary)} cursor-pointer"}
+          class={"btn-molten px-3 py-1 rounded text-xs font-semibold transition-colors cursor-pointer"}
         >
           Send
         </button>
@@ -524,7 +526,7 @@ defmodule WorthWeb.Components.Chat do
           :if={@status == :running}
           type="button"
           phx-click="stop"
-          class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:error)} bg-ctp-red/10 border border-ctp-red/30 hover:bg-ctp-red/20 cursor-pointer"}
+          class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:error)} border border-[#FF3B2F]/30 hover:bg-[#FF3B2F]/10 cursor-pointer"}
         >
           Stop
         </button>
