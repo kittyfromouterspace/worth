@@ -17,6 +17,12 @@ defmodule Worth.LLM do
   alias Agentic.LLM.Provider
   alias Agentic.LLM.ProviderRegistry
 
+  # Retry configuration for rate-limited free models.
+  # Free OpenRouter models have tight windows (20 RPM / 50 RPD)
+  # but brief cooldowns — a short backoff often succeeds.
+  @rate_limit_max_retries 3
+  @rate_limit_base_backoff_ms 1000
+
   # ----- stream_chat/2: streaming dispatch -----
 
   @doc """
@@ -30,11 +36,33 @@ defmodule Worth.LLM do
         stream_chat_default(params, on_chunk)
 
       route ->
-        stream_chat_route(params, route, on_chunk)
+        stream_chat_route_with_retry(params, route, on_chunk)
     end
   end
 
-  defp stream_chat_route(params, %{provider_name: name} = route, on_chunk) do
+  defp stream_chat_route_with_retry(params, route, on_chunk, attempt \\ 0) do
+    result = do_stream_chat_route(params, route, on_chunk)
+
+    case result do
+      {:error, %Error{status: 429} = error} when attempt < @rate_limit_max_retries ->
+        backoff_ms = calculate_backoff(error.retry_after_ms, attempt)
+
+        require Logger
+
+        Logger.warning(
+          "Worth.LLM: #{route.provider_name}/#{route.model_id} rate limited; " <>
+            "retrying in #{backoff_ms}ms (attempt #{attempt + 1}/#{@rate_limit_max_retries})"
+        )
+
+        Process.sleep(backoff_ms)
+        stream_chat_route_with_retry(params, route, on_chunk, attempt + 1)
+
+      _other ->
+        result
+    end
+  end
+
+  defp do_stream_chat_route(params, %{provider_name: name} = route, on_chunk) do
     case resolve_provider(name) do
       nil ->
         {:error, %Error{message: "Unknown route provider: #{name}", classification: :permanent}}
@@ -64,11 +92,33 @@ defmodule Worth.LLM do
         chat_default(params)
 
       route ->
-        chat_route(params, route)
+        chat_route_with_retry(params, route)
     end
   end
 
-  defp chat_route(params, %{provider_name: name} = route) do
+  defp chat_route_with_retry(params, route, attempt \\ 0) do
+    result = do_chat_route(params, route)
+
+    case result do
+      {:error, %Error{status: 429} = error} when attempt < @rate_limit_max_retries ->
+        backoff_ms = calculate_backoff(error.retry_after_ms, attempt)
+
+        require Logger
+
+        Logger.warning(
+          "Worth.LLM: #{route.provider_name}/#{route.model_id} rate limited; " <>
+            "retrying in #{backoff_ms}ms (attempt #{attempt + 1}/#{@rate_limit_max_retries})"
+        )
+
+        Process.sleep(backoff_ms)
+        chat_route_with_retry(params, route, attempt + 1)
+
+      _other ->
+        result
+    end
+  end
+
+  defp do_chat_route(params, %{provider_name: name} = route) do
     case resolve_provider(name) do
       nil ->
         {:error, %Error{message: "Unknown route provider: #{name}", classification: :permanent}}
@@ -132,8 +182,8 @@ defmodule Worth.LLM do
   defp build_creds_cache do
     Enum.reduce(ProviderRegistry.enabled(), %{}, fn %{id: id, module: module}, acc ->
       case credential_opts(module) do
-        [api_key: key] -> Map.put(acc, id, {module, key})
-        [] -> Map.put(acc, id, {module, nil})
+        [api_key: key] -> Map.put(acc, Atom.to_string(id), {module, key})
+        [] -> Map.put(acc, Atom.to_string(id), {module, nil})
       end
     end)
   end
@@ -144,7 +194,23 @@ defmodule Worth.LLM do
         chat_default(params)
 
       route ->
-        dispatch_route_cached(params, route, creds_cache)
+        result = dispatch_route_cached(params, route, creds_cache)
+
+        case result do
+          {:error, %Agentic.LLM.Error{} = error} ->
+            require Logger
+
+            Logger.warning(
+              "Worth.LLM.dispatch_with_cache: #{route.provider_name}/#{route.model_id} failed " <>
+                "status=#{inspect(error.status)} classification=#{inspect(error.classification)} " <>
+                "message=#{inspect(error.message)} raw=#{inspect(error.raw, limit: 500)}"
+            )
+
+          _ ->
+            :ok
+        end
+
+        result
     end
   end
 
@@ -186,5 +252,19 @@ defmodule Worth.LLM do
         _ -> nil
       end
     end)
+  end
+
+  # Calculate backoff for rate-limited retries.
+  # Uses server-provided Retry-After if available, otherwise exponential backoff.
+  defp calculate_backoff(nil, attempt) do
+    min(@rate_limit_base_backoff_ms * :math.pow(2, attempt), 8000) |> trunc()
+  end
+
+  defp calculate_backoff(retry_after_ms, _attempt) when is_integer(retry_after_ms) and retry_after_ms > 0 do
+    retry_after_ms
+  end
+
+  defp calculate_backoff(_, attempt) do
+    min(@rate_limit_base_backoff_ms * :math.pow(2, attempt), 8000) |> trunc()
   end
 end
