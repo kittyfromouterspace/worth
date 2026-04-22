@@ -30,7 +30,21 @@ defmodule Worth.Memory.Manager do
           fn {_k, v} -> is_nil(v) end
         )
 
-      Recollect.remember(content, merged)
+      result = Recollect.remember(content, merged)
+
+      case result do
+        {:ok, entry} when is_map(entry) ->
+          Phoenix.PubSub.broadcast(
+            Worth.PubSub,
+            "worth_entry_change",
+            {:entry, :create, Map.take(entry, [:id, :owner_id, :scope_id, :entry_type])}
+          )
+
+        _ ->
+          :ok
+      end
+
+      result
     end)
   end
 

@@ -10,9 +10,6 @@ worth_data_dev =
 config :logger, :default_formatter, format: "[$level] $message\n"
 config :logger, level: :debug
 
-config :recollect,
-  database_adapter: Recollect.DatabaseAdapter.SQLiteVec
-
 config :phoenix, :plug_init_mode, :runtime
 config :phoenix, :stacktrace_depth, 20
 
@@ -20,6 +17,9 @@ config :phoenix_live_view,
   debug_heex_annotations: true,
   debug_attributes: true,
   enable_expensive_runtime_checks: true
+
+config :recollect,
+  database_adapter: Recollect.DatabaseAdapter.SQLiteVec
 
 config :worth, Worth.Repo,
   adapter: Ecto.Adapters.SQLite3,

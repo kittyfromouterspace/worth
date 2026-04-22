@@ -8,6 +8,9 @@ defmodule Worth.Learning.AgentConfig do
   the two libraries.
   """
 
+  alias Agentic.Protocol.ACP.Discovery
+  alias Recollect.Learner.CodingAgent
+
   @doc """
   Build a provider configs map for Recollect, keyed by recollect agent name.
 
@@ -15,7 +18,7 @@ defmodule Worth.Learning.AgentConfig do
   passing as `:agent_configs` to `Recollect.Learner.CodingAgent` functions.
   """
   def build_provider_configs do
-    Agentic.Protocol.ACP.Discovery.known_agents()
+    Discovery.known_agents()
     |> Enum.filter(fn entry -> Map.get(entry, :cache_dirs, []) != [] end)
     |> Enum.map(fn entry ->
       recollect_name = resolve_recollect_name(entry)
@@ -31,7 +34,7 @@ defmodule Worth.Learning.AgentConfig do
   Each entry: `%{agent: atom, display: String.t(), data_paths: [String.t()], available: boolean}`.
   """
   def learnable_agents do
-    Agentic.Protocol.ACP.Discovery.known_agents()
+    Discovery.known_agents()
     |> Enum.filter(fn entry -> Map.get(entry, :cache_dirs, []) != [] end)
     |> Enum.map(fn entry ->
       %{
@@ -50,13 +53,13 @@ defmodule Worth.Learning.AgentConfig do
   overrides from the agentic registry.
   """
   def provider_configs_for_recollect do
-    Recollect.Learner.CodingAgent.provider_configs(build_provider_configs())
+    CodingAgent.provider_configs(build_provider_configs())
   end
 
   # Map agentic canonical names to recollect provider names.
   # Uses the entry's aliases to find matches.
   defp resolve_recollect_name(entry) do
-    recollect_providers = Recollect.Learner.CodingAgent.providers()
+    recollect_providers = CodingAgent.providers()
     recollect_names = Enum.map(recollect_providers, & &1.agent_name())
     all_names = [entry.name | Map.get(entry, :aliases, [])]
 

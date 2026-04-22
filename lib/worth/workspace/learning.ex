@@ -453,8 +453,20 @@ defmodule Worth.Workspace.Learning do
           )
 
         case result do
-          {:ok, entry} -> {:ok, [entry.id]}
-          {:error, reason} -> {:error, reason}
+          {:ok, entry} when is_map(entry) ->
+            Phoenix.PubSub.broadcast(
+              Worth.PubSub,
+              "worth_entry_change",
+              {:entry, :create, Map.take(entry, [:id, :owner_id, :scope_id, :entry_type])}
+            )
+
+            {:ok, [entry.id]}
+
+          {:ok, entry} ->
+            {:ok, [entry.id]}
+
+          {:error, reason} ->
+            {:error, reason}
         end
 
       {:error, reason} ->

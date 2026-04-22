@@ -589,8 +589,7 @@ defmodule WorthWeb.ChatLive do
               stream_insert(socket, :messages, %{
                 id: msg_id(),
                 type: :system,
-                content:
-                  "Model fallback: '#{configured_id}' failed, using '#{info[:model_id]}' instead"
+                content: "Model fallback: '#{configured_id}' failed, using '#{info[:model_id]}' instead"
               })
             else
               socket
@@ -929,10 +928,20 @@ defmodule WorthWeb.ChatLive do
 
       Task.Supervisor.start_child(Worth.TaskSupervisor, fn ->
         try do
-          Recollect.remember(text,
-            scope_id: scope_id,
-            entry_type: "identity"
-          )
+          case Recollect.remember(text,
+                 scope_id: scope_id,
+                 entry_type: "identity"
+               ) do
+            {:ok, entry} when is_map(entry) ->
+              Phoenix.PubSub.broadcast(
+                Worth.PubSub,
+                "worth_entry_change",
+                {:entry, :create, Map.take(entry, [:id, :owner_id, :scope_id, :entry_type])}
+              )
+
+            _ ->
+              :ok
+          end
         rescue
           e -> Logger.warning("[Onboarding] Failed to seed memory: #{Exception.message(e)}")
         end

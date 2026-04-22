@@ -93,7 +93,7 @@ defmodule Worth.Orchestration.Strategies.Ecosystem do
 
       :predator ->
         findings = extract_findings(result[:text] || "")
-        new_findings = findings ++ state.predator_findings |> Enum.take(20)
+        new_findings = Enum.take(findings ++ state.predator_findings, 20)
 
         {:rerun, opts,
          %{
@@ -109,7 +109,9 @@ defmodule Worth.Orchestration.Strategies.Ecosystem do
     case state.role do
       :builder ->
         new_builder = [{:error, reason} | state.builder_results]
-        {:done, %{text: "Builder failed: #{inspect(reason)}", cost: 0, tokens: 0, steps: 0}, %{state | builder_results: new_builder}}
+
+        {:done, %{text: "Builder failed: #{inspect(reason)}", cost: 0, tokens: 0, steps: 0},
+         %{state | builder_results: new_builder}}
 
       :predator ->
         {:rerun, [], %{state | role: :builder}}

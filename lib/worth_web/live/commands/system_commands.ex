@@ -31,9 +31,7 @@ defmodule WorthWeb.Commands.SystemCommands do
 
   def handle({:strategy, :list}, socket) do
     strategies =
-      Worth.Brain.list_strategies()
-      |> Enum.map(fn {id, mod} -> "  #{id} — #{mod.display_name()}" end)
-      |> Enum.join("\n")
+      Enum.map_join(Worth.Brain.list_strategies(), "\n", fn {id, mod} -> "  #{id} — #{mod.display_name()}" end)
 
     append_system(socket, "Available strategies:\n#{strategies}")
   end

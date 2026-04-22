@@ -17,12 +17,12 @@ worth_data =
     {:unix, _} -> "XDG_DATA_HOME" |> System.get_env(Path.expand("~/.local/share")) |> Path.join("worth")
   end
 
-config :agentic, catalog: [persist_path: Path.join(worth_data, "catalog.json")]
-
 scheme = if desktop_mode, do: "http", else: System.get_env("PHX_SCHEME", "http")
 host = if desktop_mode, do: "localhost", else: System.get_env("PHX_HOST", "localhost")
 gateway_base = "#{scheme}://#{host}:#{port}"
+
 config :agentic, :llm_gateway_base_url, gateway_base
+config :agentic, catalog: [persist_path: Path.join(worth_data, "catalog.json")]
 
 config :worth, Worth.Metrics.Repo, database: Path.join(worth_data, "metrics.db")
 config :worth, Worth.Repo, database: Path.join(worth_data, "worth.db")

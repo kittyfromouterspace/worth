@@ -45,9 +45,13 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
 
+# --- Phoenix ---
+config :phoenix, :json_library, Jason
+
 config :recollect,
   database_adapter: Recollect.DatabaseAdapter.SQLiteVec,
-  repo: Worth.Repo
+  repo: Worth.Repo,
+  on_graph_change: {Worth.Memory.GraphNotifier, :notify, []}
 
 config :recollect,
   embedding: [
@@ -57,9 +61,6 @@ config :recollect,
   ],
   working_memory: [max_entries_per_scope: 50],
   outcome_feedback: [positive_half_life_delta: 5, negative_half_life_delta: 3]
-
-# --- Phoenix ---
-config :phoenix, :json_library, Jason
 
 # --- Tailwind ---
 config :tailwind,

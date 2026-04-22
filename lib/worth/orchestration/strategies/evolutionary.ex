@@ -79,7 +79,9 @@ defmodule Worth.Orchestration.Strategies.Evolutionary do
 
       state.generation < state.max_generations ->
         evolved = evolve_population(new_results, state.population, opts)
-        {:rerun, opts, %{state | population: evolved, generation: state.generation + 1, current_candidate: 0, results: []}}
+
+        {:rerun, opts,
+         %{state | population: evolved, generation: state.generation + 1, current_candidate: 0, results: []}}
 
       true ->
         best = select_best(new_results)
@@ -131,9 +133,14 @@ defmodule Worth.Orchestration.Strategies.Evolutionary do
 
         for i <- 0..(length(old_population) - 1) do
           case i do
-            0 -> best_prompt
-            1 -> "#{base}\n\n[Evolutionary mutation: Refine the best solution further. Previous cost: #{best_result[:cost]}]"
-            _ -> "#{base}\n\n[Evolutionary mutation: Try a hybrid approach.]"
+            0 ->
+              best_prompt
+
+            1 ->
+              "#{base}\n\n[Evolutionary mutation: Refine the best solution further. Previous cost: #{best_result[:cost]}]"
+
+            _ ->
+              "#{base}\n\n[Evolutionary mutation: Try a hybrid approach.]"
           end
         end
 

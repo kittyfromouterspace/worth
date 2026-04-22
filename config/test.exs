@@ -2,6 +2,14 @@ import Config
 
 config :logger, level: :warning
 
+config :phoenix, :plug_init_mode, :runtime
+
+config :phoenix,
+  sort_verified_routes_query_params: true
+
+config :phoenix_live_view,
+  enable_expensive_runtime_checks: true
+
 config :recollect,
   database_adapter: Recollect.DatabaseAdapter.SQLiteVec,
   repo: Worth.Repo,
@@ -10,14 +18,6 @@ config :recollect,
     mock: true,
     credentials_fn: nil
   ]
-
-config :phoenix, :plug_init_mode, :runtime
-
-config :phoenix,
-  sort_verified_routes_query_params: true
-
-config :phoenix_live_view,
-  enable_expensive_runtime_checks: true
 
 # Test configuration uses SQLite3 + sqlite-vec for faster, simpler tests
 # This avoids the need for a running PostgreSQL server during tests

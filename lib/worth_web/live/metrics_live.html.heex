@@ -3,19 +3,28 @@
     <h1 class="text-2xl font-bold mb-6">Metrics Dashboard</h1>
 
     <div class="flex gap-2 mb-6">
-      <button phx-click="tab" phx-value-tab="overview"
+      <button
+        phx-click="tab"
+        phx-value-tab="overview"
         class={"px-3 py-1.5 rounded text-sm font-medium " <>
-          if(@active_tab == "overview", do: "bg-blue-600 text-white", else: "bg-gray-800 text-gray-400 hover:bg-gray-700")}>
+          if(@active_tab == "overview", do: "bg-blue-600 text-white", else: "bg-gray-800 text-gray-400 hover:bg-gray-700")}
+      >
         Overview
       </button>
-      <button phx-click="tab" phx-value-tab="tools"
+      <button
+        phx-click="tab"
+        phx-value-tab="tools"
         class={"px-3 py-1.5 rounded text-sm font-medium " <>
-          if(@active_tab == "tools", do: "bg-blue-600 text-white", else: "bg-gray-800 text-gray-400 hover:bg-gray-700")}>
+          if(@active_tab == "tools", do: "bg-blue-600 text-white", else: "bg-gray-800 text-gray-400 hover:bg-gray-700")}
+      >
         Tools
       </button>
-      <button phx-click="tab" phx-value-tab="sessions"
+      <button
+        phx-click="tab"
+        phx-value-tab="sessions"
         class={"px-3 py-1.5 rounded text-sm font-medium " <>
-          if(@active_tab == "sessions", do: "bg-blue-600 text-white", else: "bg-gray-800 text-gray-400 hover:bg-gray-700")}>
+          if(@active_tab == "sessions", do: "bg-blue-600 text-white", else: "bg-gray-800 text-gray-400 hover:bg-gray-700")}
+      >
         Sessions
       </button>
     </div>
@@ -37,11 +46,11 @@
             <tbody>
               <%= for row <- @strategy_comparison do %>
                 <tr class="border-b border-gray-800">
-                  <td class="py-2 px-3 font-medium"><%= row.strategy %></td>
-                  <td class="text-right py-2 px-3"><%= row.runs %></td>
-                  <td class="text-right py-2 px-3"><%= row.success_pct %>%</td>
-                  <td class="text-right py-2 px-3">$<%= format_float(row.avg_cost) %></td>
-                  <td class="text-right py-2 px-3"><%= format_float(row.avg_turns) %></td>
+                  <td class="py-2 px-3 font-medium">{row.strategy}</td>
+                  <td class="text-right py-2 px-3">{row.runs}</td>
+                  <td class="text-right py-2 px-3">{row.success_pct}%</td>
+                  <td class="text-right py-2 px-3">${format_float(row.avg_cost)}</td>
+                  <td class="text-right py-2 px-3">{format_float(row.avg_turns)}</td>
                 </tr>
               <% end %>
             </tbody>
@@ -66,10 +75,10 @@
             <tbody>
               <%= for row <- @tool_analysis do %>
                 <tr class="border-b border-gray-800">
-                  <td class="py-2 px-3 font-medium"><%= row.tool_name %></td>
-                  <td class="text-right py-2 px-3"><%= row.calls %></td>
-                  <td class="text-right py-2 px-3"><%= format_int(row.avg_duration_ms) %>ms</td>
-                  <td class="text-right py-2 px-3"><%= row.failure_count %></td>
+                  <td class="py-2 px-3 font-medium">{row.tool_name}</td>
+                  <td class="text-right py-2 px-3">{row.calls}</td>
+                  <td class="text-right py-2 px-3">{format_int(row.avg_duration_ms)}ms</td>
+                  <td class="text-right py-2 px-3">{row.failure_count}</td>
                 </tr>
               <% end %>
             </tbody>
@@ -85,13 +94,13 @@
           <%= for session <- @recent_sessions do %>
             <div class="flex justify-between items-center p-3 border border-gray-800 rounded">
               <div>
-                <span class="font-medium text-sm"><%= session.session_id %></span>
-                <span class="text-gray-400 text-xs ml-2"><%= session.strategy %> / <%= session.mode %></span>
+                <span class="font-medium text-sm">{session.session_id}</span>
+                <span class="text-gray-400 text-xs ml-2">{session.strategy} / {session.mode}</span>
               </div>
               <div class="text-right text-sm text-gray-400">
-                <span>$<%= format_float(session.total_cost_usd) %></span>
-                <span class="ml-3"><%= session.total_turns %> turns</span>
-                <span class={"ml-3 " <> status_color(session.status)}><%= session.status %></span>
+                <span>${format_float(session.total_cost_usd)}</span>
+                <span class="ml-3">{session.total_turns} turns</span>
+                <span class={"ml-3 " <> status_color(session.status)}>{session.status}</span>
               </div>
             </div>
           <% end %>

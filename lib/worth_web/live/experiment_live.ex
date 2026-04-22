@@ -36,9 +36,7 @@ defmodule WorthWeb.ExperimentLive do
       |> String.split(",", trim: true)
       |> Enum.map(&String.trim/1)
 
-    prompts =
-      params["prompts"]
-      |> String.split("\n", trim: true)
+    prompts = String.split(params["prompts"], "\n", trim: true)
 
     repetitions = String.to_integer(params["repetitions"] || "1")
 

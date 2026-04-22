@@ -41,7 +41,7 @@ defmodule WorthWeb.MetricsLive do
   defp format_float(_), do: "0"
 
   defp format_int(nil), do: "0"
-  defp format_int(v) when is_number(v), do: round(v) |> Integer.to_string()
+  defp format_int(v) when is_number(v), do: v |> round() |> Integer.to_string()
   defp format_int(_), do: "0"
 
   defp status_color("completed"), do: "text-green-400"

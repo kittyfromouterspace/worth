@@ -29,7 +29,8 @@ defmodule Recollect.Embedding.Mock do
   def model_id(_opts), do: @model_id
 
   defp mock_embedding(text) when is_binary(text) do
-    :crypto.hash(:sha256, text)
+    :sha256
+    |> :crypto.hash(text)
     |> :binary.bin_to_list()
     |> Stream.cycle()
     |> Stream.take(@dimensions)
