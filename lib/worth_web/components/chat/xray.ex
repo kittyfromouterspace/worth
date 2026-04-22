@@ -17,10 +17,10 @@ defmodule WorthWeb.Components.Chat.XRay do
       :if={@visible}
       class={"flex flex-col h-64 shrink-0 border-t #{color(:border)} #{color(:surface)}"}
     >
-      <div class={"flex items-center gap-2 px-3 py-1.5 text-xs font-bold #{color(:surface_elevated)} border-b #{color(:border)}"}>
-        <.icon name="hero-eye" class="size-3 color(:accent)" />
-        <span class="color(:accent)">X-RAY</span>
-        <span class="color(:text_dim)">({length(@events)} events)</span>
+      <div class={"flex items-center gap-2 px-3 py-1.5 text-xs font-semibold #{color(:surface_elevated)} border-b #{color(:border)}"}>
+        <.icon name="hero-eye" class={"size-3 #{color(:accent)}"} />
+        <span class={color(:accent)}>X-RAY</span>
+        <span class={color(:text_dim)}>({length(@events)} events)</span>
         <div class="flex-1" />
         <button
           phx-click="clear_xray"
@@ -31,7 +31,7 @@ defmodule WorthWeb.Components.Chat.XRay do
       </div>
 
       <div class="flex-1 overflow-y-auto p-2 space-y-1 text-xs font-mono">
-        <div :if={@events == []} class="color(:text_dim) italic p-2">
+        <div :if={@events == []} class={"italic p-2 #{color(:text_dim)}"}>
           Waiting for events...
         </div>
         <div :for={{event, idx} <- Enum.with_index(Enum.reverse(@events))}>
@@ -46,11 +46,11 @@ defmodule WorthWeb.Components.Chat.XRay do
     ~H"""
     <div class={"px-2 py-1 rounded #{color(:surface_elevated)} border-l-2 #{event_border_color(@event)}"}>
       <div class="flex items-center gap-1.5">
-        <span class="color(:text_dim) shrink-0">{event_time(@event)}</span>
+        <span class={"shrink-0 #{color(:text_dim)}"}>{event_time(@event)}</span>
         <span class={event_type_class(@event)}>{event_type_label(@event)}</span>
-        <span class="color(:text) truncate flex-1">{event_summary(@event)}</span>
+        <span class={"truncate flex-1 #{color(:text)}"}>{event_summary(@event)}</span>
       </div>
-      <div :if={event_detail(@event)} class="mt-1 ml-4 color(:text_muted) whitespace-pre-wrap max-h-32 overflow-y-auto">
+      <div :if={event_detail(@event)} class={"mt-1 ml-4 whitespace-pre-wrap max-h-32 overflow-y-auto #{color(:text_muted)}"}>
         <pre class="text-xs">{event_detail(@event)}</pre>
       </div>
     </div>
@@ -135,43 +135,43 @@ defmodule WorthWeb.Components.Chat.XRay do
 
   # ── Type CSS classes ────────────────────────────────────────────
 
-  defp event_type_class({:model_selection, _}), do: "color(:info) font-bold"
-  defp event_type_class({:tool_call, _}), do: "color(:warning) font-semibold"
-  defp event_type_class({:tool_result, %{status: :failed}}), do: "color(:error) font-semibold"
-  defp event_type_class({:tool_result, _}), do: "color(:success) font-semibold"
-  defp event_type_class({:tool_exec, %{phase: :stop, success: false}}), do: "color(:error) font-semibold"
-  defp event_type_class({:tool_exec, %{phase: :stop}}), do: "color(:success) font-semibold"
-  defp event_type_class({:tool_exec, _}), do: "color(:warning) font-semibold"
-  defp event_type_class({:memory_search, _}), do: "color(:secondary) font-semibold"
-  defp event_type_class({:memory_write, _}), do: "color(:primary) font-semibold"
-  defp event_type_class({:memory_ingest, _}), do: "color(:primary) font-semibold"
-  defp event_type_class({:memory_evict, _}), do: "color(:warning) font-semibold"
-  defp event_type_class({:memory_retrieval, _}), do: "color(:secondary) font-semibold"
-  defp event_type_class({:mcp, _}), do: "color(:info) font-semibold"
-  defp event_type_class({:session, %{phase: :error}}), do: "color(:error) font-bold"
-  defp event_type_class({:session, _}), do: "color(:accent) font-bold"
-  defp event_type_class({:llm_call, %{phase: :stop}}), do: "color(:success) font-semibold"
-  defp event_type_class({:llm_call, _}), do: "color(:info) font-semibold"
-  defp event_type_class({:route_resolve, _}), do: "color(:info) font-semibold"
-  defp event_type_class({:auto_selected, _}), do: "color(:info) font-bold"
-  defp event_type_class({:model_analysis, _}), do: "color(:info) font-semibold"
-  defp event_type_class({:model_scoring, _}), do: "color(:info) font-semibold"
-  defp event_type_class({:pipeline, _}), do: "color(:text_muted) font-semibold"
-  defp event_type_class({:context_compact, _}), do: "color(:warning) font-semibold"
-  defp event_type_class({:cost_limit, _}), do: "color(:error) font-bold"
-  defp event_type_class({:circuit_breaker, %{phase: :trip}}), do: "color(:error) font-bold"
-  defp event_type_class({:circuit_breaker, _}), do: "color(:success) font-semibold"
-  defp event_type_class({:route_fallback, _}), do: "color(:warning) font-semibold"
-  defp event_type_class({:phase_transition, _}), do: "color(:accent) font-semibold"
-  defp event_type_class({:mode_route, _}), do: "color(:accent) font-semibold"
-  defp event_type_class({:commitment, _}), do: "color(:info) font-semibold"
-  defp event_type_class({:orch_turn, _}), do: "color(:accent) font-semibold"
-  defp event_type_class({:plan, _}), do: "color(:success) font-semibold"
-  defp event_type_class({:subagent, %{phase: :error}}), do: "color(:error) font-bold"
-  defp event_type_class({:subagent, _}), do: "color(:info) font-semibold"
-  defp event_type_class({:gateway_request, %{phase: :start}}), do: "color(:info) font-semibold"
-  defp event_type_class({:gateway_request, %{phase: :stop}}), do: "color(:success) font-semibold"
-  defp event_type_class(_), do: "color(:text_dim)"
+  defp event_type_class({:model_selection, _}), do: "#{color(:info)} font-bold"
+  defp event_type_class({:tool_call, _}), do: "#{color(:warning)} font-semibold"
+  defp event_type_class({:tool_result, %{status: :failed}}), do: "#{color(:error)} font-semibold"
+  defp event_type_class({:tool_result, _}), do: "#{color(:success)} font-semibold"
+  defp event_type_class({:tool_exec, %{phase: :stop, success: false}}), do: "#{color(:error)} font-semibold"
+  defp event_type_class({:tool_exec, %{phase: :stop}}), do: "#{color(:success)} font-semibold"
+  defp event_type_class({:tool_exec, _}), do: "#{color(:warning)} font-semibold"
+  defp event_type_class({:memory_search, _}), do: "#{color(:secondary)} font-semibold"
+  defp event_type_class({:memory_write, _}), do: "#{color(:primary)} font-semibold"
+  defp event_type_class({:memory_ingest, _}), do: "#{color(:primary)} font-semibold"
+  defp event_type_class({:memory_evict, _}), do: "#{color(:warning)} font-semibold"
+  defp event_type_class({:memory_retrieval, _}), do: "#{color(:secondary)} font-semibold"
+  defp event_type_class({:mcp, _}), do: "#{color(:info)} font-semibold"
+  defp event_type_class({:session, %{phase: :error}}), do: "#{color(:error)} font-bold"
+  defp event_type_class({:session, _}), do: "#{color(:accent)} font-bold"
+  defp event_type_class({:llm_call, %{phase: :stop}}), do: "#{color(:success)} font-semibold"
+  defp event_type_class({:llm_call, _}), do: "#{color(:info)} font-semibold"
+  defp event_type_class({:route_resolve, _}), do: "#{color(:info)} font-semibold"
+  defp event_type_class({:auto_selected, _}), do: "#{color(:info)} font-bold"
+  defp event_type_class({:model_analysis, _}), do: "#{color(:info)} font-semibold"
+  defp event_type_class({:model_scoring, _}), do: "#{color(:info)} font-semibold"
+  defp event_type_class({:pipeline, _}), do: "#{color(:text_muted)} font-semibold"
+  defp event_type_class({:context_compact, _}), do: "#{color(:warning)} font-semibold"
+  defp event_type_class({:cost_limit, _}), do: "#{color(:error)} font-bold"
+  defp event_type_class({:circuit_breaker, %{phase: :trip}}), do: "#{color(:error)} font-bold"
+  defp event_type_class({:circuit_breaker, _}), do: "#{color(:success)} font-semibold"
+  defp event_type_class({:route_fallback, _}), do: "#{color(:warning)} font-semibold"
+  defp event_type_class({:phase_transition, _}), do: "#{color(:accent)} font-semibold"
+  defp event_type_class({:mode_route, _}), do: "#{color(:accent)} font-semibold"
+  defp event_type_class({:commitment, _}), do: "#{color(:info)} font-semibold"
+  defp event_type_class({:orch_turn, _}), do: "#{color(:accent)} font-semibold"
+  defp event_type_class({:plan, _}), do: "#{color(:success)} font-semibold"
+  defp event_type_class({:subagent, %{phase: :error}}), do: "#{color(:error)} font-bold"
+  defp event_type_class({:subagent, _}), do: "#{color(:info)} font-semibold"
+  defp event_type_class({:gateway_request, %{phase: :start}}), do: "#{color(:info)} font-semibold"
+  defp event_type_class({:gateway_request, %{phase: :stop}}), do: "#{color(:success)} font-semibold"
+  defp event_type_class(_), do: color(:text_dim)
 
   # ── Summaries ───────────────────────────────────────────────────
 
