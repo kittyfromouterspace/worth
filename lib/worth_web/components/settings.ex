@@ -33,6 +33,9 @@ defmodule WorthWeb.Components.Settings do
 
         <%= if @settings_form.has_password and not @settings_form.locked do %>
           <.providers_section providers={@settings_form.providers} target={@target} />
+          <.provider_accounts_section accounts={@settings_form.provider_accounts} target={@target} />
+          <.admin_keys_section admin_keys={@settings_form.admin_keys} target={@target} />
+          <.model_pathways_section pathways={@settings_form.model_pathways} target={@target} />
           <.preferences_section preferences={@settings_form.preferences} target={@target} />
         <% end %>
 
@@ -781,6 +784,270 @@ defmodule WorthWeb.Components.Settings do
           Save Preferences
         </button>
       </form>
+    </div>
+    """
+  end
+
+  # ── Provider Accounts (cost_profile + subscription) ─────────────
+
+  @cost_profiles [
+    {"pay_per_token", "Pay per token", "Charged per request — OpenRouter, raw API keys"},
+    {"subscription_included", "Subscription (included)", "Flat fee, treated as no marginal cost"},
+    {"subscription_metered", "Subscription (metered)", "Flat fee + overages — Anthropic Pro"},
+    {"free", "Free tier", "Zero cost, rate-limited — Ollama, OpenRouter free models"}
+  ]
+
+  attr :target, :any, required: true
+  attr :accounts, :list, required: true
+
+  defp provider_accounts_section(assigns) do
+    assigns = assign(assigns, profiles: @cost_profiles)
+
+    ~H"""
+    <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
+      <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-1">
+        Provider Accounts
+      </h2>
+      <p class="text-xs text-ctp-overlay0 mb-3">
+        Tell the router how each provider bills you. Subscriptions get a strong score bonus over pay-per-token alternatives, and quota pressure tapers them when caps approach.
+      </p>
+
+      <div class="space-y-3">
+        <div :for={account <- @accounts} class="rounded-lg border border-ctp-surface1 p-3">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2">
+              <span class={availability_dot_class(account.availability)}>●</span>
+              <span class="text-sm font-medium text-ctp-text">{account.label}</span>
+              <span class="text-xs text-ctp-overlay0">{availability_label(account.availability)}</span>
+            </div>
+          </div>
+
+          <form
+            phx-target={@target}
+            phx-change="settings_set_account"
+            phx-submit="settings_save_account"
+            class="space-y-2"
+          >
+            <input type="hidden" name="provider" value={account.provider} />
+
+            <div class="flex gap-2">
+              <select
+                name="cost_profile"
+                class="flex-1 bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-1.5 text-xs text-ctp-text focus:outline-none focus:border-ctp-blue cursor-pointer"
+              >
+                <option
+                  :for={{value, label, _hint} <- @profiles}
+                  value={value}
+                  selected={value == to_string(account.cost_profile)}
+                >
+                  {label}
+                </option>
+              </select>
+            </div>
+
+            <div :if={String.starts_with?(to_string(account.cost_profile), "subscription")} class="flex gap-2">
+              <input
+                type="text"
+                name="plan"
+                placeholder="Plan name (e.g. Pro)"
+                value={account.plan}
+                class="flex-1 bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-1.5 text-xs text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue"
+              />
+              <input
+                type="number"
+                name="monthly_fee_amount"
+                step="0.01"
+                min="0"
+                placeholder="20.00"
+                value={account.monthly_fee_amount}
+                class="w-24 bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-1.5 text-xs text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
+              />
+              <select
+                name="monthly_fee_currency"
+                class="w-20 bg-ctp-surface0 border border-ctp-surface1 rounded px-2 py-1.5 text-xs text-ctp-text focus:outline-none focus:border-ctp-blue cursor-pointer"
+              >
+                <option :for={c <- ~w(USD EUR GBP CNY JPY)} value={c} selected={c == account.monthly_fee_currency}>
+                  {c}
+                </option>
+              </select>
+            </div>
+
+            <div class="flex justify-end">
+              <button
+                type="submit"
+                class="px-3 py-1 rounded text-xs font-semibold bg-ctp-surface2 text-ctp-text hover:bg-ctp-blue hover:text-ctp-base cursor-pointer transition-colors"
+              >
+                Save
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp availability_dot_class(:ready), do: "text-ctp-green text-xs"
+  defp availability_dot_class(:degraded), do: "text-ctp-yellow text-xs"
+  defp availability_dot_class({:rate_limited, _}), do: "text-ctp-peach text-xs"
+  defp availability_dot_class(:unavailable), do: "text-ctp-overlay0 text-xs"
+  defp availability_dot_class(_), do: "text-ctp-overlay0 text-xs"
+
+  defp availability_label(:ready), do: "ready"
+  defp availability_label(:degraded), do: "degraded — re-auth recommended"
+  defp availability_label({:rate_limited, _}), do: "rate-limited"
+  defp availability_label(:unavailable), do: "not configured"
+  defp availability_label(_), do: ""
+
+  # ── Admin Keys (org-level usage reporting) ──────────────────────
+
+  attr :target, :any, required: true
+  attr :admin_keys, :map, required: true
+
+  defp admin_keys_section(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
+      <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-1">
+        Org Admin Keys (optional)
+      </h2>
+      <p class="text-xs text-ctp-overlay0 mb-3">
+        Connect organization-level admin keys for read-only usage and cost reporting.
+        Strictly more sensitive than regular API keys — store only if you want
+        Worth to reconcile spend against the provider's billing source of truth.
+      </p>
+
+      <div class="space-y-3">
+        <div class="rounded-lg border border-ctp-surface1 p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium text-ctp-text">Anthropic admin (sk-ant-admin-…)</span>
+            <span :if={@admin_keys.anthropic_present} class="text-xs text-ctp-green">connected</span>
+            <span :if={!@admin_keys.anthropic_present} class="text-xs text-ctp-overlay0">not set</span>
+          </div>
+          <form phx-target={@target} phx-submit="settings_save_admin_key" class="flex gap-2">
+            <input type="hidden" name="provider" value="anthropic" />
+            <input
+              type="password"
+              name="key"
+              placeholder="sk-ant-admin-…"
+              class="flex-1 bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-1.5 text-xs text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
+            />
+            <button
+              type="submit"
+              class="px-3 py-1.5 rounded text-xs font-semibold bg-ctp-surface2 text-ctp-text hover:bg-ctp-blue hover:text-ctp-base cursor-pointer transition-colors"
+            >
+              {if @admin_keys.anthropic_present, do: "Update", else: "Add"}
+            </button>
+            <button
+              :if={@admin_keys.anthropic_present}
+              type="button"
+              phx-target={@target}
+              phx-click="settings_delete_admin_key"
+              phx-value-provider="anthropic"
+              class="px-2 py-1.5 text-xs text-ctp-overlay0 hover:text-ctp-red cursor-pointer"
+              title="Disconnect"
+            >
+              ×
+            </button>
+          </form>
+        </div>
+
+        <div class="rounded-lg border border-ctp-surface1 p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium text-ctp-text">OpenAI admin (sk-admin-…)</span>
+            <span :if={@admin_keys.openai_present} class="text-xs text-ctp-green">connected</span>
+            <span :if={!@admin_keys.openai_present} class="text-xs text-ctp-overlay0">not set</span>
+          </div>
+          <form phx-target={@target} phx-submit="settings_save_admin_key" class="flex gap-2">
+            <input type="hidden" name="provider" value="openai" />
+            <input
+              type="password"
+              name="key"
+              placeholder="sk-admin-…"
+              class="flex-1 bg-ctp-surface0 border border-ctp-surface1 rounded px-3 py-1.5 text-xs text-ctp-text placeholder-ctp-overlay0 focus:outline-none focus:border-ctp-blue font-mono"
+            />
+            <button
+              type="submit"
+              class="px-3 py-1.5 rounded text-xs font-semibold bg-ctp-surface2 text-ctp-text hover:bg-ctp-blue hover:text-ctp-base cursor-pointer transition-colors"
+            >
+              {if @admin_keys.openai_present, do: "Update", else: "Add"}
+            </button>
+            <button
+              :if={@admin_keys.openai_present}
+              type="button"
+              phx-target={@target}
+              phx-click="settings_delete_admin_key"
+              phx-value-provider="openai"
+              class="px-2 py-1.5 text-xs text-ctp-overlay0 hover:text-ctp-red cursor-pointer"
+              title="Disconnect"
+            >
+              ×
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  # ── Model Pathways (preferred provider per canonical model) ─────
+
+  attr :target, :any, required: true
+  attr :pathways, :list, required: true
+
+  defp model_pathways_section(assigns) do
+    ~H"""
+    <div class="rounded-lg border border-ctp-surface0 bg-ctp-mantle p-4">
+      <h2 class="text-sm font-semibold text-ctp-lavender uppercase tracking-wider mb-1">
+        Model Pathways
+      </h2>
+      <p class="text-xs text-ctp-overlay0 mb-3">
+        For each canonical model, choose the preferred provider. Without a preference, the router picks the highest-scoring pathway based on your account economics.
+      </p>
+
+      <div :if={@pathways == []} class="text-xs text-ctp-overlay0">
+        No multi-pathway groups detected yet. The catalog refreshes from models.dev every 24h.
+      </div>
+
+      <div class="space-y-3">
+        <div :for={pathway <- @pathways} class="rounded-lg border border-ctp-surface1 p-3">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-sm font-medium text-ctp-text font-mono">{pathway.canonical_id}</span>
+            <span class="text-xs text-ctp-overlay0">{length(pathway.providers)} pathways</span>
+          </div>
+
+          <div class="flex flex-wrap gap-2">
+            <button
+              :for={provider <- pathway.providers}
+              type="button"
+              phx-target={@target}
+              phx-click="settings_set_pathway"
+              phx-value-canonical={pathway.canonical_id}
+              phx-value-provider={provider.id}
+              class={[
+                "px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-colors",
+                provider.preferred && "border border-ctp-blue bg-ctp-blue/10 text-ctp-blue font-semibold",
+                !provider.preferred && "border border-ctp-surface1 text-ctp-subtext0 hover:border-ctp-surface2",
+                provider.unavailable && "opacity-40"
+              ]}
+              title={"#{provider.cost_profile} • #{provider.availability_label}"}
+            >
+              {provider.label}
+              <span :if={provider.cost_profile == "subscription_included"} class="text-ctp-green ml-1">★</span>
+            </button>
+            <button
+              :if={Enum.any?(pathway.providers, & &1.preferred)}
+              type="button"
+              phx-target={@target}
+              phx-click="settings_clear_pathway"
+              phx-value-canonical={pathway.canonical_id}
+              class="px-3 py-1.5 rounded-lg text-xs cursor-pointer text-ctp-overlay0 hover:text-ctp-text"
+              title="Clear preference (auto-pick)"
+            >
+              auto
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
     """
   end

@@ -239,6 +239,109 @@ defmodule WorthWeb.ChatLive.SettingsComponent do
     end
   end
 
+  # ── Provider account economics ─────────────────────────────────
+
+  def handle_event("settings_set_account", _params, socket) do
+    # phx-change handler — fired when the cost_profile dropdown
+    # changes. We don't persist on every keystroke; the form-submit
+    # handler does that. This handler exists so the
+    # subscription-fields show/hide reactively in re-render.
+    send(self(), {:refresh_settings_form})
+    {:noreply, socket}
+  end
+
+  def handle_event("settings_save_account", params, socket) do
+    case params["provider"] do
+      provider when is_binary(provider) and provider != "" ->
+        attrs = %{
+          cost_profile: params["cost_profile"],
+          plan: params["plan"],
+          monthly_fee: build_monthly_fee(params["monthly_fee_amount"], params["monthly_fee_currency"])
+        }
+
+        Worth.LLM.PathwayPreferences.put_account(String.to_atom(provider), attrs)
+        send(self(), {:refresh_settings_form})
+
+        send(
+          self(),
+          {:append_system_message,
+           "Provider account saved: #{provider} → #{params["cost_profile"]}"}
+        )
+
+        {:noreply, socket}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  defp build_monthly_fee(amount, currency)
+       when is_binary(amount) and amount != "" and is_binary(currency) and currency != "" do
+    case Money.new(String.to_atom(String.upcase(currency)), amount) do
+      %Money{} = m -> m
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  end
+
+  defp build_monthly_fee(_, _), do: nil
+
+  # ── Admin keys ─────────────────────────────────────────────────
+
+  def handle_event("settings_save_admin_key", %{"provider" => provider, "key" => key}, socket)
+      when key != "" do
+    if safe_vault_locked?() do
+      send(self(), {:append_system_message, "Cannot save admin key — vault is locked. Unlock first."})
+      {:noreply, socket}
+    else
+      case Worth.LLM.AdminKeys.put(String.to_atom(provider), key) do
+        {:ok, _} ->
+          send(self(), {:refresh_settings_form})
+          send(self(), {:append_system_message, "Admin key saved for #{provider}."})
+
+        {:error, reason} ->
+          send(self(), {:append_system_message, "Failed to save admin key: #{inspect(reason)}"})
+      end
+
+      {:noreply, socket}
+    end
+  end
+
+  def handle_event("settings_save_admin_key", _params, socket), do: {:noreply, socket}
+
+  def handle_event("settings_delete_admin_key", %{"provider" => provider}, socket) do
+    Worth.LLM.AdminKeys.delete(String.to_atom(provider))
+    send(self(), {:refresh_settings_form})
+    send(self(), {:append_system_message, "Admin key removed for #{provider}."})
+    {:noreply, socket}
+  end
+
+  # ── Pathway preferences ───────────────────────────────────────
+
+  def handle_event(
+        "settings_set_pathway",
+        %{"canonical" => canonical, "provider" => provider},
+        socket
+      ) do
+    Worth.LLM.PathwayPreferences.put_preferred_pathway(canonical, String.to_atom(provider))
+    send(self(), {:refresh_settings_form})
+
+    send(
+      self(),
+      {:append_system_message, "Preferred pathway: #{canonical} → #{provider}"}
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_event("settings_clear_pathway", %{"canonical" => canonical}, socket) do
+    Worth.LLM.PathwayPreferences.clear_preferred_pathway(canonical)
+    send(self(), {:refresh_settings_form})
+    send(self(), {:append_system_message, "Pathway preference cleared for #{canonical}."})
+    {:noreply, socket}
+  end
+
   defp routing_label("auto", pref, "free_only"), do: "Auto (#{pref}, free only)"
   defp routing_label("auto", pref, _), do: "Auto (#{pref})"
   defp routing_label("manual", _, "free_only"), do: "Manual (free only)"

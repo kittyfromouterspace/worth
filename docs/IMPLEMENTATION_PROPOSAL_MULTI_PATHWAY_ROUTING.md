@@ -18,13 +18,18 @@ Tracked here as the work lands. Sub-task IDs match the TaskCreate list.
 | **Phase 1 status** | ✅ all 568 tests pass | additive — no test churn |
 | 2 Gateway cost telemetry + SQLite SpendTracker | ✅ done | `:ex_money` + `:exqlite` deps; `agentic/lib/agentic/llm/spend_tracker.ex`; Gateway `:stop` event now carries `actual_cost` (OpenRouter `usage.cost`) and `estimated_cost` (catalog-derived); `Agentic.Cldr` backend |
 | 3 CLI provider wrappers + `model_arg` injection | ✅ done | `Provider.ClaudeCode/OpenCode/Codex` (catalog-only); `model_arg: "--model"` set on each protocol's `build_config/1`, args injected from `profile_config[:model]` (Brain passes the resolved route's `model_id`) |
-| 4 Worth Provider Management UI | ⏳ pending | substantial LiveView work — Provider Accounts card + Model Pathways card + `[ProviderAccount]` resolver pushed into `ctx.metadata` |
+| 4 Worth Provider Management UI | ✅ done | `Worth.LLM.PathwayPreferences` + `Worth.LLM.ProviderAccountResolver`; Provider Accounts, Admin Keys, and Model Pathways settings cards; Brain pushes `[ProviderAccount]` and pathway preferences into `ctx.metadata` for every agent run; router applies a −100 score bonus for the user's preferred pathway as a hard tie-breaker |
 | 5 z.ai provider + admin-key polling (agentic side) | ✅ done | `Agentic.LLM.Provider.Zai` (OpenAI-compatible Bearer, static GLM list); `Agentic.LLM.AdminUsage` with `poll_anthropic/2` + `poll_openai/2` returning normalized buckets with Money-typed `actual_cost` |
-| 5 Worth-side admin-key UI | ⏳ pending | rolled into Phase 4 UI work |
-| 6 Subscription dashboard | ⏳ pending | `worth` repo |
+| 5 Worth-side admin-key UI | ✅ done | `Worth.LLM.AdminKeys` (vault-backed); admin key entry card in settings with explicit "read-only billing" disclosure |
+| 6 Subscription dashboard | ✅ done | `Worth.LLM.UsageSummary` + `WorthWeb.Components.Usage`; `/usage` slash command repurposed to open the dashboard view; per-provider cards with effective $/Mtok, monthly tokens, today/month spend, balance, subscription savings |
 | 7 OXR relay (deferred) | 🕓 deferred | future milestone |
 
-**Verification:** `mix test` in `agentic` → 568 tests pass; `mix test` in `worth` → 198 tests pass against the updated agentic.
+**Verification:** `mix test` in `agentic` → 568 tests pass; `mix test` in `worth` → 198 tests pass.
+
+**Out of scope, explicitly deferred:**
+
+- The Worth-side scheduled poller that calls `Agentic.LLM.AdminUsage` and reconciles results against SpendTracker rows. The polling adapter exists (Phase 5) and the admin-key vault entry exists (Phase 4) — what remains is a `Worth.LLM.AdminUsagePoller` GenServer that fires every N minutes when admin keys are present. Trivial follow-up; left out to keep the diff focused on UI surfaces.
+- FX rate provider for the Money library is configured but `auto_start_exchange_rate_service` is `false` in dev/test. v1 production builds will set `WORTH_OXR_APP_ID` env var and flip the flag; v2 (Phase 7) adds a Worth-hosted relay so all clients share rate fetches.
 
 Legend: ⏳ pending · 🔄 in progress · ✅ done · 🕓 deferred
 

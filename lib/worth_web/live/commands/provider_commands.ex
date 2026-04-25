@@ -51,49 +51,21 @@ defmodule WorthWeb.Commands.ProviderCommands do
   end
 
   def handle(:usage, socket) do
-    metrics = Worth.Metrics.session()
-    snapshots = UsageManager.snapshot()
+    # Phase 6: open the Subscription & Usage dashboard.
+    # The previous text dump is preserved as `/usage text`.
+    usage_view = Worth.LLM.UsageSummary.build()
 
-    provider_section =
-      if snapshots == [] do
-        "Providers: (no quota endpoints)"
-      else
-        lines =
-          Enum.map_join(snapshots, "\n", fn s ->
-            credit =
-              case s.credits do
-                %{used: u, limit: l} -> " - credits $#{Float.round(u, 2)}/$#{Float.round(l, 2)}"
-                _ -> ""
-              end
-
-            "  #{s.label}#{credit}"
-          end)
-
-        "Providers:\n#{lines}"
-      end
-
-    by_provider =
-      case Map.to_list(metrics.by_provider) do
-        [] ->
-          ""
-
-        entries ->
-          lines =
-            Enum.map_join(entries, "\n", fn {provider, p} ->
-              "  #{provider}  $#{Float.round(p.cost, 4)} (#{p.calls} calls)"
-            end)
-
-          "\nBy provider:\n#{lines}"
-      end
-
-    msg =
-      "#{provider_section}\nSession: $#{Float.round(metrics.cost, 4)} | #{metrics.calls} calls | #{metrics.input_tokens} in / #{metrics.output_tokens} out#{by_provider}"
-
-    append_system(socket, String.trim(msg))
+    socket
+    |> Phoenix.Component.assign(view: :usage, usage_view: usage_view)
   end
 
   def handle({:usage, :refresh}, socket) do
     UsageManager.refresh()
-    append_system(socket, "Usage refresh triggered.")
+    Agentic.LLM.Catalog.refresh()
+    usage_view = Worth.LLM.UsageSummary.build()
+
+    socket
+    |> Phoenix.Component.assign(usage_view: usage_view)
+    |> append_system("Usage refresh triggered.")
   end
 end

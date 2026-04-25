@@ -92,6 +92,7 @@ defmodule WorthWeb.ChatLive do
        unlock_error: nil,
        has_history: prior_messages != [],
        settings_form: default_settings_form(),
+       usage_view: %{cards: [], fx_updated_at: nil, pathway_preferences: %{}},
        theme_module: Worth.Theme.Registry.resolve(),
        workspaces: list_workspaces(),
        memory_stats: fetch_memory_stats(workspace),
@@ -461,8 +462,27 @@ defmodule WorthWeb.ChatLive do
     {:noreply, assign(socket, xray_events: [])}
   end
 
+  def handle_event("usage_back", _params, socket) do
+    {:noreply, assign(socket, view: :chat)}
+  end
+
+  def handle_event("usage_refresh_provider", %{"provider" => provider}, socket) do
+    safe_call =
+      try do
+        provider_atom = String.to_existing_atom(provider)
+        Agentic.LLM.UsageManager.refresh_provider(provider_atom)
+      rescue
+        _ -> :ok
+      end
+
+    _ = safe_call
+
+    usage_view = Worth.LLM.UsageSummary.build()
+    {:noreply, assign(socket, usage_view: usage_view)}
+  end
+
   def handle_event("keydown", %{"key" => "Escape"}, socket) do
-    if socket.assigns.view == :settings do
+    if socket.assigns.view in [:settings, :usage] do
       {:noreply, assign(socket, view: :chat)}
     else
       {:noreply, socket}
@@ -877,6 +897,9 @@ defmodule WorthWeb.ChatLive do
       locked: safe_vault_call(fn -> Worth.Settings.locked?() end, true),
       has_password: safe_vault_call(fn -> Worth.Settings.has_password?() end, false),
       providers: [],
+      provider_accounts: [],
+      admin_keys: %{anthropic_present: false, openai_present: false},
+      model_pathways: [],
       preferences: [],
       themes: theme_list(),
       current_theme: current_theme_name(),
@@ -1010,6 +1033,9 @@ defmodule WorthWeb.ChatLive do
         locked: locked,
         has_password: safe_vault_call(fn -> Worth.Settings.has_password?() end, false),
         providers: providers,
+        provider_accounts: provider_account_list(),
+        admin_keys: admin_keys_status(),
+        model_pathways: model_pathways_list(),
         preferences: preferences,
         themes: theme_list(),
         current_theme: current_theme_name(),
@@ -1021,6 +1047,120 @@ defmodule WorthWeb.ChatLive do
       }
     )
   end
+
+  # Build the per-provider economic settings list for the
+  # Provider Accounts card. Pulls cost_profile + subscription from
+  # PathwayPreferences and the live availability from the resolver.
+  defp provider_account_list do
+    accounts = Worth.LLM.ProviderAccountResolver.build_all()
+
+    registry_by_id =
+      Agentic.LLM.ProviderRegistry.list()
+      |> Map.new(fn entry -> {entry.id, entry.module} end)
+
+    Enum.map(accounts, fn account ->
+      mod = Map.get(registry_by_id, account.provider)
+      label = if mod, do: mod.label(), else: Atom.to_string(account.provider)
+
+      {plan, fee_amount, fee_currency} =
+        case account.subscription do
+          %{plan: plan, monthly_fee: %Money{amount: amount, currency: currency}} ->
+            {plan, Decimal.to_string(amount), Atom.to_string(currency)}
+
+          _ ->
+            {"", "", "USD"}
+        end
+
+      %{
+        provider: Atom.to_string(account.provider),
+        label: label,
+        cost_profile: account.cost_profile,
+        availability: account.availability,
+        plan: plan,
+        monthly_fee_amount: fee_amount,
+        monthly_fee_currency: fee_currency
+      }
+    end)
+    |> Enum.sort_by(& &1.label)
+  rescue
+    _ -> []
+  catch
+    :exit, _ -> []
+  end
+
+  defp admin_keys_status do
+    %{
+      anthropic_present: Worth.LLM.AdminKeys.has?(:anthropic),
+      openai_present: Worth.LLM.AdminKeys.has?(:openai)
+    }
+  rescue
+    _ -> %{anthropic_present: false, openai_present: false}
+  catch
+    :exit, _ -> %{anthropic_present: false, openai_present: false}
+  end
+
+  # Build the Model Pathways card data: for each canonical_id with at
+  # least 2 pathways, list the pathway providers and which one is
+  # preferred. Single-pathway canonicals aren't useful in the UI —
+  # nothing to choose between.
+  defp model_pathways_list do
+    by_canonical = Agentic.LLM.Catalog.by_canonical(has: [:chat, :tools])
+    preferences = Worth.LLM.PathwayPreferences.all_pathway_preferences()
+
+    accounts_by_provider =
+      Worth.LLM.ProviderAccountResolver.build_all()
+      |> Map.new(fn account -> {account.provider, account} end)
+
+    by_canonical
+    |> Enum.filter(fn {_canonical, models} ->
+      provider_count = models |> Enum.map(& &1.provider) |> Enum.uniq() |> length()
+      provider_count >= 2
+    end)
+    |> Enum.map(fn {canonical, models} ->
+      preferred = Map.get(preferences, canonical)
+
+      providers =
+        models
+        |> Enum.uniq_by(& &1.provider)
+        |> Enum.map(fn model ->
+          account = Map.get(accounts_by_provider, model.provider) || Agentic.LLM.ProviderAccount.default(model.provider)
+
+          %{
+            id: Atom.to_string(model.provider),
+            label: short_provider_label(model.provider),
+            preferred: preferred == model.provider,
+            unavailable: account.availability == :unavailable,
+            cost_profile: Atom.to_string(account.cost_profile),
+            availability_label: availability_blurb(account.availability)
+          }
+        end)
+        |> Enum.sort_by(&{!&1.preferred, &1.unavailable, &1.label})
+
+      %{canonical_id: canonical, providers: providers}
+    end)
+    |> Enum.sort_by(& &1.canonical_id)
+  rescue
+    _ -> []
+  catch
+    :exit, _ -> []
+  end
+
+  defp short_provider_label(:anthropic), do: "Anthropic"
+  defp short_provider_label(:openai), do: "OpenAI"
+  defp short_provider_label(:openrouter), do: "OpenRouter"
+  defp short_provider_label(:zai), do: "z.ai"
+  defp short_provider_label(:claude_code), do: "Claude Code"
+  defp short_provider_label(:opencode), do: "OpenCode"
+  defp short_provider_label(:codex), do: "Codex"
+  defp short_provider_label(:groq), do: "Groq"
+  defp short_provider_label(:ollama), do: "Ollama"
+  defp short_provider_label(other), do: other |> Atom.to_string() |> String.capitalize()
+
+  defp availability_blurb(:ready), do: "ready"
+  defp availability_blurb(:degraded), do: "degraded"
+  defp availability_blurb({:rate_limited, _}), do: "rate-limited"
+  defp availability_blurb(:unavailable), do: "not configured"
+  defp availability_blurb(_), do: ""
 
   defp theme_list do
     Enum.map(Worth.Theme.Registry.list(), fn mod ->

@@ -495,6 +495,7 @@ defmodule Worth.Brain do
 
     run_opts = if system_prompt, do: Keyword.put(run_opts, :system_prompt, system_prompt), else: run_opts
     run_opts = apply_model_routing(run_opts)
+    run_opts = inject_provider_accounts(run_opts)
 
     Tracker.register(state.session_id,
       mode: state.mode,
@@ -674,6 +675,43 @@ defmodule Worth.Brain do
       nil -> :claude_code
       protocol -> protocol
     end
+  end
+
+  # Inject the resolved [Agentic.LLM.ProviderAccount] list and the
+  # canonical→preferred-provider map into ctx.metadata. The
+  # multi-pathway router (Agentic.ModelRouter) scores pathways against
+  # per-user account economics and availability; the preferences map
+  # acts as a tie-breaker bonus. Falls through cleanly on errors —
+  # the router defaults to `:pay_per_token` / `:ready` per provider.
+  defp inject_provider_accounts(opts) do
+    accounts = safe_resolve_accounts()
+    pathway_preferences = safe_pathway_preferences()
+    metadata = Keyword.get(opts, :metadata, %{})
+
+    new_metadata =
+      metadata
+      |> Map.put(:provider_accounts, accounts)
+      |> Map.put(:pathway_preferences, pathway_preferences)
+
+    Keyword.put(opts, :metadata, new_metadata)
+  end
+
+  defp safe_resolve_accounts do
+    Worth.LLM.ProviderAccountResolver.build_all()
+  rescue
+    e ->
+      Logger.warning("[Brain] provider account resolver failed: #{Exception.message(e)}")
+      []
+  catch
+    :exit, _ -> []
+  end
+
+  defp safe_pathway_preferences do
+    Worth.LLM.PathwayPreferences.all_pathway_preferences()
+  rescue
+    _ -> %{}
+  catch
+    :exit, _ -> %{}
   end
 
   defp apply_model_routing(opts) do

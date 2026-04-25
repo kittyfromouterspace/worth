@@ -58,6 +58,11 @@
         settings_form={@settings_form}
       />
 
+      <%!-- Usage / Subscription dashboard --%>
+      <div :if={@view == :usage} class="flex-1 flex flex-col overflow-hidden">
+        <WorthWeb.Components.Usage.usage_panel usage={@usage_view} target={@socket} />
+      </div>
+
       <%!-- Chat view --%>
       <div :if={@view == :chat} class="flex-1 flex flex-col overflow-hidden">
         <div
