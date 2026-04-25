@@ -93,6 +93,7 @@ defmodule WorthWeb.ChatLive do
        has_history: prior_messages != [],
        settings_form: default_settings_form(),
        usage_view: %{cards: [], fx_updated_at: nil, pathway_preferences: %{}},
+       subscription_prompts: safe_subscription_prompts(),
        theme_module: Worth.Theme.Registry.resolve(),
        workspaces: list_workspaces(),
        memory_stats: fetch_memory_stats(workspace),
@@ -464,6 +465,27 @@ defmodule WorthWeb.ChatLive do
 
   def handle_event("usage_back", _params, socket) do
     {:noreply, assign(socket, view: :chat)}
+  end
+
+  def handle_event("open_subscription_settings", _params, socket) do
+    # Jump straight to the settings panel, where the user can fill in
+    # the subscription fee for any of the prompted providers.
+    {:noreply, assign(socket, view: :settings)}
+  end
+
+  def handle_event("dismiss_subscription_prompt", %{"provider" => provider_str}, socket) do
+    provider =
+      try do
+        String.to_existing_atom(provider_str)
+      rescue
+        _ -> nil
+      end
+
+    if provider do
+      Worth.LLM.SubscriptionPrompt.dismiss(provider)
+    end
+
+    {:noreply, assign(socket, subscription_prompts: safe_subscription_prompts())}
   end
 
   def handle_event("usage_refresh_provider", %{"provider" => provider}, socket) do
@@ -1011,6 +1033,14 @@ defmodule WorthWeb.ChatLive do
     :exit, _ -> default
   end
 
+  defp safe_subscription_prompts do
+    Worth.LLM.SubscriptionPrompt.pending()
+  rescue
+    _ -> []
+  catch
+    :exit, _ -> []
+  end
+
   def refresh_settings_form(socket), do: load_settings_form(socket)
 
   defp load_settings_form(socket) do
@@ -1028,7 +1058,8 @@ defmodule WorthWeb.ChatLive do
         {provider_list(), prefs}
       end
 
-    assign(socket,
+    socket
+    |> assign(
       settings_form: %{
         locked: locked,
         has_password: safe_vault_call(fn -> Worth.Settings.has_password?() end, false),
@@ -1046,6 +1077,10 @@ defmodule WorthWeb.ChatLive do
         base_dir: Worth.Paths.workspace_dir()
       }
     )
+    # Refresh the chat-level subscription prompt banner whenever the
+    # settings form reloads — saving a fee should make the banner
+    # disappear immediately.
+    |> assign(:subscription_prompts, safe_subscription_prompts())
   end
 
   # Build the per-provider economic settings list for the

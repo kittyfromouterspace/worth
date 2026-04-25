@@ -28,9 +28,19 @@ config :agentic,
     Agentic.LLM.Provider.Anthropic,
     Agentic.LLM.Provider.OpenAI,
     Agentic.LLM.Provider.Zai,
+    # Coding-agent CLI wrappers — registered eagerly; their
+    # `availability/1` callbacks gate visibility based on whether the
+    # binary is on PATH, so listing one whose CLI isn't installed
+    # is harmless.
     Agentic.LLM.Provider.ClaudeCode,
     Agentic.LLM.Provider.OpenCode,
-    Agentic.LLM.Provider.Codex
+    Agentic.LLM.Provider.Codex,
+    Agentic.LLM.Provider.Cursor,
+    Agentic.LLM.Provider.GeminiCli,
+    Agentic.LLM.Provider.Goose,
+    Agentic.LLM.Provider.Copilot,
+    Agentic.LLM.Provider.Kimi,
+    Agentic.LLM.Provider.Qwen
   ],
   catalog: [persist_path: worth_data && Path.join(worth_data, "catalog.json")]
 

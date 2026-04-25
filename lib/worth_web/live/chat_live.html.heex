@@ -65,6 +65,41 @@
 
       <%!-- Chat view --%>
       <div :if={@view == :chat} class="flex-1 flex flex-col overflow-hidden">
+        <%!-- Subscription fee prompts (auto-detected CLI agents
+              with subscription_included but no fee yet) --%>
+        <div :if={@subscription_prompts != []} class="px-6 pt-3 space-y-2">
+          <div
+            :for={prompt <- @subscription_prompts}
+            class="flex items-center justify-between rounded-lg border border-ctp-blue/40 bg-ctp-blue/5 px-3 py-2"
+          >
+            <div class="flex-1">
+              <div class="text-xs font-medium text-ctp-blue">
+                {prompt.label} detected — set its monthly cost?
+              </div>
+              <div class="text-xs text-ctp-overlay0">
+                {prompt.hint}. Without it, the Subscription dashboard can't compute effective $/Mtok or savings.
+              </div>
+            </div>
+            <div class="flex gap-1">
+              <button
+                phx-click="open_subscription_settings"
+                phx-value-provider={prompt.provider}
+                class="text-xs px-2 py-1 rounded text-ctp-blue hover:bg-ctp-blue hover:text-ctp-base cursor-pointer"
+              >
+                Set fee
+              </button>
+              <button
+                phx-click="dismiss_subscription_prompt"
+                phx-value-provider={prompt.provider}
+                class="text-xs px-2 py-1 rounded text-ctp-overlay0 hover:text-ctp-text cursor-pointer"
+                title="Don't ask again for this provider"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div
           id="chat-scroll"
           phx-hook="ChatScroll"

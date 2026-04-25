@@ -22,8 +22,19 @@ defmodule Worth.LLM.ProviderTaxonomy do
 
   # Provider ids whose `Agentic.LLM.Provider.*` wrapper is a thin
   # shell over a coding-agent CLI. These are auto-detected via
-  # `System.find_executable/1` in their `availability/1`.
-  @cli_providers MapSet.new([:claude_code, :opencode, :codex])
+  # `System.find_executable/1` in their `availability/1`. Mirrors the
+  # ACP discovery DB in `Agentic.Protocol.ACP.Discovery.known_agents/0`.
+  @cli_providers MapSet.new([
+                   :claude_code,
+                   :opencode,
+                   :codex,
+                   :cursor,
+                   :gemini,
+                   :goose,
+                   :copilot,
+                   :kimi,
+                   :qwen
+                 ])
 
   # Free-tier defaults — Ollama is local, no key needed and no cost.
   @free_providers MapSet.new([:ollama])
