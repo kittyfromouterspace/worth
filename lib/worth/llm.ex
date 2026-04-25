@@ -2,14 +2,15 @@ defmodule Worth.LLM do
   @moduledoc """
   Thin dispatch layer between Worth and Agentic providers.
 
-  All model selection, route walking, failover, and error classification
-  lives in `Agentic`. This module only:
+  All model selection, route walking, failover, retry/backoff, and error
+  classification live in `Agentic.Loop.Stages.LLMCall` and
+  `Agentic.ModelRouter`. This module only:
   1. Extracts the route from params (injected by Agentic's LLMCall stage)
   2. Resolves the provider module and credentials
   3. Dispatches to `Agentic.LLM.Provider`
 
   For background tasks (fact extraction, skill refinement) that need
-  tier-based dispatch with failover, use `chat_tier/3` which delegates
+  tier-based dispatch with failover, use `chat_tier/2` which delegates
   to `Agentic.LLM.chat_tier/3`.
   """
 
@@ -17,48 +18,18 @@ defmodule Worth.LLM do
   alias Agentic.LLM.Provider
   alias Agentic.LLM.ProviderRegistry
 
-  # Retry configuration for rate-limited free models.
-  # Free OpenRouter models have tight windows (20 RPM / 50 RPD)
-  # but brief cooldowns — a short backoff often succeeds.
-  @rate_limit_max_retries 3
-  @rate_limit_base_backoff_ms 1000
-
   # ----- stream_chat/2: streaming dispatch -----
 
   @doc """
   Streaming dispatch for a single route. Agentic's LLMCall stage
-  resolves routes and injects `_route` into params. This function
-  dispatches to the matching provider with credentials.
+  resolves routes and injects `_route` into params; this function
+  dispatches to the matching provider with credentials. No retry
+  logic here — LLMCall owns it.
   """
   def stream_chat(params, on_chunk) do
     case route_from_params(params) do
-      nil ->
-        stream_chat_default(params, on_chunk)
-
-      route ->
-        stream_chat_route_with_retry(params, route, on_chunk)
-    end
-  end
-
-  defp stream_chat_route_with_retry(params, route, on_chunk, attempt \\ 0) do
-    result = do_stream_chat_route(params, route, on_chunk)
-
-    case result do
-      {:error, %Error{status: 429} = error} when attempt < @rate_limit_max_retries ->
-        backoff_ms = calculate_backoff(error.retry_after_ms, attempt)
-
-        require Logger
-
-        Logger.warning(
-          "Worth.LLM: #{route.provider_name}/#{route.model_id} rate limited; " <>
-            "retrying in #{backoff_ms}ms (attempt #{attempt + 1}/#{@rate_limit_max_retries})"
-        )
-
-        Process.sleep(backoff_ms)
-        stream_chat_route_with_retry(params, route, on_chunk, attempt + 1)
-
-      _other ->
-        result
+      nil -> stream_chat_default(params, on_chunk)
+      route -> do_stream_chat_route(params, route, on_chunk)
     end
   end
 
@@ -68,7 +39,10 @@ defmodule Worth.LLM do
         {:error, %Error{message: "Unknown route provider: #{name}", classification: :permanent}}
 
       provider_module ->
-        opts = [model: route.model_id, on_chunk: on_chunk] ++ credential_opts(provider_module)
+        opts =
+          [model: route.model_id, on_chunk: on_chunk] ++
+            credential_opts(provider_module) ++ preference_opts(params)
+
         Provider.stream_chat(provider_module, strip_route(params), opts)
     end
   end
@@ -76,45 +50,20 @@ defmodule Worth.LLM do
   defp stream_chat_default(params, on_chunk) do
     {provider_module, model} = default_provider_and_model()
 
-    opts = [model: model, on_chunk: on_chunk] ++ credential_opts(provider_module)
-    Provider.stream_chat(provider_module, params, opts)
+    opts = [model: model, on_chunk: on_chunk] ++ credential_opts(provider_module) ++ preference_opts(params)
+    Provider.stream_chat(provider_module, strip_route(params), opts)
   end
 
   # ----- chat/1: non-streaming dispatch -----
 
   @doc """
   Non-streaming dispatch for a single route. Used by session resume
-  and other callers that don't need streaming.
+  and other callers that don't need streaming. No retry logic — LLMCall owns it.
   """
   def chat(params) do
     case route_from_params(params) do
-      nil ->
-        chat_default(params)
-
-      route ->
-        chat_route_with_retry(params, route)
-    end
-  end
-
-  defp chat_route_with_retry(params, route, attempt \\ 0) do
-    result = do_chat_route(params, route)
-
-    case result do
-      {:error, %Error{status: 429} = error} when attempt < @rate_limit_max_retries ->
-        backoff_ms = calculate_backoff(error.retry_after_ms, attempt)
-
-        require Logger
-
-        Logger.warning(
-          "Worth.LLM: #{route.provider_name}/#{route.model_id} rate limited; " <>
-            "retrying in #{backoff_ms}ms (attempt #{attempt + 1}/#{@rate_limit_max_retries})"
-        )
-
-        Process.sleep(backoff_ms)
-        chat_route_with_retry(params, route, attempt + 1)
-
-      _other ->
-        result
+      nil -> chat_default(params)
+      route -> do_chat_route(params, route)
     end
   end
 
@@ -124,18 +73,19 @@ defmodule Worth.LLM do
         {:error, %Error{message: "Unknown route provider: #{name}", classification: :permanent}}
 
       provider_module ->
-        opts = [model: route.model_id] ++ credential_opts(provider_module)
+        opts = [model: route.model_id] ++ credential_opts(provider_module) ++ preference_opts(params)
         Provider.chat(provider_module, strip_route(params), opts)
     end
   end
 
   defp chat_default(params) do
     {provider_module, model} = default_provider_and_model()
-    opts = [model: model] ++ credential_opts(provider_module)
-    Provider.chat(provider_module, params, opts)
+
+    opts = [model: model] ++ credential_opts(provider_module) ++ preference_opts(params)
+    Provider.chat(provider_module, strip_route(params), opts)
   end
 
-  # ----- chat_tier/3: delegate to Agentic -----
+  # ----- chat_tier/2: delegate to Agentic -----
 
   @doc """
   Tier-based chat with full failover. Delegates to `Agentic.LLM.chat_tier/3`
@@ -220,7 +170,10 @@ defmodule Worth.LLM do
         {:error, %Error{message: "Unknown route provider: #{name}", classification: :permanent}}
 
       {provider_module, api_key} ->
-        opts = [model: model_id] ++ if(api_key, do: [api_key: api_key], else: [])
+        opts =
+          [model: model_id] ++
+            if(api_key, do: [api_key: api_key], else: []) ++ preference_opts(params)
+
         Provider.chat(provider_module, strip_route(params), opts)
     end
   end
@@ -234,8 +187,20 @@ defmodule Worth.LLM do
 
   defp route_from_params(_), do: nil
 
+  defp preference_opts(params) when is_map(params) do
+    case params["model_preference"] || params[:model_preference] do
+      nil -> []
+      pref when is_atom(pref) -> [preference: pref]
+      pref when is_binary(pref) -> [preference: String.to_atom(pref)]
+    end
+  end
+
   defp strip_route(params) when is_map(params) do
-    params |> Map.delete("_route") |> Map.delete(:_route)
+    params
+    |> Map.delete("_route")
+    |> Map.delete(:_route)
+    |> Map.delete("model_preference")
+    |> Map.delete(:model_preference)
   end
 
   defp credential_opts(provider_module) do
@@ -252,19 +217,5 @@ defmodule Worth.LLM do
         _ -> nil
       end
     end)
-  end
-
-  # Calculate backoff for rate-limited retries.
-  # Uses server-provided Retry-After if available, otherwise exponential backoff.
-  defp calculate_backoff(nil, attempt) do
-    min(@rate_limit_base_backoff_ms * :math.pow(2, attempt), 8000) |> trunc()
-  end
-
-  defp calculate_backoff(retry_after_ms, _attempt) when is_integer(retry_after_ms) and retry_after_ms > 0 do
-    retry_after_ms
-  end
-
-  defp calculate_backoff(_, attempt) do
-    min(@rate_limit_base_backoff_ms * :math.pow(2, attempt), 8000) |> trunc()
   end
 end
