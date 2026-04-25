@@ -26,9 +26,27 @@ config :agentic,
   providers: [
     Agentic.LLM.Provider.OpenRouter,
     Agentic.LLM.Provider.Anthropic,
-    Agentic.LLM.Provider.OpenAI
+    Agentic.LLM.Provider.OpenAI,
+    Agentic.LLM.Provider.Zai,
+    Agentic.LLM.Provider.ClaudeCode,
+    Agentic.LLM.Provider.OpenCode,
+    Agentic.LLM.Provider.Codex
   ],
   catalog: [persist_path: worth_data && Path.join(worth_data, "catalog.json")]
+
+# --- ex_money / FX ---
+# v1: Worth bundles its own OXR app id (set at runtime / via env var).
+# v2 (future): clients hit a Worth-hosted OXR-compatible relay — see
+# §5.5.1 of docs/IMPLEMENTATION_PROPOSAL_MULTI_PATHWAY_ROUTING.md.
+# Disabled by default in dev/test; enabled in prod when OXR app id is
+# present. The Money library is still loaded for currency-aware Money.t()
+# values regardless.
+config :ex_money,
+  default_cldr_backend: Worth.Cldr,
+  auto_start_exchange_rate_service: false,
+  exchange_rates_retrieve_every: :timer.hours(6),
+  api_module: Money.ExchangeRates.OpenExchangeRates,
+  open_exchange_rates_app_id: {:system, "WORTH_OXR_APP_ID"}
 
 # --- esbuild ---
 config :esbuild,
