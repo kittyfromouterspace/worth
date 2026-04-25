@@ -1,0 +1,218 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Worth Desktop — Bedrock</title>
+<link rel="stylesheet" href="../../colors_and_type.css">
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#0B0B0D;color:#E8E8EA;font-family:'Inter',sans-serif;font-size:13px;overflow:hidden}
+  .app{display:flex;flex-direction:column;height:100vh;min-height:720px}
+  .header{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid #3A3A3F;height:40px;box-sizing:border-box;position:relative;flex-shrink:0}
+  .header::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,rgba(255,59,47,0) 0%,rgba(255,59,47,.5) 20%,rgba(255,59,47,.5) 80%,rgba(255,59,47,0) 100%)}
+  .hdr-divider{color:#5A5A5F}
+  .hdr-num{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
+  .body{display:flex;flex:1;min-height:0}
+  aside{background:#0B0B0D;overflow-y:auto;font-size:12px}
+  .left{width:224px;border-right:1px solid #3A3A3F;flex-shrink:0}
+  .right{width:256px;border-left:1px solid #3A3A3F;flex-shrink:0}
+  .center{flex:1;display:flex;flex-direction:column;min-width:0}
+  .section{padding:8px 12px}
+  .section-title{font-size:10px;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;color:#8A8A8F;margin-bottom:4px;font-family:'Inter'}
+  .section-title-accent{color:#E8E8EA}
+  .row{padding:1px 0;font-size:12px;color:#8A8A8F;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace}
+  .row:hover{color:#E8E8EA}
+  .row.active{color:#E8E8EA;font-weight:500}
+  .row .dot{color:#FF3B2F}
+  .metric{display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;padding:1px 0;color:#8A8A8F}
+  .metric .v{color:#E8E8EA;font-variant-numeric:tabular-nums}
+  .metric.cost .v{color:#FF3B2F}
+  .transcript{flex:1;overflow-y:auto;padding:14px 22px;display:flex;flex-direction:column;gap:14px}
+  .msg .meta{color:#5A5A5F;font-family:'JetBrains Mono',monospace;font-size:10px;margin-bottom:3px}
+  .msg.user{background:#1A1A1E;border:1px solid #3A3A3F;border-radius:4px;padding:10px 12px}
+  .msg .body{line-height:20px;color:#E8E8EA}
+  .msg .body code{background:#2A2A2E;padding:1px 5px;border-radius:2px;font-family:'JetBrains Mono',monospace;font-size:12px}
+  .msg.thinking{border-left:2px solid #5A5A5F;padding:4px 12px;color:#8A8A8F;font-style:italic;font-size:12px}
+  .tool-call{font-family:'JetBrains Mono',monospace;font-size:12px;background:rgba(42,42,46,.4);border:1px solid #3A3A3F;border-radius:4px;padding:8px 10px}
+  .tool-call .name{color:#F0B341}
+  .tool-call .args{color:#8A8A8F}
+  .tool-call .result{color:#7EC87E;margin-top:4px}
+  .input-bar{border-top:1px solid #3A3A3F;padding:10px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0;background:#0B0B0D}
+  .prompt{color:#8A8A8F;font-family:'JetBrains Mono',monospace;font-size:13px}
+  .input-bar input{flex:1;background:transparent;border:none;outline:none;color:#E8E8EA;font-family:'JetBrains Mono',monospace;font-size:13px}
+  .input-bar input::placeholder{color:#5A5A5F}
+  .btn-molten{background:#FF3B2F;color:#0B0B0D;border:1px solid rgba(255,106,61,.4);font-weight:600;font-size:11px;padding:5px 14px;border-radius:2px;cursor:pointer;font-family:'Inter'}
+  .btn-molten:hover{background:linear-gradient(180deg,#FF6A3D 0%,#FF3B2F 100%)}
+  .btn-stop{background:transparent;color:#FF3B2F;border:1px solid rgba(255,59,47,.3);font-weight:600;font-size:11px;padding:5px 14px;border-radius:2px;cursor:pointer;font-family:'Inter'}
+  .icon-btn{background:transparent;border:none;color:#5A5A5F;cursor:pointer;padding:4px}
+  .icon-btn:hover,.icon-btn.active{color:#FF3B2F}
+  .spacer{flex:1}
+  h1,h2,h3{font-family:'Space Grotesk',sans-serif;letter-spacing:-0.01em;font-weight:600;margin:0}
+  .wordmark{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14px;letter-spacing:-0.01em}
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:#0B0B0D}
+  ::-webkit-scrollbar-thumb{background:#2A2A2E}
+  ::-webkit-scrollbar-thumb:hover{background:#3A3A3F}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header class="header">
+    <span style="color:#F0B341;font-size:16px" class="spinner" id="status-glyph"><svg viewBox="0 0 64 64"><polygon points="4,10 16,10 28,46 18,52"/><polygon points="22,10 30,10 32,48 28,46"/><polygon points="34,10 42,10 36,46 32,48"/><polygon points="48,10 60,10 46,52 36,46"/></svg></span>
+    <svg viewBox="0 0 48 48" width="16" height="16" fill="none"><path d="M 8 8 L 18 40 L 24 20 L 30 40 L 40 8" stroke="#E8E8EA" stroke-width="5" stroke-linecap="square"/><rect x="4" y="26" width="40" height="1.5" fill="#FF3B2F" opacity="0.75"/></svg>
+    <span class="wordmark">worth</span>
+    <span class="hdr-divider">|</span><span id="hdr-ws">worth-ds</span>
+    <span class="hdr-divider">|</span><span style="color:#8A8A8F" id="hdr-mode">code</span>
+    <span class="hdr-divider">|</span><span class="hdr-num" style="color:#8A8A8F" id="hdr-turn">t3</span>
+    <span class="hdr-divider">|</span><span class="hdr-num" id="hdr-cost">$0.0423</span>
+    <span class="hdr-divider">(</span><span style="color:#8A8A8F" class="hdr-num">sonnet-4</span><span class="hdr-divider">)</span>
+    <div class="spacer"></div>
+    <button class="icon-btn" id="btn-xray" title="toggle x-ray">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.01 1.01 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/></svg>
+    </button>
+    <button class="icon-btn" title="quit">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+    </button>
+  </header>
+
+  <div class="body">
+    <aside class="left">
+      <div class="section">
+        <div class="section-title section-title-accent" style="color:#FF3B2F;font-size:11px">Workspace</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Workspaces</div>
+        <div class="row active"><span class="dot">●</span>worth-ds</div>
+        <div class="row"><span>○</span>recollect</div>
+        <div class="row"><span>○</span>agentic</div>
+        <div class="row"><span>○</span>homunculus</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Agents</div>
+        <div class="row" style="color:#F0B341"><span class="spinner" style="font-size:13px"><svg viewBox="0 0 64 64"><polygon points="4,10 16,10 28,46 18,52"/><polygon points="22,10 30,10 32,48 28,46"/><polygon points="34,10 42,10 36,46 32,48"/><polygon points="48,10 60,10 46,52 36,46"/></svg></span> file_indexer</div>
+        <div class="row" style="color:#7EC87E"><span>✓</span>test_runner</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Model</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px">
+          <div style="color:#FF3B2F">primary</div>
+          <div style="color:#8A8A8F">Claude Sonnet 4</div>
+          <div style="color:#FF3B2F;margin-top:4px">light</div>
+          <div style="color:#8A8A8F">Claude Haiku 4</div>
+          <div style="color:#5A5A5F;font-size:10px;margin-top:4px">auto · optimize_price</div>
+        </div>
+      </div>
+      <div class="section">
+        <div class="section-title">Tools</div>
+        <div class="row">read_file</div>
+        <div class="row">write_file</div>
+        <div class="row">edit_file</div>
+        <div class="row">bash</div>
+        <div class="row">memory_query</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Skills</div>
+        <div class="row">write-tests <span style="color:#5A5A5F">[core]</span></div>
+        <div class="row">git-commit <span style="color:#5A5A5F">[core]</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Memory</div>
+        <div class="metric"><span>Working:</span><span class="v" style="color:#FF3B2F">14</span></div>
+        <div class="metric"><span>Stored:</span><span class="v" style="color:#FF3B2F">1,287</span></div>
+        <div style="margin-top:6px;display:flex;gap:4px">
+          <button style="background:#2A2A2E;color:#E8E8EA;border:1px solid #3A3A3F;font-size:10px;padding:2px 8px;border-radius:2px;cursor:pointer;font-family:'Inter'">query</button>
+          <button style="background:#2A2A2E;color:#E8E8EA;border:1px solid #3A3A3F;font-size:10px;padding:2px 8px;border-radius:2px;cursor:pointer;font-family:'Inter'">flush</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="center">
+      <div class="transcript" id="transcript">
+        <div class="msg user">
+          <div class="meta">you · 14:22</div>
+          <div class="body">write a test for auth.ex that covers the vault-unlock path</div>
+        </div>
+        <div class="msg">
+          <div class="meta">worth · claude-sonnet-4</div>
+          <div class="body">Reading <code>lib/worth/vault.ex</code> to see which clauses need coverage.</div>
+        </div>
+        <div class="tool-call">
+          <div><span class="name">read_file</span><span class="args">(path: "lib/worth/vault.ex")</span></div>
+          <div class="result">✓ 248 lines, 7 public functions</div>
+        </div>
+        <div class="msg thinking">thinking · three candidate test paths. picking branch coverage over line coverage.</div>
+        <div class="msg">
+          <div class="meta">worth · claude-sonnet-4</div>
+          <div class="body">Writing <code>test/worth/vault_test.exs</code> with four cases: valid passphrase, wrong passphrase, locked-out, expired session.</div>
+        </div>
+        <div class="tool-call">
+          <div><span class="name">write_file</span><span class="args">(path: "test/worth/vault_test.exs", 92 lines)</span></div>
+          <div class="result">✓ written · running mix test…</div>
+        </div>
+      </div>
+      <div class="input-bar">
+        <span class="prompt" id="prompt">code &gt;</span>
+        <input id="input" placeholder="Type a message or /command..." autocomplete="off"/>
+        <button class="btn-molten" id="send">Send</button>
+      </div>
+    </main>
+
+    <aside class="right">
+      <div class="section">
+        <div class="section-title section-title-accent" style="color:#FF3B2F;font-size:11px">Metrics</div>
+      </div>
+      <div class="section">
+        <div class="section-title">Session</div>
+        <div class="metric"><span>Duration:</span><span class="v">12m</span></div>
+        <div class="metric cost"><span>Cost:</span><span class="v">$0.0423</span></div>
+        <div class="metric"><span>Turns:</span><span class="v">3</span></div>
+        <div class="metric"><span>Calls:</span><span class="v">8</span></div>
+        <div class="metric" style="color:#5A5A5F"><span>Avg/call:</span><span class="v">$0.0053</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Tokens</div>
+        <div class="metric"><span>Input:</span><span class="v">42,119</span></div>
+        <div class="metric"><span>Output:</span><span class="v">3,847</span></div>
+        <div class="metric" style="color:#5A5A5F"><span>Total:</span><span class="v">45,966</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Cache &amp; Embeddings</div>
+        <div class="metric"><span>Cache read:</span><span class="v" style="color:#7EC87E">38,400</span></div>
+        <div class="metric"><span>Cache write:</span><span class="v" style="color:#F0B341">4,210</span></div>
+        <div class="metric"><span>Embeddings:</span><span class="v">14 calls</span></div>
+        <div class="metric" style="color:#5A5A5F"><span>Embed cost:</span><span class="v">$0.0004</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Providers</div>
+        <div class="metric" style="color:#5A5A5F"><span>Anthropic:</span><span class="v">12 models</span></div>
+        <div class="metric" style="color:#5A5A5F"><span>Openrouter:</span><span class="v">108 models</span></div>
+        <div class="metric" style="color:#5A5A5F"><span>Openai:</span><span class="v">no key</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">Coding Agents</div>
+        <div class="metric"><span><span style="color:#7EC87E">●</span> Claude Code</span><span class="v" style="color:#5A5A5F">cc</span></div>
+        <div class="metric"><span><span style="color:#5A5A5F">○</span> OpenCode</span><span class="v" style="color:#5A5A5F">oc</span></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+const input=document.getElementById('input');
+const send=document.getElementById('send');
+const ts=document.getElementById('transcript');
+input.focus();
+function add(html){const d=document.createElement('div');d.innerHTML=html;ts.appendChild(d.firstElementChild);ts.scrollTop=ts.scrollHeight}
+function submit(){
+  const v=input.value.trim();if(!v)return;
+  add(`<div class="msg user"><div class="meta">you · now</div><div class="body">${v.replace(/</g,'&lt;')}</div></div>`);
+  input.value='';
+  setTimeout(()=>{
+    add(`<div class="msg"><div class="meta">worth · claude-sonnet-4</div><div class="body">on it.</div></div>`);
+  },300);
+}
+send.addEventListener('click',submit);
+input.addEventListener('keydown',e=>{if(e.key==='Enter')submit()});
+document.getElementById('btn-xray').addEventListener('click',function(){this.classList.toggle('active')});
+</script>
+</body>
+</html>

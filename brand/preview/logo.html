@@ -1,0 +1,95 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Logo</title><link rel="stylesheet" href="_base.css"></head>
+<body class="theme-bedrock">
+<div class="card">
+  <div class="label" style="margin-bottom:16px">Worth mark · flat in-product · wordmark lockup · textured marketing-only</div>
+
+  <!-- Reusable SVG symbols — the flat mark distilled from the sculpted textured logo:
+       four faceted wedges, molten seams in the gaps, center V lower than the outer uprights. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <!-- WEDGE MARK — a chunky W distilled from the sculpted original.
+           viewBox 64×64. Reads clearly at 16px. Construction: four wedges
+           shaped like diamonds / parallelograms, arranged so outer uprights
+           meet at top with inner descenders, inner descenders meet at bottom
+           center V (which sits slightly above the outer baseline).
+           3 hairline gaps between the 4 wedges are filled by molten seams. -->
+      <symbol id="worth-wedge" viewBox="0 0 64 64">
+        <!-- molten seams BEHIND (3 seams, one per wedge gap) -->
+        <g fill="#FF3B2F">
+          <polygon points="17,10 21,10 29,46 26,46"/>
+          <polygon points="31,14 33,14 33,48 31,48"/>
+          <polygon points="43,10 47,10 38,46 35,46"/>
+        </g>
+        <!-- 4 wedges FRONT — currentColor -->
+        <g fill="currentColor">
+          <!-- outer-left: top-left corner down to inner-bottom -->
+          <polygon points="4,10 16,10 28,46 18,52"/>
+          <!-- inner-left: top down to center-bottom tip -->
+          <polygon points="22,10 30,10 32,48 28,46"/>
+          <!-- inner-right: mirror of inner-left -->
+          <polygon points="34,10 42,10 36,46 32,48"/>
+          <!-- outer-right: mirror of outer-left -->
+          <polygon points="48,10 60,10 46,52 36,46"/>
+        </g>
+      </symbol>
+
+      <!-- MONO VARIANT -->
+      <symbol id="worth-wedge-mono" viewBox="0 0 64 64">
+        <g fill="currentColor">
+          <polygon points="4,10 16,10 28,46 18,52"/>
+          <polygon points="22,10 30,10 32,48 28,46"/>
+          <polygon points="34,10 42,10 36,46 32,48"/>
+          <polygon points="48,10 60,10 46,52 36,46"/>
+        </g>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div class="row" style="gap:36px;align-items:flex-start;flex-wrap:wrap">
+
+    <div class="stack" style="align-items:center;gap:8px;width:120px">
+      <div style="width:72px;height:72px;display:flex;align-items:center;justify-content:center;background:#0B0B0D;border:1px solid #2A2A2E;border-radius:4px;color:#E8E8EA">
+        <svg viewBox="0 0 64 64" width="56" height="56"><use href="#worth-wedge"/></svg>
+      </div>
+      <div style="font-family:'JetBrains Mono';font-size:10px;color:#E8E8EA">flat · in-product</div>
+      <div style="font-family:'JetBrains Mono';font-size:9px;color:#8A8A8F;text-align:center;line-height:13px">4 wedges +<br/>3 molten seams</div>
+    </div>
+
+    <div class="stack" style="align-items:center;gap:8px;width:120px">
+      <div style="width:72px;height:72px;display:flex;align-items:center;justify-content:center;background:#E8E8EA;border-radius:4px;color:#0B0B0D">
+        <svg viewBox="0 0 64 64" width="56" height="56"><use href="#worth-wedge"/></svg>
+      </div>
+      <div style="font-family:'JetBrains Mono';font-size:10px;color:#E8E8EA">on light</div>
+      <div style="font-family:'JetBrains Mono';font-size:9px;color:#8A8A8F">seams stay molten</div>
+    </div>
+
+    <div class="stack" style="align-items:center;gap:8px;width:140px">
+      <div style="width:72px;height:72px;display:flex;align-items:center;justify-content:center;background:#FF3B2F;border-radius:4px;color:#0B0B0D">
+        <svg viewBox="0 0 64 64" width="56" height="56"><use href="#worth-wedge-mono"/></svg>
+      </div>
+      <div style="font-family:'JetBrains Mono';font-size:10px;color:#E8E8EA">mono knockout</div>
+      <div style="font-family:'JetBrains Mono';font-size:9px;color:#8A8A8F">favicons, chips, seals</div>
+    </div>
+
+    <div class="stack" style="align-items:center;gap:8px">
+      <div style="padding:14px 22px;display:inline-flex;align-items:center;gap:12px;background:#0B0B0D;border:1px solid #2A2A2E;border-radius:4px;color:#E8E8EA">
+        <svg viewBox="0 0 64 64" width="34" height="34"><use href="#worth-wedge"/></svg>
+        <span style="font-family:'Space Grotesk';font-weight:600;font-size:30px;letter-spacing:-0.02em;color:#E8E8EA;line-height:1">worth</span>
+      </div>
+      <div style="font-family:'JetBrains Mono';font-size:10px;color:#E8E8EA">wordmark lockup</div>
+      <div style="font-family:'JetBrains Mono';font-size:9px;color:#8A8A8F">14px gap · optical align</div>
+    </div>
+
+    <div class="stack" style="align-items:center;gap:8px;width:120px">
+      <img src="../assets/logo-textured.png" width="72" height="72" style="border-radius:4px;object-fit:cover"/>
+      <div style="font-family:'JetBrains Mono';font-size:10px;color:#E8E8EA">textured</div>
+      <div style="font-family:'JetBrains Mono';font-size:9px;color:#8A8A8F">marketing only</div>
+    </div>
+
+  </div>
+
+  <div style="margin-top:18px;padding-top:14px;border-top:1px solid #2A2A2E;font-family:'Inter';font-size:11px;color:#8A8A8F;max-width:640px;line-height:17px">
+    The flat mark is a direct distillation of the sculpted original: <b style="color:#E8E8EA">four faceted wedges</b> (two outer uprights, two inner descenders meeting below the baseline), separated by <b style="color:#FF3B2F">three molten seams</b> that echo the lava cracks in the textured version. The inner V drops lower than the outer uprights — that asymmetric stance is the silhouette, and it's what makes this a W and not a zigzag.
+  </div>
+</div>
+</body></html>

@@ -1,0 +1,150 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Worth Desktop — Fifth Element</title>
+<link rel="stylesheet" href="../../colors_and_type.css">
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#0a0a0a;color:#C0C0C0;font-family:'Fira Code',monospace;font-size:12px;overflow:hidden}
+  .app{display:flex;flex-direction:column;height:100vh;min-height:720px;padding:10px;gap:10px;box-sizing:border-box}
+  .header{display:flex;align-items:center;gap:14px;padding:10px 16px;height:44px;box-sizing:border-box;background:linear-gradient(180deg,#FF8C00 0%,#E57200 100%);border-radius:8px;color:#0a0a0a;font-family:'Orbitron',sans-serif;font-weight:700;font-size:13px;letter-spacing:0.06em;text-transform:uppercase;position:relative}
+  .header::after{content:'';position:absolute;left:0;right:0;bottom:-8px;height:4px;background:repeating-linear-gradient(-45deg,#FDB813,#FDB813 10px,#0a0a0a 10px,#0a0a0a 20px);border-radius:2px}
+  .hdr-num{font-family:'Fira Code';font-weight:700}
+  .body{display:flex;flex:1;min-height:0;gap:10px;padding-top:4px}
+  .panel{background:linear-gradient(180deg,#2C2C2C 0%,#1A1A1A 100%);border:2px solid #FF8C00;border-radius:12px;padding:14px;position:relative;overflow:hidden}
+  .panel::before,.panel::after{content:'';position:absolute;width:6px;height:6px;background:radial-gradient(circle,#666 30%,#1a1a1a 70%);border-radius:50%;top:8px}
+  .panel::before{left:8px}.panel::after{right:8px}
+  .panel .botscrews{position:absolute;left:8px;right:8px;bottom:8px;display:flex;justify-content:space-between;pointer-events:none}
+  .panel .botscrews i{width:6px;height:6px;background:radial-gradient(circle,#666 30%,#1a1a1a 70%);border-radius:50%}
+  aside{flex-shrink:0;overflow-y:auto}
+  .left{width:240px}
+  .right{width:260px}
+  .center{flex:1;display:flex;flex-direction:column;min-width:0;gap:10px}
+  .section{margin-bottom:14px}
+  .section-title{font-family:'Orbitron';font-size:11px;color:#FF8C00;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;border-bottom:1px solid rgba(255,140,0,.3);padding-bottom:4px}
+  .row{padding:3px 0;color:#00FF41;text-shadow:0 0 5px rgba(0,255,65,.5);font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer}
+  .row.dim{color:#00CC33;text-shadow:none}
+  .row .y{color:#FDB813}
+  .metric{display:flex;justify-content:space-between;font-size:11px;color:#00FF41;text-shadow:0 0 5px rgba(0,255,65,.5);padding:2px 0}
+  .metric .y{color:#FDB813}
+  .metric .r{color:#FF3333}
+  /* View-port — plain industrial panel, no pictorial background.
+     Deep charcoal with a subtle warm vignette from the chassis + fine
+     horizontal scanlines. Optimized for green-terminal readability. */
+  .viewport{flex:1;background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,140,0,.05), transparent 60%),
+      radial-gradient(ellipse at 50% 100%, rgba(255,140,0,.03), transparent 55%),
+      linear-gradient(180deg,#0d0d0d 0%,#080808 100%);
+    border:2px solid #FF8C00;border-radius:12px;position:relative;overflow:hidden;min-height:0}
+  .viewport-inner{position:absolute;inset:0;padding:22px 26px;overflow-y:auto;color:#00FF41;text-shadow:0 0 4px rgba(0,255,65,.35);font-family:'Fira Code';font-size:13px;line-height:22px}
+  .viewport-inner .prompt{color:#FDB813}
+  .viewport-inner .err{color:#FF3333}
+  /* hairline orange frame INSIDE the view-port — window within a window */
+  .viewport::before{content:'';position:absolute;inset:8px;border:1px solid rgba(255,140,0,.25);border-radius:6px;pointer-events:none;z-index:5}
+  .input-bar{display:flex;align-items:center;gap:10px;background:linear-gradient(180deg,#2C2C2C 0%,#1A1A1A 100%);border:2px solid #FF8C00;border-radius:12px;padding:10px 16px;flex-shrink:0}
+  .input-bar input{flex:1;background:transparent;border:none;outline:none;color:#00FF41;text-shadow:0 0 5px rgba(0,255,65,.5);font-family:'Fira Code';font-size:14px}
+  .input-bar input::placeholder{color:rgba(0,255,65,.4)}
+  .emergency-button{background:#CC0000;color:#fff;border:3px solid #FF8C00;padding:10px 28px;font-family:'Orbitron',sans-serif;font-weight:900;font-size:13px;text-transform:uppercase;letter-spacing:0.08em;border-radius:8px;cursor:pointer;box-shadow:0 4px 0 #660000, inset 0 2px 4px rgba(255,255,255,.2);text-shadow:0 1px 2px rgba(0,0,0,.5)}
+  .emergency-button:active{box-shadow:0 1px 0 #660000, inset 0 2px 4px rgba(0,0,0,.3);transform:translateY(3px)}
+  .warning-banner{background:repeating-linear-gradient(-45deg,#FDB813,#FDB813 8px,#0a0a0a 8px,#0a0a0a 16px);height:6px;margin:-14px -14px 10px}
+  .right .panel{padding:14px 14px 20px}
+  .scanlines{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,255,65,.04) 2px,rgba(0,255,65,.04) 3px);z-index:10}
+  .badge{display:inline-block;font-family:'Orbitron';font-size:9px;background:#FDB813;color:#0a0a0a;padding:1px 5px;border-radius:2px;margin-left:4px;letter-spacing:0.05em}
+  ::-webkit-scrollbar{width:8px}
+  ::-webkit-scrollbar-track{background:#1a1a1a;border-radius:4px}
+  ::-webkit-scrollbar-thumb{background:#FF8C00;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <span>◆</span>
+    <span>WORTH · CHASSIS</span>
+    <span style="opacity:.5">|</span><span>WS: WORTH-DS</span>
+    <span style="opacity:.5">|</span><span>MODE: CODE</span>
+    <span style="opacity:.5">|</span><span class="hdr-num">T3</span>
+    <span style="opacity:.5">|</span><span class="hdr-num">$0.0423</span>
+    <div style="flex:1"></div>
+    <span style="font-size:11px">SONNET-4</span>
+  </header>
+
+  <div class="body">
+    <aside class="left panel">
+      <div class="warning-banner"></div>
+      <div class="section">
+        <div class="section-title">◈ Agents</div>
+        <div class="row"><span class="y">◉</span> file_indexer</div>
+        <div class="row"><span>✓</span> test_runner</div>
+      </div>
+      <div class="section">
+        <div class="section-title">◈ Model</div>
+        <div class="row">▸ Claude Sonnet 4 <span class="badge">PRI</span></div>
+        <div class="row dim">▸ Claude Haiku 4 <span class="badge" style="background:#666;color:#fff">LT</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">◈ Tools</div>
+        <div class="row">◇ read_file</div>
+        <div class="row">◇ write_file</div>
+        <div class="row">◇ edit_file</div>
+        <div class="row">◇ bash</div>
+        <div class="row">◇ memory_query</div>
+      </div>
+      <div class="section">
+        <div class="section-title">◈ Skills</div>
+        <div class="row">△ write-tests</div>
+        <div class="row">△ git-commit</div>
+      </div>
+      <div class="botscrews"><i></i><i></i></div>
+    </aside>
+
+    <main class="center">
+      <div class="viewport">
+        <div class="viewport-inner">
+          <div><span class="prompt">you &gt;</span> write a test for auth.ex that covers the vault-unlock path</div>
+          <div style="margin-top:14px"><span class="prompt">worth &gt;</span> Reading lib/worth/vault.ex to see which clauses need coverage.</div>
+          <div style="margin-top:6px;color:#FDB813">[tool] read_file(path: "lib/worth/vault.ex")</div>
+          <div style="color:#00FF41">  ✓ 248 lines, 7 public functions</div>
+          <div style="margin-top:10px;color:#00CC33;font-style:italic">· thinking · three candidate test paths. picking branch coverage over line coverage.</div>
+          <div style="margin-top:10px"><span class="prompt">worth &gt;</span> Writing test/worth/vault_test.exs with four cases.</div>
+          <div style="margin-top:6px;color:#FDB813">[tool] write_file(test/worth/vault_test.exs, 92 lines)</div>
+          <div style="color:#00FF41">  ✓ written · running mix test…</div>
+        </div>
+        <div class="scanlines"></div>
+      </div>
+
+      <div class="input-bar">
+        <span style="color:#FF8C00;font-family:'Orbitron';font-weight:700;font-size:13px">PROMPT &gt;</span>
+        <input placeholder="Enter command..." />
+        <button class="emergency-button">SEND</button>
+      </div>
+    </main>
+
+    <aside class="right panel">
+      <div class="section">
+        <div class="section-title">◈ Session</div>
+        <div class="metric"><span>Duration</span><span>12m</span></div>
+        <div class="metric"><span>Cost</span><span class="r">$0.0423</span></div>
+        <div class="metric"><span>Turns</span><span>3</span></div>
+        <div class="metric"><span>Calls</span><span>8</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">◈ Tokens</div>
+        <div class="metric"><span>Input</span><span>42,119</span></div>
+        <div class="metric"><span>Output</span><span>3,847</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">◈ Cache</div>
+        <div class="metric"><span>Read</span><span>38,400</span></div>
+        <div class="metric"><span>Write</span><span class="y">4,210</span></div>
+      </div>
+      <div class="section">
+        <div class="section-title">◈ Memory</div>
+        <div class="metric"><span>Working</span><span class="r">14</span></div>
+        <div class="metric"><span>Stored</span><span>1,287</span></div>
+      </div>
+      <div class="botscrews"><i></i><i></i></div>
+    </aside>
+  </div>
+</div>
+</body>
+</html>
