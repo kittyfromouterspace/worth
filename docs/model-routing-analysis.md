@@ -316,7 +316,7 @@ A `credentials_fn` is configured in `config/config.exs` for Recollect's embeddin
 └───────────────────────────┼──────────────────────────────┘
                             ▼
 ┌─────────────────────────────────────────────────────────┐
-│  AGENT_EX (shared library)                               │
+│  AGENTIC (shared library)                                │
 │                                                          │
 │  Credentials.resolve/2                                   │
 │    1. opts[:api_key]  ← Worth always injects this       │
