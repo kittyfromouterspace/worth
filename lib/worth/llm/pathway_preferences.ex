@@ -88,11 +88,13 @@ defmodule Worth.LLM.PathwayPreferences do
   @doc "List provider ids that have any saved account economics."
   @spec configured_providers() :: [provider_id()]
   def configured_providers do
+    # Stored keys look like "preference:account:<provider>:<field>"
+    # because `put/2` always adds the "preference:" prefix.
     "preference"
     |> Settings.all_by_category()
     |> Enum.flat_map(fn s ->
       case String.split(s.key, ":", parts: 4) do
-        ["account", provider, _field] -> [String.to_atom(provider)]
+        ["preference", "account", provider, _field] -> [String.to_atom(provider)]
         _ -> []
       end
     end)
@@ -123,12 +125,20 @@ defmodule Worth.LLM.PathwayPreferences do
 
   @doc "Return all stored canonical → provider preferences as a map."
   def all_pathway_preferences do
+    # Stored row keys look like "preference:pathway:<canonical_id>"
+    # because `put/2` namespaces every preference with a literal
+    # "preference:" prefix. The original implementation split on `:`
+    # parts=2 which lopped off the prefix and never matched
+    # "pathway", silently returning an empty map.
     "preference"
     |> Settings.all_by_category()
     |> Enum.flat_map(fn s ->
-      case String.split(s.key, ":", parts: 2) do
-        ["pathway", canonical] -> [{canonical, String.to_atom(s.value || "")}]
-        _ -> []
+      case String.split(s.key, ":", parts: 3) do
+        ["preference", "pathway", canonical] when is_binary(s.value) and s.value != "" ->
+          [{canonical, String.to_atom(s.value)}]
+
+        _ ->
+          []
       end
     end)
     |> Map.new()

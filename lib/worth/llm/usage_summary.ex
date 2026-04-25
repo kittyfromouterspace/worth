@@ -102,8 +102,23 @@ defmodule Worth.LLM.UsageSummary do
     actual_total || estimated_total
   end
 
+  # Sum a list of `Money.t()` values, normalising every entry to the
+  # display currency (default USD) before adding so we can mix CNY z.ai
+  # spend with USD OpenRouter spend in one rollup. Conversion uses the
+  # live exchange-rate cache the host configured (`Money.ExchangeRates`);
+  # currencies the cache can't resolve are dropped from the sum and a
+  # debug log is emitted.
+  #
+  # When the cache hasn't fetched any rates yet (common in dev where
+  # `auto_start_exchange_rate_service` is `false`), we fall back to
+  # adding only the entries that already share the display currency
+  # rather than refusing to produce a number.
   defp sum_money(monies) do
+    display = display_currency()
+
     monies
+    |> Enum.reject(&is_nil/1)
+    |> Enum.map(&to_display_currency(&1, display))
     |> Enum.reject(&is_nil/1)
     |> case do
       [] ->
@@ -113,10 +128,38 @@ defmodule Worth.LLM.UsageSummary do
         Enum.reduce(rest, first, fn m, acc ->
           case Money.add(acc, m) do
             {:ok, total} -> total
+            # Should be impossible after normalisation, but stay
+            # defensive — fall back to whatever we have so far.
             _ -> acc
           end
         end)
     end
+  end
+
+  defp display_currency do
+    case Application.get_env(:worth, :usage_display_currency) do
+      nil -> :USD
+      atom when is_atom(atom) -> atom
+      str when is_binary(str) -> str |> String.upcase() |> String.to_atom()
+    end
+  end
+
+  defp to_display_currency(%Money{currency: c} = m, c), do: m
+
+  defp to_display_currency(%Money{} = m, display) do
+    case Money.to_currency(m, display) do
+      {:ok, converted} ->
+        converted
+
+      _ ->
+        # FX rates not loaded or currency unknown — drop this entry
+        # rather than poison the sum. The dashboard already surfaces
+        # the FX-freshness footer, so users can tell when conversion
+        # is best-effort.
+        nil
+    end
+  rescue
+    _ -> nil
   end
 
   # effective $/Mtok = monthly fee ÷ million-tokens-consumed

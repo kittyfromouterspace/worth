@@ -1114,9 +1114,17 @@ defmodule WorthWeb.ChatLive do
         monthly_fee_currency: fee_currency
       }
     end)
-    # Show CLI / coding-agent providers first when they're ready —
-    # the user just installed them, this is the lowest-friction
-    # path to a working subscription pathway.
+    # Hide CLI providers whose binary isn't installed. With the wider
+    # 9-CLI set in the providers config, listing every uninstalled
+    # tool is just noise. HTTP API providers stay visible regardless
+    # of credential status — the user might be about to paste in a
+    # key.
+    |> Enum.reject(fn p ->
+      p.source == :coding_agent_cli and p.availability == :unavailable
+    end)
+    # Show ready CLI providers first — the user just installed them,
+    # this is the lowest-friction path to a working subscription
+    # pathway.
     |> Enum.sort_by(fn p ->
       cli_priority =
         case {p.source, p.availability} do
@@ -1165,6 +1173,24 @@ defmodule WorthWeb.ChatLive do
       |> Map.new(fn account -> {account.provider, account} end)
 
     by_canonical
+    |> Enum.map(fn {canonical, models} ->
+      # Drop CLI pathways whose binary isn't installed. The wider
+      # 9-CLI set otherwise floods every canonical group with grey
+      # disabled buttons. HTTP providers stay regardless of
+      # credential state — the user might be about to add a key.
+      visible_models =
+        Enum.reject(models, fn m ->
+          account =
+            Map.get(accounts_by_provider, m.provider) ||
+              Agentic.LLM.ProviderAccount.default(m.provider)
+
+          Worth.LLM.ProviderTaxonomy.cli_provider?(m.provider) and
+            account.availability == :unavailable
+        end)
+
+      {canonical, visible_models}
+    end)
+    # Only show canonical groups with a real choice to make.
     |> Enum.filter(fn {_canonical, models} ->
       provider_count = models |> Enum.map(& &1.provider) |> Enum.uniq() |> length()
       provider_count >= 2

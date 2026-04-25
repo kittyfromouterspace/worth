@@ -22,7 +22,7 @@ defmodule Worth.LLM.SubscriptionPrompt do
   alias Worth.LLM.{ProviderAccountResolver, ProviderTaxonomy}
   alias Worth.Settings
 
-  @dismiss_prefix "preference:subscription_prompt_dismissed:"
+  @dismiss_key_prefix "subscription_prompt_dismissed:"
 
   @type prompt :: %{
           required(:provider) => atom(),
@@ -43,20 +43,23 @@ defmodule Worth.LLM.SubscriptionPrompt do
   end
 
   @doc "Mark a provider's subscription prompt as dismissed (sticky)."
-  @spec dismiss(atom()) :: :ok | {:error, term()}
+  @spec dismiss(atom()) ::
+          {:ok, Worth.Settings.Setting.t()} | {:error, term()}
   def dismiss(provider) when is_atom(provider) do
-    Settings.put("subscription_prompt_dismissed:#{provider}", "true", "preference")
+    Settings.put(dismiss_key(provider), "true", "preference")
   end
 
   @doc "True if the user has dismissed the prompt for this provider."
   @spec dismissed?(atom()) :: boolean()
   def dismissed?(provider) when is_atom(provider) do
-    Settings.get_preference(@dismiss_prefix <> Atom.to_string(provider)) == "true"
+    Settings.get_preference(dismiss_key(provider)) == "true"
   rescue
     _ -> false
   catch
     :exit, _ -> false
   end
+
+  defp dismiss_key(provider), do: @dismiss_key_prefix <> Atom.to_string(provider)
 
   # ----- helpers -----
 

@@ -35,15 +35,15 @@ What's still missing or weak after Phases 1-6 + the two follow-ups. Items are sp
 
 ### Should land before calling done
 
-1. **Test coverage for the new code** — we added ~2.6k lines (Canonical, ProviderAccount, SpendTracker, AdminUsage, the CLI Provider wrappers, PathwayPreferences, ProviderAccountResolver, UsageSummary, SubscriptionPrompt, ProviderTaxonomy, the Mix task) without a single new test file. Phase 1 changes are exercised via existing tests but the new modules above are not covered. Even smoke tests asserting `Canonical.for_model/2` behaviour, `PathwayPreferences` round-trip, and `ProviderTaxonomy` defaults would catch the most likely regressions.
+1. **Test coverage for the new code** — ✅ done. Smoke tests added for `Agentic.LLM.Canonical`, `Agentic.LLM.ProviderAccount`, the `score_pathway/3` arity of `Agentic.ModelRouter.Preference`, `Worth.LLM.ProviderTaxonomy`, `Worth.LLM.PathwayPreferences` (round-trip), `Worth.LLM.AdminKeys`, `Worth.LLM.SubscriptionPrompt`, and `Worth.LLM.ProviderAccountResolver`. The tests caught two real bugs that were already shipped: (a) `SubscriptionPrompt.dismiss/1` wrote to `"subscription_prompt_dismissed:..."` while `dismissed?/1` read from `"preference:subscription_prompt_dismissed:..."` — sticky dismissals never actually stuck. (b) `PathwayPreferences.all_pathway_preferences/0` split keys on `parts: 2` but the writer adds a `"preference:"` prefix, so the function silently returned `%{}` for everything — the router never honored explicit pathway preferences. Both fixed.
 
-2. **Money currency mixing in UsageSummary.sum_money/1** — calls `Money.add/2` which errors when currencies differ. A user with CNY z.ai spend and USD OpenRouter spend will get `nil` rollups silently (the code catches the error and falls back to estimated). Should normalize via `Money.to_currency/3` to a configurable display currency before summing.
+2. **Money currency mixing in UsageSummary.sum_money/1** — ✅ done. `sum_money/1` now normalizes every entry to a configurable display currency (default `:USD`, override via `:worth, :usage_display_currency`) using `Money.to_currency/3` before summing. Currencies that the FX cache can't resolve are dropped from the sum rather than poisoning it; the dashboard's FX-freshness footer already covers the "best-effort" case.
 
-3. **CLI stdout cost emission** — §5.3 of this proposal says we'd emit `[:agentic, :protocol, :cli, :complete]` for the CLI's self-reported `total_cost_usd` (Claude Code prints this in its final JSON) so SpendTracker can sanity-check vs the gateway tap. The event isn't wired yet — the CLI's number is still extracted into the response but never flows to telemetry.
+3. **CLI stdout cost emission** — ✅ done. `Agentic.Protocol.ClaudeCode` now emits `[:agentic, :protocol, :cli, :complete]` from `collect_response/3` carrying CLI-reported `total_cost_usd` (as `Money.t() :USD`) and token counts. SpendTracker subscribes via `:telemetry.attach_many/4`; CLI events are logged at debug level for cross-checking against the Gateway tap (the gateway remains source of truth, per §5.3). The CLI's reported cost also threads through the response metadata so callers can surface it.
 
-4. **`score_for_pathway/2` hardcodes `:optimize_price`** — `ModelRouter.routes_for_tier/2` always passes `:optimize_price` to the pathway scorer. When a user is in `:optimize_speed` routing mode, the canonical grouping ignores it. Thread the user's preference through.
+4. **`score_for_pathway` threads user preference** — ✅ done. `ModelRouter.routes_for_tier/2` (and `resolve_all_with_context/4`) take a `preference` arg propagated from `ctx.model_preference`; default remains `:optimize_price` for the legacy manual-mode flow. Canonical grouping now reflects `:optimize_price` vs `:optimize_speed` correctly.
 
-5. **Provider Accounts UI shows every registered CLI even when its binary is missing** — with the wider 9-CLI set this becomes noisy. Either hide `:unavailable` CLI providers or render them in a collapsed "not installed" group at the bottom.
+5. **Provider Accounts / Model Pathways UI hides unavailable CLI providers** — ✅ done. With the wider 9-CLI set, listing every uninstalled binary was noise. `provider_account_list/0` rejects `coding_agent_cli` rows with `availability == :unavailable`; `model_pathways_list/0` strips them from each canonical group before computing the visibility threshold (so a canonical with one HTTP provider + 8 missing CLIs no longer falsely shows up as a "multi-pathway" group). HTTP API providers stay visible regardless of credential status — the user might be about to paste a key.
 
 ### Later / nice-to-have
 
@@ -80,8 +80,8 @@ After fixes:
 
 | Repo | compiler | dialyzer | doctor | ex_doc | ex_unit | unused_deps |
 |------|----------|----------|--------|--------|---------|-------------|
-| agentic | ✅ | ✅ | ✅ | ✅ | ✅ 568 tests | ✅ |
-| worth   | ✅ | ✅ | ✅ | ✅ | ✅ 198 tests | ✅ |
+| agentic | ✅ | ✅ | ✅ | ✅ | ✅ 593 tests | ✅ |
+| worth   | ✅ | ✅ | ✅ | ✅ | ✅ 232 tests | ✅ |
 
 **Out of scope, explicitly deferred:**
 
