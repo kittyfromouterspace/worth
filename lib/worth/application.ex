@@ -22,6 +22,7 @@ defmodule Worth.Application do
       Worth.Metrics,
       Worth.Metrics.Repo,
       Worth.Metrics.Writer,
+      Worth.Persistence.TranscriptBuffer,
       Worth.Agent.Tracker,
       Broker,
       Worth.Mcp.ConnectionMonitor,

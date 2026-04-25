@@ -14,7 +14,7 @@ defmodule Worth.Brain do
   alias Worth.Mcp.ToolIndex
   alias Worth.Memory.FactExtractor
   alias Worth.Memory.Manager
-  alias Worth.Persistence.Transcript
+  alias Worth.Persistence.TranscriptBuffer
   alias Worth.Skill.Evaluator
   alias Worth.Skill.Lifecycle
   alias Worth.Skill.Refiner
@@ -38,7 +38,8 @@ defmodule Worth.Brain do
     :task_pid,
     :task_from,
     strategy: :default,
-    strategy_opts: []
+    strategy_opts: [],
+    last_agentic_result: nil
   ]
 
   @type t :: %__MODULE__{}
@@ -204,7 +205,8 @@ defmodule Worth.Brain do
       mode: mode,
       profile: mode_to_profile(mode),
       tool_permissions: @default_tool_permissions,
-      active_tools: []
+      active_tools: [],
+      last_agentic_result: nil
     }
 
     tiers = Worth.Workspace.Identity.tier_overrides(state.workspace_path)
@@ -374,6 +376,11 @@ defmodule Worth.Brain do
           maybe_trigger_refinement(name, state)
           state
 
+        {:history_updated, history} ->
+          # Cap history to last 100 messages to prevent unbounded growth
+          capped = Enum.take(history, -100)
+          %{state | history: capped}
+
         _ ->
           state
       end
@@ -429,7 +436,7 @@ defmodule Worth.Brain do
     workspace_path =
       state.workspace_path || Service.resolve_path(state.current_workspace)
 
-    Transcript.append(
+    TranscriptBuffer.append(
       state.session_id,
       %{role: "user", text: text},
       workspace_path
@@ -500,6 +507,8 @@ defmodule Worth.Brain do
     case Agentic.run(run_opts) do
       {:ok, response} ->
         store_outcome_feedback(response)
+        # Persist conversation history for next turn
+        send(brain_pid, {:agent_event_internal, {:history_updated, response[:messages] || []}})
         {:ok, response}
 
       {:error, reason} ->
@@ -575,7 +584,7 @@ defmodule Worth.Brain do
         Manager.recent(memory_opts)
       end,
       on_persist_turn: fn ctx, text ->
-        Transcript.append(
+        TranscriptBuffer.append(
           ctx.session_id || state.session_id,
           %{role: "assistant", text: text},
           workspace_path
@@ -668,60 +677,55 @@ defmodule Worth.Brain do
   end
 
   defp apply_model_routing(opts) do
+    routing = Worth.Config.routing() || %{}
+
     base_opts =
-      case Worth.Config.get([:model_routing]) do
-        %{mode: "auto", preference: pref, filter: filter} ->
+      case routing do
+        %{mode: "auto"} = r ->
           opts
           |> Keyword.put(:model_selection_mode, :auto)
-          |> Keyword.put(:model_preference, safe_to_existing_atom(pref))
-          |> maybe_put_filter(filter)
+          |> Keyword.put(:model_preference, safe_to_existing_atom(Map.get(r, :preference)))
+          |> maybe_put_filter(Map.get(r, :filter))
 
-        %{mode: "manual", manual_model: %{provider: provider, model_id: model_id}} = routing ->
+        %{mode: "manual", manual_model: %{provider: provider, model_id: model_id}} = r ->
           override = %{primary: "#{provider}/#{model_id}"}
 
           opts
           |> Keyword.put(:model_selection_mode, :manual)
           |> Keyword.put(:tier_overrides, override)
-          |> maybe_put_filter(Map.get(routing, :filter))
+          |> maybe_put_filter(Map.get(r, :filter))
 
-        %{mode: "manual", filter: filter} ->
+        %{mode: "manual"} = r ->
           opts
           |> Keyword.put(:model_selection_mode, :manual)
-          |> maybe_put_filter(filter)
+          |> maybe_put_filter(Map.get(r, :filter))
 
         _ ->
           opts
       end
 
+    # turn_by_turn historically forced :manual selection. Only apply that
+    # coercion when the user hasn't explicitly chosen a routing mode —
+    # otherwise their "auto" setting is silently overwritten.
     base_opts =
-      if Keyword.get(opts, :mode) == :turn_by_turn do
+      if Keyword.get(opts, :mode) == :turn_by_turn and routing == %{} do
         Keyword.put(base_opts, :model_selection_mode, :manual)
       else
         base_opts
       end
 
-    case Keyword.get(base_opts, :tier_overrides) do
-      nil ->
-        case default_model_override() do
-          nil -> base_opts
-          override -> Keyword.put(base_opts, :tier_overrides, override)
-        end
-
-      _already_set ->
-        base_opts
-    end
+    log_routing_decision(routing, base_opts)
+    base_opts
   end
 
-  defp default_model_override do
-    default_provider = Worth.Config.get([:llm, :default_provider])
-    default_model = Worth.Config.get([:llm, :providers, default_provider, :default_model])
-
-    with provider when not is_nil(provider) <- default_provider,
-         model when not is_nil(model) <- default_model do
-      %{primary: "#{provider}/#{model}"}
-    else
-      _ -> nil
-    end
+  defp log_routing_decision(routing, opts) do
+    Logger.info(
+      "[Brain] routing: mode=#{Keyword.get(opts, :model_selection_mode, :default)} " <>
+        "preference=#{Keyword.get(opts, :model_preference, :n_a)} " <>
+        "filter=#{inspect(Keyword.get(opts, :model_filter))} " <>
+        "tier_override=#{inspect(Keyword.get(opts, :tier_overrides))} " <>
+        "source=#{if routing == %{}, do: :defaults, else: :user_settings}"
+    )
   end
 
   defp safe_to_existing_atom(str) when is_binary(str) do

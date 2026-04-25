@@ -131,13 +131,53 @@ defmodule Worth.Config do
   end
 
   defp load_settings_overrides do
-    Enum.reduce(@preference_mappings, %{}, fn {key, path, parser}, acc ->
-      case safe_get_preference(key) do
-        nil -> acc
-        val -> put_in_path(acc, path, parser.(val))
-      end
-    end)
+    overrides =
+      Enum.reduce(@preference_mappings, %{}, fn {key, path, parser}, acc ->
+        case safe_get_preference(key) do
+          nil -> acc
+          val -> put_in_path(acc, path, parser.(val))
+        end
+      end)
+
+    case load_routing_overrides() do
+      nil -> overrides
+      routing -> put_in_path(overrides, [:model_routing], routing)
+    end
   end
+
+  # Routing preferences are stored as four flat keys in the Settings DB
+  # (mode, preference, filter, manual_model) but the brain reads them as
+  # one nested map. Reconstruct that shape here so a fresh boot honours
+  # the user's last saved choice without requiring a re-save.
+  defp load_routing_overrides do
+    mode = safe_get_preference("model_routing_mode")
+    preference = safe_get_preference("model_routing_preference")
+    filter = safe_get_preference("model_routing_filter")
+    manual_model = safe_get_preference("model_routing_manual_model")
+
+    if mode in [nil, ""] do
+      nil
+    else
+      %{
+        mode: mode,
+        preference: preference || "optimize_price",
+        filter: filter || "",
+        manual_model: parse_manual_model(manual_model)
+      }
+    end
+  end
+
+  defp parse_manual_model(spec) when is_binary(spec) do
+    case String.split(spec, "/", parts: 2) do
+      [provider, model_id] when provider != "" and model_id != "" ->
+        %{provider: provider, model_id: model_id}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp parse_manual_model(_), do: nil
 
   defp safe_get_preference(key) do
     Worth.Settings.get_preference(key)
@@ -171,6 +211,15 @@ defmodule Worth.Config do
   catch
     :exit, {:noproc, _} -> :ok
     :exit, _ -> :ok
+  end
+
+  @doc """
+  Read the user's routing config as a normalised map. Returns `nil` when
+  the user has never configured routing — callers should fall back to
+  Agentic catalog defaults in that case.
+  """
+  def routing do
+    get([:model_routing])
   end
 
   @doc """
