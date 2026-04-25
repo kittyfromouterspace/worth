@@ -275,18 +275,6 @@ defmodule WorthWeb.ChatLive.SettingsComponent do
     end
   end
 
-  defp build_monthly_fee(amount, currency)
-       when is_binary(amount) and amount != "" and is_binary(currency) and currency != "" do
-    case Money.new(String.to_atom(String.upcase(currency)), amount) do
-      %Money{} = m -> m
-      _ -> nil
-    end
-  rescue
-    _ -> nil
-  end
-
-  defp build_monthly_fee(_, _), do: nil
-
   # ── Admin keys ─────────────────────────────────────────────────
 
   def handle_event("settings_save_admin_key", %{"provider" => provider, "key" => key}, socket)
@@ -341,6 +329,18 @@ defmodule WorthWeb.ChatLive.SettingsComponent do
     send(self(), {:append_system_message, "Pathway preference cleared for #{canonical}."})
     {:noreply, socket}
   end
+
+  defp build_monthly_fee(amount, currency)
+       when is_binary(amount) and amount != "" and is_binary(currency) and currency != "" do
+    case Money.new(String.to_atom(String.upcase(currency)), amount) do
+      %Money{} = m -> m
+      _ -> nil
+    end
+  rescue
+    _ -> nil
+  end
+
+  defp build_monthly_fee(_, _), do: nil
 
   defp routing_label("auto", pref, "free_only"), do: "Auto (#{pref}, free only)"
   defp routing_label("auto", pref, _), do: "Auto (#{pref})"

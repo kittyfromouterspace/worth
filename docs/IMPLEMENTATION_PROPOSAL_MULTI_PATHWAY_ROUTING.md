@@ -29,6 +29,60 @@ Tracked here as the work lands. Sub-task IDs match the TaskCreate list.
 
 **Verification:** `mix test` in `agentic` → 568 tests pass; `mix test` in `worth` → 198 tests pass.
 
+## Gap Analysis (post-Phase-6 review)
+
+What's still missing or weak after Phases 1-6 + the two follow-ups. Items are split into "should land before this work is called done" and "later / nice-to-have".
+
+### Should land before calling done
+
+1. **Test coverage for the new code** — we added ~2.6k lines (Canonical, ProviderAccount, SpendTracker, AdminUsage, the CLI Provider wrappers, PathwayPreferences, ProviderAccountResolver, UsageSummary, SubscriptionPrompt, ProviderTaxonomy, the Mix task) without a single new test file. Phase 1 changes are exercised via existing tests but the new modules above are not covered. Even smoke tests asserting `Canonical.for_model/2` behaviour, `PathwayPreferences` round-trip, and `ProviderTaxonomy` defaults would catch the most likely regressions.
+
+2. **Money currency mixing in UsageSummary.sum_money/1** — calls `Money.add/2` which errors when currencies differ. A user with CNY z.ai spend and USD OpenRouter spend will get `nil` rollups silently (the code catches the error and falls back to estimated). Should normalize via `Money.to_currency/3` to a configurable display currency before summing.
+
+3. **CLI stdout cost emission** — §5.3 of this proposal says we'd emit `[:agentic, :protocol, :cli, :complete]` for the CLI's self-reported `total_cost_usd` (Claude Code prints this in its final JSON) so SpendTracker can sanity-check vs the gateway tap. The event isn't wired yet — the CLI's number is still extracted into the response but never flows to telemetry.
+
+4. **`score_for_pathway/2` hardcodes `:optimize_price`** — `ModelRouter.routes_for_tier/2` always passes `:optimize_price` to the pathway scorer. When a user is in `:optimize_speed` routing mode, the canonical grouping ignores it. Thread the user's preference through.
+
+5. **Provider Accounts UI shows every registered CLI even when its binary is missing** — with the wider 9-CLI set this becomes noisy. Either hide `:unavailable` CLI providers or render them in a collapsed "not installed" group at the bottom.
+
+### Later / nice-to-have
+
+6. **Admin-usage scheduled poller** — `Agentic.LLM.AdminUsage` adapter and `Worth.LLM.AdminKeys` vault entry both exist; what's missing is a `Worth.LLM.AdminUsagePoller` GenServer that polls every N minutes when admin keys are present and reconciles results against SpendTracker rows. Out-of-scope but trivial follow-up.
+
+7. **Auto-populated quotas** — `ProviderAccount.quotas` is `nil` everywhere; `quota_pressure_score/1` therefore always returns 0. Anthropic exposes per-minute rate-limit headers (`anthropic-ratelimit-tokens-*`) which Pro/Max users could approximate as a weekly-cap proxy by accumulating SpendTracker tokens against a user-entered limit. None of that is wired.
+
+8. **Sticky bucket → canonical_model_id** — Phase 1.8 stored `canonical_id` on the sticky record but the bucket key is still `{tier, filter}`. Promoting `canonical_id` to the bucket key would let stickiness survive cross-canonical routing changes more cleanly.
+
+9. **Discovery DB ↔ ProviderTaxonomy sync** — the CLI provider list is hardcoded in `ProviderTaxonomy.@cli_providers` and the per-agent `cli_name` is hardcoded in each `Provider.*` module. If `Agentic.Protocol.ACP.Discovery.known_agents/0` adds a new entry upstream we have to remember to add a wrapper. Could be auto-derived at compile time via `unquote_splicing`.
+
+10. **OXR relay (Phase 7)** — explicit deferred milestone; ship `WORTH_OXR_APP_ID` env var in v1, the Worth-hosted relay in v2.
+
+11. **`docs/MULTI_PATHWAY_ROUTING_ARCHITECTURE.md` headline doc** — short-form summary is still rev 2; rev 3 + Phase 4-6 changes haven't been backported. Minor.
+
+### Code-quality follow-ups (from `mix check` runs)
+
+Both repos now pass `mix check` end-to-end (compiler, dialyzer, doctor, ex_doc, ex_unit, unused_deps — credo/gettext/mix_audit/sobelow are not installed). What was fixed:
+
+**Agentic:**
+- `coding_agent_base.ex` — the `__using__` macro originally used `Macro.escape` on a list of 4-tuples; Elixir AST can't represent >2-tuples as literals, so escape produced `{:{}, meta, [...]}` AST nodes that crashed at runtime with `FunctionClauseError`. Refactored to inject the seed list via `unquote` directly, with the iteration moved into a public `build_models/3` helper. Both `model_overrides`-supplied and default-seed paths now go through identical code, also resolving Dialyzer's `guard_fail` warnings on Gemini CLI / Kimi / Qwen wrappers.
+- `lib/mix/tasks/agentic.routes.ex` Mix.Task `callback_info_missing` and `Mix.shell/0 unknown_function` warnings — added to `.dialyzer_ignore.exs` (benign for runtime Mix tasks).
+- Pre-existing `compressed`/`_last` warning-as-error blockers in `loop/stages/{context_guard,llm_call}.ex` — fixed.
+- Pre-existing `workspace_snapshot.ex` pattern_match — added to ignore (cleanup not in scope).
+- Doctor: 13 Cldr-generated submodules + `CodingAgentBase` macro module + `SpendTracker.Window` internal struct added to `.doctor.exs` `ignore_modules` (none of these have user-controllable docstrings).
+
+**Worth:**
+- `pathway_preferences.ex:139` — dead `parse_cost_profile(nil)` clause; `account_for/1` had been refactored to handle nil at the call site, leaving the clause unreachable. Removed.
+- `admin_keys.ex` — `@spec` declared `:ok | {:error, term()}` but the implementation returns `Settings.put`'s `{:ok, %Setting{}} | {:error, _}`. Fixed the spec, which also resolves the Dialyzer warning at the caller site.
+- `chat_live/settings_component.ex` — pre-existing `handle_event/3` clause-grouping warning; reordered private helpers to keep handlers contiguous.
+- 13 `Worth.Cldr.*` generated submodules added to `.doctor.exs` `ignore_modules`.
+
+After fixes:
+
+| Repo | compiler | dialyzer | doctor | ex_doc | ex_unit | unused_deps |
+|------|----------|----------|--------|--------|---------|-------------|
+| agentic | ✅ | ✅ | ✅ | ✅ | ✅ 568 tests | ✅ |
+| worth   | ✅ | ✅ | ✅ | ✅ | ✅ 198 tests | ✅ |
+
 **Out of scope, explicitly deferred:**
 
 - The Worth-side scheduled poller that calls `Agentic.LLM.AdminUsage` and reconciles results against SpendTracker rows. The polling adapter exists (Phase 5) and the admin-key vault entry exists (Phase 4) — what remains is a `Worth.LLM.AdminUsagePoller` GenServer that fires every N minutes when admin keys are present. Trivial follow-up; left out to keep the diff focused on UI surfaces.

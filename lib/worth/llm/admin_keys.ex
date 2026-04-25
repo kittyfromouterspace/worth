@@ -27,7 +27,8 @@ defmodule Worth.LLM.AdminKeys do
   def get(:anthropic), do: Settings.get(@anthropic_key)
   def get(:openai), do: Settings.get(@openai_key)
 
-  @spec put(:anthropic | :openai, String.t()) :: :ok | {:error, term()}
+  @spec put(:anthropic | :openai, String.t()) ::
+          {:ok, Worth.Settings.Setting.t()} | {:error, term()}
   def put(:anthropic, key) when is_binary(key) and key != "",
     do: Settings.put(@anthropic_key, key, "secret")
 
@@ -36,7 +37,8 @@ defmodule Worth.LLM.AdminKeys do
 
   def put(_, _), do: {:error, :empty}
 
-  @spec delete(:anthropic | :openai) :: :ok | {:error, term()}
+  @spec delete(:anthropic | :openai) ::
+          {:ok, Worth.Settings.Setting.t()} | {:error, term()}
   def delete(:anthropic), do: Settings.delete(@anthropic_key)
   def delete(:openai), do: Settings.delete(@openai_key)
 

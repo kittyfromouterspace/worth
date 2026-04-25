@@ -136,8 +136,9 @@ defmodule Worth.LLM.PathwayPreferences do
 
   # ----- helpers -----
 
-  defp parse_cost_profile(nil), do: :pay_per_token
-
+  # Caller (`account_for/1`) handles the nil case directly so it can
+  # delegate to `ProviderTaxonomy.default_cost_profile/1`. This clause
+  # only ever sees a stored binary.
   defp parse_cost_profile(s) when is_binary(s) do
     atom = String.to_atom(s)
     if atom in @cost_profiles, do: atom, else: :pay_per_token
