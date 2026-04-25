@@ -23,6 +23,7 @@ Tracked here as the work lands. Sub-task IDs match the TaskCreate list.
 | 5 Worth-side admin-key UI | ✅ done | `Worth.LLM.AdminKeys` (vault-backed); admin key entry card in settings with explicit "read-only billing" disclosure |
 | 6 Subscription dashboard | ✅ done | `Worth.LLM.UsageSummary` + `WorthWeb.Components.Usage`; `/usage` slash command repurposed to open the dashboard view; per-provider cards with effective $/Mtok, monthly tokens, today/month spend, balance, subscription savings |
 | 7 OXR relay (deferred) | 🕓 deferred | future milestone |
+| **Refactor: detected CLI agents drive pathway suggestions** | ✅ done | `Worth.LLM.ProviderTaxonomy` classifies provider as `:coding_agent_cli` vs `:http_api`; CLI providers default to `:subscription_included` cost_profile (auto, no setup); Provider Accounts UI shows "auto-detected" badge + CLI tag; Model Pathways UI shows implicit picks as dashed-border buttons; Brain merges implicit CLI pathway picks into `pathway_preferences` so the router score-bonus applies. User-set explicit preferences always win. |
 
 **Verification:** `mix test` in `agentic` → 568 tests pass; `mix test` in `worth` → 198 tests pass.
 

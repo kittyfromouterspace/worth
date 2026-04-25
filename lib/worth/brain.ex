@@ -707,7 +707,51 @@ defmodule Worth.Brain do
   end
 
   defp safe_pathway_preferences do
-    Worth.LLM.PathwayPreferences.all_pathway_preferences()
+    explicit = Worth.LLM.PathwayPreferences.all_pathway_preferences()
+    implicit = implicit_cli_pathway_preferences()
+    # User-set values always win — `Map.merge/2`'s right-hand side
+    # overrides, so explicit goes second.
+    Map.merge(implicit, explicit)
+  rescue
+    _ -> %{}
+  catch
+    :exit, _ -> %{}
+  end
+
+  # Suggest the user's installed CLI agent as the implicit pathway
+  # for any canonical model it serves. This mirrors what the
+  # cost_profile scoring already does (CLI = :subscription_included
+  # beats :pay_per_token), but using the explicit preference channel
+  # lets us keep the score-bonus path consistent and surface the
+  # decision in the UI.
+  defp implicit_cli_pathway_preferences do
+    accounts =
+      try do
+        Worth.LLM.ProviderAccountResolver.build_all()
+        |> Map.new(fn account -> {account.provider, account} end)
+      rescue
+        _ -> %{}
+      catch
+        :exit, _ -> %{}
+      end
+
+    Agentic.LLM.Catalog.by_canonical(has: [:chat, :tools])
+    |> Enum.flat_map(fn {canonical, models} ->
+      cli_pick =
+        Enum.find(models, fn model ->
+          account = Map.get(accounts, model.provider)
+
+          Worth.LLM.ProviderTaxonomy.cli_provider?(model.provider) and
+            account != nil and
+            account.availability == :ready
+        end)
+
+      case cli_pick do
+        nil -> []
+        model -> [{canonical, model.provider}]
+      end
+    end)
+    |> Map.new()
   rescue
     _ -> %{}
   catch

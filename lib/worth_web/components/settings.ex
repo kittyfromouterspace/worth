@@ -818,9 +818,22 @@ defmodule WorthWeb.Components.Settings do
             <div class="flex items-center gap-2">
               <span class={availability_dot_class(account.availability)}>●</span>
               <span class="text-sm font-medium text-ctp-text">{account.label}</span>
+              <span :if={account.source == :coding_agent_cli} class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-ctp-blue/15 text-ctp-blue">
+                CLI
+              </span>
+              <span :if={Map.get(account, :auto_detected)} class="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-ctp-green/15 text-ctp-green">
+                auto-detected
+              </span>
               <span class="text-xs text-ctp-overlay0">{availability_label(account.availability)}</span>
             </div>
           </div>
+
+          <p
+            :if={Map.get(account, :auto_detected) and account.availability == :ready}
+            class="text-xs text-ctp-overlay0 mb-2"
+          >
+            Installed — already configured as a subscription pathway. Adjust the cost profile or add the monthly fee for accurate amortization.
+          </p>
 
           <form
             phx-target={@target}
@@ -1015,7 +1028,7 @@ defmodule WorthWeb.Components.Settings do
             <span class="text-xs text-ctp-overlay0">{length(pathway.providers)} pathways</span>
           </div>
 
-          <div class="flex flex-wrap gap-2">
+          <div class="flex flex-wrap gap-2 items-center">
             <button
               :for={provider <- pathway.providers}
               type="button"
@@ -1025,26 +1038,36 @@ defmodule WorthWeb.Components.Settings do
               phx-value-provider={provider.id}
               class={[
                 "px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-colors",
-                provider.preferred && "border border-ctp-blue bg-ctp-blue/10 text-ctp-blue font-semibold",
+                provider.preferred_explicitly && "border border-ctp-blue bg-ctp-blue/10 text-ctp-blue font-semibold",
+                provider.preferred_implicitly && "border border-dashed border-ctp-blue bg-ctp-blue/5 text-ctp-blue",
                 !provider.preferred && "border border-ctp-surface1 text-ctp-subtext0 hover:border-ctp-surface2",
                 provider.unavailable && "opacity-40"
               ]}
-              title={"#{provider.cost_profile} • #{provider.availability_label}"}
+              title={"#{provider.cost_profile} • #{provider.availability_label}#{if provider.preferred_implicitly, do: " • auto-picked from your installed CLI"}"}
             >
               {provider.label}
+              <span :if={provider.cli} class="text-[9px] uppercase tracking-wider ml-1 text-ctp-overlay0">CLI</span>
               <span :if={provider.cost_profile == "subscription_included"} class="text-ctp-green ml-1">★</span>
             </button>
+
             <button
-              :if={Enum.any?(pathway.providers, & &1.preferred)}
+              :if={pathway.has_explicit_preference}
               type="button"
               phx-target={@target}
               phx-click="settings_clear_pathway"
               phx-value-canonical={pathway.canonical_id}
-              class="px-3 py-1.5 rounded-lg text-xs cursor-pointer text-ctp-overlay0 hover:text-ctp-text"
-              title="Clear preference (auto-pick)"
+              class="px-3 py-1.5 rounded-lg text-xs cursor-pointer text-ctp-overlay0 hover:text-ctp-text border border-ctp-surface1"
+              title="Clear preference — the router will fall back to the implicit pick"
             >
-              auto
+              clear
             </button>
+
+            <span
+              :if={!pathway.has_explicit_preference and Enum.any?(pathway.providers, & &1.preferred_implicitly)}
+              class="text-xs text-ctp-overlay0 italic"
+            >
+              auto-picked from installed CLI — click any pathway to pin
+            </span>
           </div>
         </div>
       </div>

@@ -10,7 +10,7 @@ defmodule Worth.LLM.ProviderAccountResolver do
   """
 
   alias Agentic.LLM.{ProviderAccount, ProviderRegistry}
-  alias Worth.LLM.PathwayPreferences
+  alias Worth.LLM.{PathwayPreferences, ProviderTaxonomy}
 
   @doc """
   Build the full list of `ProviderAccount` structs for every registered
@@ -22,6 +22,42 @@ defmodule Worth.LLM.ProviderAccountResolver do
   def build_all do
     ProviderRegistry.list()
     |> Enum.map(&build_for_provider/1)
+  end
+
+  @doc """
+  Like `build_all/0` but returns extended account view-models that
+  include the provider source (`:http_api` | `:coding_agent_cli`) and
+  whether the cost_profile / availability values are auto-derived
+  defaults (`auto_detected: true`) vs explicitly set by the user.
+
+  The Provider Accounts UI uses this to render an "auto-detected"
+  badge on CLI providers that the user hasn't customized yet.
+  """
+  @spec build_all_with_metadata() :: [map()]
+  def build_all_with_metadata do
+    ProviderRegistry.list()
+    |> Enum.map(fn entry ->
+      account = build_for_provider(entry)
+      source = ProviderTaxonomy.source(account.provider)
+      profile_was_stored = stored_cost_profile?(account.provider)
+
+      %{
+        account: account,
+        provider_id: account.provider,
+        module: entry.module,
+        source: source,
+        auto_detected: source == :coding_agent_cli and not profile_was_stored,
+        cost_profile_user_set: profile_was_stored
+      }
+    end)
+  end
+
+  defp stored_cost_profile?(provider_id) do
+    Worth.Settings.get_preference("preference:account:#{provider_id}:cost_profile") != nil
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
   end
 
   @doc "Build a `ProviderAccount` for a single registered provider."

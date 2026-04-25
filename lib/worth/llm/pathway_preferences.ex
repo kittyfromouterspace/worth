@@ -22,6 +22,7 @@ defmodule Worth.LLM.PathwayPreferences do
       preference:pathway:<canonical_id>
   """
 
+  alias Worth.LLM.ProviderTaxonomy
   alias Worth.Settings
 
   @cost_profiles ~w(free subscription_included subscription_metered pay_per_token)a
@@ -38,12 +39,23 @@ defmodule Worth.LLM.PathwayPreferences do
   # ----- Account economics -----
 
   @doc """
-  Fetch the stored economics for `provider`, or fall back to a default
-  pay-per-token shape. Always returns a map (never nil).
+  Fetch the stored economics for `provider`, or fall back to a sensible
+  default. CLI providers (auto-detected from `System.find_executable`)
+  default to `:subscription_included` — every supported coding-agent
+  CLI is subscription-backed, so the user shouldn't have to tell us so
+  manually. HTTP API providers default to `:pay_per_token`. Always
+  returns a map (never nil).
   """
   @spec account_for(provider_id()) :: account_pref()
   def account_for(provider) when is_atom(provider) do
-    profile = parse_cost_profile(get("account:#{provider}:cost_profile"))
+    stored_profile = get("account:#{provider}:cost_profile")
+
+    profile =
+      case stored_profile do
+        nil -> ProviderTaxonomy.default_cost_profile(provider)
+        s when is_binary(s) -> parse_cost_profile(s)
+      end
+
     plan = get("account:#{provider}:plan")
     fee_amount = get("account:#{provider}:monthly_fee_amount")
     fee_currency = get("account:#{provider}:monthly_fee_currency") || @default_currency

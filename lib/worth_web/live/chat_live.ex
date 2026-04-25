@@ -1051,15 +1051,11 @@ defmodule WorthWeb.ChatLive do
   # Build the per-provider economic settings list for the
   # Provider Accounts card. Pulls cost_profile + subscription from
   # PathwayPreferences and the live availability from the resolver.
+  # Auto-detected CLI providers carry an `auto_detected: true` flag so
+  # the UI can mark them as "no setup required".
   defp provider_account_list do
-    accounts = Worth.LLM.ProviderAccountResolver.build_all()
-
-    registry_by_id =
-      Agentic.LLM.ProviderRegistry.list()
-      |> Map.new(fn entry -> {entry.id, entry.module} end)
-
-    Enum.map(accounts, fn account ->
-      mod = Map.get(registry_by_id, account.provider)
+    Worth.LLM.ProviderAccountResolver.build_all_with_metadata()
+    |> Enum.map(fn %{account: account, module: mod, source: source, auto_detected: auto?} ->
       label = if mod, do: mod.label(), else: Atom.to_string(account.provider)
 
       {plan, fee_amount, fee_currency} =
@@ -1074,6 +1070,8 @@ defmodule WorthWeb.ChatLive do
       %{
         provider: Atom.to_string(account.provider),
         label: label,
+        source: source,
+        auto_detected: auto?,
         cost_profile: account.cost_profile,
         availability: account.availability,
         plan: plan,
@@ -1081,7 +1079,19 @@ defmodule WorthWeb.ChatLive do
         monthly_fee_currency: fee_currency
       }
     end)
-    |> Enum.sort_by(& &1.label)
+    # Show CLI / coding-agent providers first when they're ready —
+    # the user just installed them, this is the lowest-friction
+    # path to a working subscription pathway.
+    |> Enum.sort_by(fn p ->
+      cli_priority =
+        case {p.source, p.availability} do
+          {:coding_agent_cli, :ready} -> 0
+          {:coding_agent_cli, _} -> 2
+          _ -> 1
+        end
+
+      {cli_priority, p.label}
+    end)
   rescue
     _ -> []
   catch
@@ -1103,6 +1113,14 @@ defmodule WorthWeb.ChatLive do
   # least 2 pathways, list the pathway providers and which one is
   # preferred. Single-pathway canonicals aren't useful in the UI —
   # nothing to choose between.
+  #
+  # When the user has not stored an explicit pathway preference but a
+  # detected CLI agent (Claude Code etc.) is one of the pathways and
+  # is `:ready`, we mark it as the *implicit* preference. This matches
+  # what the router will actually pick (CLI agents default to
+  # `:subscription_included` which trumps `:pay_per_token` in scoring),
+  # so the UI shouldn't pretend the user has no preference when in
+  # practice the CLI will always win.
   defp model_pathways_list do
     by_canonical = Agentic.LLM.Catalog.by_canonical(has: [:chat, :tools])
     preferences = Worth.LLM.PathwayPreferences.all_pathway_preferences()
@@ -1117,32 +1135,64 @@ defmodule WorthWeb.ChatLive do
       provider_count >= 2
     end)
     |> Enum.map(fn {canonical, models} ->
-      preferred = Map.get(preferences, canonical)
+      explicit_preference = Map.get(preferences, canonical)
+      implicit_preference = implicit_pathway_pick(models, accounts_by_provider, explicit_preference)
+      effective_preference = explicit_preference || implicit_preference
 
       providers =
         models
         |> Enum.uniq_by(& &1.provider)
         |> Enum.map(fn model ->
-          account = Map.get(accounts_by_provider, model.provider) || Agentic.LLM.ProviderAccount.default(model.provider)
+          account =
+            Map.get(accounts_by_provider, model.provider) ||
+              Agentic.LLM.ProviderAccount.default(model.provider)
+
+          source = Worth.LLM.ProviderTaxonomy.source(model.provider)
 
           %{
             id: Atom.to_string(model.provider),
             label: short_provider_label(model.provider),
-            preferred: preferred == model.provider,
+            preferred: effective_preference == model.provider,
+            preferred_explicitly: explicit_preference == model.provider,
+            preferred_implicitly:
+              implicit_preference == model.provider and explicit_preference == nil,
             unavailable: account.availability == :unavailable,
+            cli: source == :coding_agent_cli,
             cost_profile: Atom.to_string(account.cost_profile),
             availability_label: availability_blurb(account.availability)
           }
         end)
         |> Enum.sort_by(&{!&1.preferred, &1.unavailable, &1.label})
 
-      %{canonical_id: canonical, providers: providers}
+      %{canonical_id: canonical, providers: providers, has_explicit_preference: !is_nil(explicit_preference)}
     end)
     |> Enum.sort_by(& &1.canonical_id)
   rescue
     _ -> []
   catch
     :exit, _ -> []
+  end
+
+  # Implicit pick logic: if a `:ready` CLI provider is one of the
+  # pathways AND the user has no explicit preference, suggest the CLI
+  # since its `:subscription_included` profile beats `:pay_per_token`
+  # in the router by default anyway.
+  defp implicit_pathway_pick(_models, _accounts, explicit) when not is_nil(explicit), do: nil
+
+  defp implicit_pathway_pick(models, accounts_by_provider, _explicit) do
+    models
+    |> Enum.find(fn model ->
+      account =
+        Map.get(accounts_by_provider, model.provider) ||
+          Agentic.LLM.ProviderAccount.default(model.provider)
+
+      Worth.LLM.ProviderTaxonomy.cli_provider?(model.provider) and
+        account.availability == :ready
+    end)
+    |> case do
+      nil -> nil
+      model -> model.provider
+    end
   end
 
   defp short_provider_label(:anthropic), do: "Anthropic"
