@@ -6,7 +6,7 @@ defmodule WorthWeb.Components.Chat do
   use Phoenix.Component
 
   import WorthWeb.CoreComponents, only: [icon: 1]
-  import WorthWeb.Components.Brand, only: [worth_mark: 1]
+  import WorthWeb.Components.Brand, only: [worth_mark: 1, w_spinner: 1]
   import WorthWeb.ThemeHelper, only: [color: 1]
 
   # ── Header ──────────────────────────────────────────────────────
@@ -23,9 +23,9 @@ defmodule WorthWeb.Components.Chat do
 
   def chat_header(assigns) do
     ~H"""
-    <header class={"heat-seam flex items-center gap-3 px-4 py-2 shrink-0 text-sm #{color(:background)} #{color(:border)} border-b"}>
+    <header class={"heat-seam flex items-center gap-2.5 px-4 py-2 shrink-0 text-sm #{color(:background)} #{color(:border)} border-b"}>
       <div class="flex items-center gap-2">
-        <span class={status_class(@status)}>
+        <span class={status_class(@status)} style="font-size: 16px; line-height: 1;">
           <.status_indicator status={@status} />
         </span>
         <.worth_mark size={16} />
@@ -44,12 +44,12 @@ defmodule WorthWeb.Components.Chat do
       <span class={color(:text_dim)}>|</span>
       <span class={"tabular #{color(:text)}"}>{cost_display(@cost)}</span>
 
-      <span :if={model_label(@models)} class={color(:text_dim)}>
-        ({model_label(@models)})
+      <span class={color(:text_dim)}>
+        ( <span class={color(:text_muted)}>{model_label(@models) || "no model"}</span> )
       </span>
 
       <span :if={length(@active_agents) > 0} class={color(:warning)}>
-        <span class="spinner"></span> {@active_agents |> length()} agents
+        <.w_spinner /> {@active_agents |> length()} agents
       </span>
 
       <div class="flex-1" />
@@ -80,19 +80,19 @@ defmodule WorthWeb.Components.Chat do
 
   defp status_indicator(%{status: :running} = assigns) do
     ~H"""
-    <span class="spinner"></span>
+    <.w_spinner />
     """
   end
 
   defp status_indicator(%{status: :error} = assigns) do
     ~H"""
-    <span>x</span>
+    <span>×</span>
     """
   end
 
   defp status_indicator(assigns) do
     ~H"""
-    <span>o</span>
+    <span>○</span>
     """
   end
 
@@ -130,42 +130,48 @@ defmodule WorthWeb.Components.Chat do
     assigns = assign(assigns, :skills, skills)
 
     ~H"""
-    <aside class={"w-56 overflow-y-auto shrink-0 text-sm #{color(:background)} #{color(:border)} border-r"}>
-      <div class={"px-3 py-2 font-bold text-xs uppercase tracking-wider #{color(:primary)} bg-opacity-10"}>
+    <aside class={"w-52 overflow-y-auto shrink-0 text-sm #{color(:background)} #{color(:border)} border-r"}>
+      <div class={"px-3 py-2 font-semibold text-[11px] uppercase tracking-wider #{color(:accent)}"}>
         Workspace
       </div>
 
       <%!-- Workspaces --%>
-      <div class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Workspaces</div>
-        <div
-          :for={ws <- @workspaces}
-          phx-click="switch_workspace"
-          phx-value-name={ws}
-          class={"text-xs py-px cursor-pointer #{ws == @workspace && "#{color(:primary)} font-semibold" || "#{color(:text_muted)} hover:#{color(:text)}"}"}
-        >
-          {if ws == @workspace, do: "● ", else: "○ "}{ws}
+      <div class="px-3 py-2.5">
+        <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)}"} style="font-family: var(--font-ui);">Workspaces</div>
+        <div class="max-h-48 overflow-y-auto -mr-2 pr-2">
+          <div
+            :for={ws <- @workspaces}
+            phx-click="switch_workspace"
+            phx-value-name={ws}
+            class={"text-xs py-px flex items-center gap-1.5 cursor-pointer #{ws == @workspace && "#{color(:text)} font-medium" || "#{color(:text_muted)} hover:#{color(:text)}"}"}
+            style="font-family: var(--font-mono);"
+          >
+            <span class={if ws == @workspace, do: color(:accent), else: color(:text_muted)}>
+              {if ws == @workspace, do: "●", else: "○"}
+            </span>
+            {ws}
+          </div>
         </div>
       </div>
 
       <%!-- Agents --%>
-      <div class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Agents</div>
-        <div :if={@agents == [] && @status == :running} class={"text-xs #{color(:info)}"}>
-          <span class="spinner"></span> working…
+      <div class="px-3 py-2.5">
+        <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)}"} style="font-family: var(--font-ui);">Agents</div>
+        <div :if={@agents == [] && @status == :running} class={"text-xs flex items-center gap-1.5 #{color(:warning)}"} style="font-family: var(--font-mono);">
+          <.w_spinner /> working…
         </div>
-        <div :if={@agents == [] && @status != :running} class={"text-xs #{color(:text_dim)}"}>o idle</div>
-        <div :for={agent <- @agents} class="text-xs py-px">
+        <div :if={@agents == [] && @status != :running} class={"text-xs #{color(:text_dim)}"} style="font-family: var(--font-mono);">○ idle</div>
+        <div :for={agent <- @agents} class="text-xs py-px" style="font-family: var(--font-mono);">
           <.agent_row agent={agent} />
         </div>
       </div>
 
       <%!-- Model --%>
-      <div class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Model</div>
-        <div class={"text-xs space-y-0.5 #{color(:text_muted)}"}>
+      <div class="px-3 py-2.5">
+        <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)}"} style="font-family: var(--font-ui);">Model</div>
+        <div class={"text-[11px] space-y-0.5 #{color(:text_muted)}"} style="font-family: var(--font-mono);">
           <div :if={@model_routing[:coding_agent]}>
-            <span class={color(:primary)}>{@model_routing.coding_agent[:name]}</span>
+            <span class={color(:accent)}>{@model_routing.coding_agent[:name]}</span>
             <div class={"#{color(:text_dim)} text-[10px]"}>coding agent · /model auto to switch back</div>
           </div>
           <div :if={
@@ -175,7 +181,7 @@ defmodule WorthWeb.Components.Chat do
             <% actual = model_short(@models, :primary)
             configured = manual_model_label(@model_routing.manual_model)
             fallback = actual && actual != configured && actual %>
-            <span class={color(:primary)}>{configured}</span>
+            <span class={color(:accent)}>{configured}</span>
             <div :if={fallback} class={"#{color(:info)} text-[10px]"}>→ {fallback}</div>
             <div class={"#{color(:text_dim)} text-[10px]"}>manual · /model auto to switch</div>
           </div>
@@ -183,20 +189,20 @@ defmodule WorthWeb.Components.Chat do
             (@model_routing[:mode] != "manual" or is_nil(@model_routing[:manual_model])) and
               is_nil(@model_routing[:coding_agent])
           }>
-            <div class={color(:primary)}>primary</div>
+            <div class={color(:accent)}>primary</div>
             <div class={color(:text_muted)}>
               <%= case model_short(@models, :primary) do %>
                 <% nil -> %>
-                  <span class="spinner"></span>
+                  <.w_spinner />
                 <% label -> %>
                   {label}
               <% end %>
             </div>
-            <div class={"#{color(:primary)} mt-1"}>light</div>
+            <div class={"#{color(:accent)} mt-1"}>light</div>
             <div class={color(:text_muted)}>
               <%= case model_short(@models, :lightweight) do %>
                 <% nil -> %>
-                  <span class="spinner"></span>
+                  <.w_spinner />
                 <% label -> %>
                   {label}
               <% end %>
@@ -207,30 +213,31 @@ defmodule WorthWeb.Components.Chat do
       </div>
 
       <%!-- Tools --%>
-      <div class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Tools</div>
+      <div class="px-3 py-2.5">
+        <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)}"} style="font-family: var(--font-ui);">Tools</div>
         <div
           :for={tool <- ~w(read_file write_file edit_file bash list_files memory_query skill_list)}
           class={"text-xs #{color(:text_muted)} py-px"}
+          style="font-family: var(--font-mono);"
         >
           {tool}
         </div>
       </div>
 
       <%!-- Skills --%>
-      <div class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Skills</div>
-        <div :if={@skills == []} class={"text-xs #{color(:text_dim)}"}>(none)</div>
-        <div :for={s <- @skills} class={"text-xs #{color(:text_muted)} py-px"}>
+      <div class="px-3 py-2.5">
+        <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)}"} style="font-family: var(--font-ui);">Skills</div>
+        <div :if={@skills == []} class={"text-xs #{color(:text_dim)}"} style="font-family: var(--font-mono);">(none)</div>
+        <div :for={s <- @skills} class={"text-xs #{color(:text_muted)} py-px"} style="font-family: var(--font-mono);">
           {s.name} <span class={color(:text_dim)}>[{s.trust_level}]</span>
         </div>
       </div>
 
       <%!-- Files --%>
-      <div class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Files</div>
-        <div :if={@files == []} class={"text-xs #{color(:text_dim)}"}>(no files)</div>
-        <div :for={file <- Enum.take(@files, 20)} class={"text-xs truncate py-px #{color(:text_muted)}"}>
+      <div class="px-3 py-2.5">
+        <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)}"} style="font-family: var(--font-ui);">Files</div>
+        <div :if={@files == []} class={"text-xs #{color(:text_dim)}"} style="font-family: var(--font-mono);">(no files)</div>
+        <div :for={file <- Enum.take(@files, 20)} class={"text-xs truncate py-px #{color(:text_muted)}"} style="font-family: var(--font-mono);">
           {file}
         </div>
       </div>
@@ -254,20 +261,20 @@ defmodule WorthWeb.Components.Chat do
     assigns = assign(assigns, working_count: working_count, recent_count: recent_count, memory_enabled: memory_enabled)
 
     ~H"""
-    <div class="px-3 py-2">
-      <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)} flex items-center justify-between"}>
+    <div class="px-3 py-2.5">
+      <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)} flex items-center justify-between"} style="font-family: var(--font-ui);">
         <span>Memory</span>
         <span :if={!@memory_enabled} class={"#{color(:warning)} text-[10px]"}>disabled</span>
       </div>
 
-      <div class={"text-xs space-y-1 #{@memory_enabled && color(:text_muted) || color(:text_dim)}"}>
+      <div class={"text-[11px] space-y-0.5 #{@memory_enabled && color(:text_muted) || color(:text_dim)}"} style="font-family: var(--font-mono);">
         <div class="flex justify-between">
           <span>Working:</span>
-          <span class={color(:primary)}>{@working_count}</span>
+          <span class={color(:accent)}>{@working_count}</span>
         </div>
         <div class="flex justify-between">
           <span>Stored:</span>
-          <span class={color(:primary)}>{@recent_count}</span>
+          <span class={color(:accent)}>{@recent_count}</span>
         </div>
       </div>
 
@@ -383,15 +390,15 @@ defmodule WorthWeb.Components.Chat do
       |> assign(:coding_agents, coding_agents)
 
     ~H"""
-    <aside class={"w-64 overflow-y-auto shrink-0 text-sm #{color(:background)} #{color(:border)} border-l"}>
-      <div class={"px-3 py-2 font-bold text-xs uppercase tracking-wider #{color(:primary)} bg-opacity-10"}>
+    <aside class={"w-72 overflow-y-auto shrink-0 text-sm #{color(:background)} #{color(:border)} border-l"}>
+      <div class={"px-3 py-2 font-semibold text-[11px] uppercase tracking-wider #{color(:accent)}"}>
         Metrics
       </div>
 
       <%!-- Session --%>
-      <div class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Session</div>
-        <div class={"text-xs #{color(:text_muted)} space-y-0.5"}>
+      <div class="px-3 py-2.5">
+        <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)}"} style="font-family: var(--font-ui);">Session</div>
+        <div class={"text-[11px] #{color(:text_muted)} space-y-0.5"} style="font-family: var(--font-mono);">
           <div class="flex justify-between">
             <span>Duration:</span>
             <span>{@duration_min}m</span>
@@ -416,9 +423,9 @@ defmodule WorthWeb.Components.Chat do
       </div>
 
       <%!-- Tokens --%>
-      <div class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Tokens</div>
-        <div class={"text-xs #{color(:text_muted)} space-y-0.5"}>
+      <div class="px-3 py-2.5">
+        <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)}"} style="font-family: var(--font-ui);">Tokens</div>
+        <div class={"text-[11px] #{color(:text_muted)} space-y-0.5"} style="font-family: var(--font-mono);">
           <div class="flex justify-between">
             <span>Input:</span>
             <span>{format_int(@metrics.input_tokens)}</span>
@@ -435,9 +442,9 @@ defmodule WorthWeb.Components.Chat do
       </div>
 
       <%!-- Cache & Embeddings --%>
-      <div class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Cache & Embeddings</div>
-        <div class={"text-xs #{color(:text_muted)} space-y-0.5"}>
+      <div class="px-3 py-2.5">
+        <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)}"} style="font-family: var(--font-ui);">Cache & Embeddings</div>
+        <div class={"text-[11px] #{color(:text_muted)} space-y-0.5"} style="font-family: var(--font-mono);">
           <div class="flex justify-between">
             <span>Cache read:</span>
             <span class={color(:success)}>{format_int(@metrics.cache_read)}</span>
@@ -458,9 +465,9 @@ defmodule WorthWeb.Components.Chat do
       </div>
 
       <%!-- By Provider --%>
-      <div :if={@metrics.by_provider != %{}} class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>By Provider</div>
-        <div :for={{provider, p} <- @metrics.by_provider} class={"text-xs #{color(:text_dim)}"}>
+      <div :if={@metrics.by_provider != %{}} class="px-3 py-2.5">
+        <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)}"} style="font-family: var(--font-ui);">By Provider</div>
+        <div :for={{provider, p} <- @metrics.by_provider} class={"text-[11px] #{color(:text_dim)}"} style="font-family: var(--font-mono);">
           <div class="flex justify-between">
             <span>{provider}:</span>
             <span>${Float.round(p.cost, 4)} ({p.calls})</span>
@@ -469,26 +476,27 @@ defmodule WorthWeb.Components.Chat do
       </div>
 
       <%!-- Providers --%>
-      <div :if={@catalog_info.providers != %{}} class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Providers</div>
+      <div :if={@catalog_info.providers != %{}} class="px-3 py-2.5">
+        <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)}"} style="font-family: var(--font-ui);">Providers</div>
         <div
           :for={{id, stat} <- @catalog_info.providers}
-          :if={stat.status != :no_creds}
-          class={"text-xs #{color(:text_dim)}"}
+          class={"flex justify-between text-[11px] #{if stat.status == :no_creds, do: color(:text_dim), else: color(:text_muted)}"}
+          style="font-family: var(--font-mono);"
         >
-          {id |> Atom.to_string() |> String.capitalize()}: {provider_detail(stat)}
+          <span>{id |> Atom.to_string() |> String.capitalize()}:</span>
+          <span>{provider_detail(stat)}</span>
         </div>
       </div>
 
       <%!-- Coding Agents --%>
-      <div :if={@coding_agents != []} class="px-3 py-2">
-        <div class={"font-semibold text-xs uppercase tracking-wider mb-1 #{color(:secondary)}"}>Coding Agents</div>
-        <div :for={agent <- @coding_agents} class="text-xs flex items-center gap-1">
+      <div :if={@coding_agents != []} class="px-3 py-2.5">
+        <div class={"font-semibold text-[10px] uppercase tracking-wider mb-1.5 #{color(:text_muted)}"} style="font-family: var(--font-ui);">Coding Agents</div>
+        <div :for={agent <- @coding_agents} class="text-[11px] flex items-center gap-1.5" style="font-family: var(--font-mono);">
           <span class={if agent.available, do: color(:success), else: color(:text_dim)}>
             {if agent.available, do: "●", else: "○"}
           </span>
           <span class={color(:text_muted)}>{agent.display_name}</span>
-          <span class={color(:text_dim)}>({agent.cli_name})</span>
+          <span class={"#{color(:text_dim)} ml-auto"}>({agent.cli_name})</span>
         </div>
       </div>
     </aside>
@@ -502,23 +510,24 @@ defmodule WorthWeb.Components.Chat do
 
   def input_bar(assigns) do
     ~H"""
-    <div class={"border-t px-4 py-3 shrink-0 #{color(:border)} #{color(:background)}"}>
-      <form phx-submit="submit" class="flex items-center gap-3">
-        <span class={"#{color(:text_muted)} text-sm font-mono"}>{@mode} ></span>
-        <input
-          type="text"
+    <div class={"border-t px-4 py-2.5 shrink-0 #{color(:border)} #{color(:background)}"}>
+      <form phx-submit="submit" class="flex items-start gap-3">
+        <span class={"#{color(:text_muted)} shrink-0 select-none"} style="font-family: var(--font-mono); font-size: 13px; line-height: 20px; padding-top: 1px;">{@mode} ></span>
+        <textarea
           name="text"
-          placeholder={if @status == :running, do: "Waiting for response...", else: "Type a message or /command..."}
+          rows="1"
+          placeholder={if @status == :running, do: "Waiting for response...", else: "Type a message or /command…"}
           disabled={@status == :running}
           autocomplete="off"
-          phx-hook="InputFocus"
+          phx-hook="ChatInput"
           id="chat-input"
-          class={"flex-1 bg-transparent border-none outline-none #{color(:text)} #{color(:input_placeholder)} text-sm font-mono"}
-        />
+          class="chat-input-textarea flex-1"
+        ></textarea>
         <button
           :if={@status != :running}
           type="submit"
-          class={"btn-molten px-3 py-1 rounded text-xs font-semibold transition-colors cursor-pointer"}
+          class="btn-molten shrink-0"
+          style="padding: 5px 14px; font-size: 11px;"
         >
           Send
         </button>
@@ -526,7 +535,8 @@ defmodule WorthWeb.Components.Chat do
           :if={@status == :running}
           type="button"
           phx-click="stop"
-          class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:error)} border border-[#FF3B2F]/30 hover:bg-[#FF3B2F]/10 cursor-pointer"}
+          class={"shrink-0 #{color(:error)}"}
+          style="padding: 5px 14px; font-size: 11px; font-weight: 600; border: 1px solid rgba(255,59,47,0.3); border-radius: 2px; background: transparent; cursor: pointer; font-family: var(--font-ui);"
         >
           Stop
         </button>

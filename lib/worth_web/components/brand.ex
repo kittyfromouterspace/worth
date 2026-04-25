@@ -11,17 +11,23 @@ defmodule WorthWeb.Components.Brand do
   use Phoenix.Component
 
   @doc """
-  The flat Worth mark — a geometric W with a molten heat seam.
+  The flat Worth mark — four faceted wedges with three molten seams.
+
+  Distilled from the sculpted textured logo: two outer uprights and two
+  inner descenders meeting below the baseline (the inner V drops lower
+  than the outer uprights — that asymmetric stance is the silhouette and
+  the reason this reads as a W, not a zigzag). Three molten seams sit
+  between the wedges and echo the lava cracks in the textured version.
 
   ## Attributes
 
     * `:size` — pixel size. Defaults to 20.
-    * `:seam` — whether to render the molten heat seam. Defaults to true.
-      Set to false for tiny sizes or monochrome contexts.
+    * `:seam` — render the molten seams. Defaults to true. Set to false
+      for monochrome contexts (favicons, mono knockouts).
     * `:class` — extra classes for the `<svg>` element.
 
-  The strokes use `currentColor` so the mark inherits the surrounding text
-  color. The seam is always molten red.
+  Wedges use `currentColor` so the mark inherits the surrounding text
+  color; seams are always molten red.
   """
   attr :size, :integer, default: 20
   attr :seam, :boolean, default: true
@@ -31,29 +37,23 @@ defmodule WorthWeb.Components.Brand do
     ~H"""
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 48 48"
+      viewBox="0 0 64 64"
       width={@size}
       height={@size}
-      fill="none"
       class={["shrink-0", @class]}
       aria-hidden="true"
     >
-      <path
-        d="M 8 8 L 18 40 L 24 20 L 30 40 L 40 8"
-        stroke="currentColor"
-        stroke-width="5"
-        stroke-linecap="square"
-        stroke-linejoin="miter"
-      />
-      <rect
-        :if={@seam}
-        x="4"
-        y="26"
-        width="40"
-        height="1.5"
-        fill="#FF3B2F"
-        opacity="0.75"
-      />
+      <g :if={@seam} fill="#FF3B2F">
+        <polygon points="17,10 21,10 29,46 26,46" />
+        <polygon points="31,14 33,14 33,48 31,48" />
+        <polygon points="43,10 47,10 38,46 35,46" />
+      </g>
+      <g fill="currentColor">
+        <polygon points="4,10 16,10 28,46 18,52" />
+        <polygon points="22,10 30,10 32,48 28,46" />
+        <polygon points="34,10 42,10 36,46 32,48" />
+        <polygon points="48,10 60,10 46,52 36,46" />
+      </g>
     </svg>
     """
   end
@@ -104,4 +104,28 @@ defmodule WorthWeb.Components.Brand do
   defp text_px(:md), do: 20
   defp text_px(:lg), do: 28
   defp text_px(:xl), do: 40
+
+  @doc """
+  The Worth W-pulse spinner.
+
+  Renders the four wedges of the W mark as inline SVG so the polygons can
+  light up in sequence (1.2s loop, 150ms stagger). Inherits `currentColor`
+  and scales with `font-size` (1em x 1em). Use in any state where the agent
+  is working — header status glyph, tool-call running badge, sidebar agent
+  rows.
+  """
+  attr :class, :string, default: nil
+
+  def w_spinner(assigns) do
+    ~H"""
+    <span class={["spinner", @class]} aria-hidden="true">
+      <svg viewBox="0 0 64 64">
+        <polygon points="4,10 16,10 28,46 18,52" />
+        <polygon points="22,10 30,10 32,48 28,46" />
+        <polygon points="34,10 42,10 36,46 32,48" />
+        <polygon points="48,10 60,10 46,52 36,46" />
+      </svg>
+    </span>
+    """
+  end
 end

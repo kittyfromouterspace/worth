@@ -64,15 +64,34 @@ const COMMANDS = [
   "/setup", "/setup openrouter ", "/setup embedding "
 ]
 
-Hooks.InputFocus = {
+// Chat input — auto-growing textarea with Enter-to-submit semantics.
+// - Enter submits the form (parity with the original single-line input).
+// - Shift+Enter inserts a newline.
+// - Tab completes slash-commands against the COMMANDS list.
+// - Height grows from one line up to the CSS max-height; vertical scroll
+//   takes over after that.
+Hooks.ChatInput = {
   mounted() {
     this.el.focus()
+    this.autosize()
+
     this.handleEvent("clear_input", () => {
       this.el.value = ""
+      this.autosize()
       this.el.focus()
     })
 
+    this.el.addEventListener("input", () => this.autosize())
+
     this.el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault()
+        if (this.el.value.trim() === "") return
+        const form = this.el.form
+        if (form) form.requestSubmit()
+        return
+      }
+
       if (e.key === "Tab") {
         e.preventDefault()
         const val = this.el.value
@@ -84,7 +103,6 @@ Hooks.InputFocus = {
         if (matches.length === 1) {
           this.el.value = matches[0]
         } else {
-          // Complete to longest common prefix
           let prefix = matches[0]
           for (const m of matches) {
             while (!m.startsWith(prefix)) {
@@ -100,12 +118,23 @@ Hooks.InputFocus = {
     })
   },
   updated() {
-    // Re-focus when input becomes enabled (e.g. after agent finishes)
     if (!this.el.disabled) {
       this.el.focus()
     }
+    this.autosize()
+  },
+  autosize() {
+    // Reset to single-line height first so shrinking works as content is
+    // deleted; then expand to scrollHeight (CSS caps with max-height +
+    // overflow-y:auto).
+    this.el.style.height = "auto"
+    this.el.style.height = this.el.scrollHeight + "px"
   }
 }
+
+// Backwards-compat: keep the InputFocus name pointing at the new hook so
+// any caller that still references it doesn't break.
+Hooks.InputFocus = Hooks.ChatInput
 
 // Manages live theme switching — updates body class and theme <style> tag
 Hooks.ThemeManager = {

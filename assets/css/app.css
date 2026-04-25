@@ -158,24 +158,11 @@ code {
   font-weight: 600;
 }
 
-/* ── Spinner animation ── */
-@keyframes spin-dots {
-  0%, 100% { content: "⠋"; }
-  8%  { content: "⠙"; }
-  16% { content: "⠹"; }
-  24% { content: "⠸"; }
-  32% { content: "⠼"; }
-  40% { content: "⠴"; }
-  48% { content: "⠦"; }
-  56% { content: "⠧"; }
-  64% { content: "⠇"; }
-  72% { content: "⠏"; }
-}
-
-.spinner::before {
-  animation: spin-dots 0.8s steps(1) infinite;
-  content: "⠋";
-}
+/* Spinner styles live in the active theme (see lib/worth/theme/*.ex).
+   Bedrock + Fifth Element render the W-pulse SVG; the empty fallback below
+   keeps a 1em x 1em footprint so layout doesn't jump if the theme CSS
+   hasn't loaded yet. */
+.spinner { display: inline-block; width: 1em; height: 1em; }
 
 /* ── Flash messages ── */
 .flash-info {

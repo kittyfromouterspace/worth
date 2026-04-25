@@ -3,19 +3,19 @@
 <div id="theme-manager" phx-hook="ThemeManager" class="hidden"></div>
 
 <%!-- Onboarding view (full screen, no header/sidebar) --%>
-<div :if={@view == :onboarding} class="flex flex-col h-screen font-mono bg-ctp-base">
+<div :if={@view == :onboarding} class={"flex flex-col h-screen font-mono #{WorthWeb.ThemeHelper.color(:background)}"}>
   <.onboarding step={@onboarding_step} />
 </div>
 
 <%!-- Vault unlock view (full screen, shown on app start when vault is locked) --%>
-<div :if={@view == :unlock} class="flex flex-col h-screen font-mono bg-ctp-base">
+<div :if={@view == :unlock} class={"flex flex-col h-screen font-mono #{WorthWeb.ThemeHelper.color(:background)}"}>
   <.vault_unlock_screen error={@unlock_error} />
 </div>
 
 <%!-- Main app view --%>
 <div
   :if={@view not in [:onboarding, :unlock]}
-  class="flex flex-col h-screen font-mono"
+  class="flex flex-col h-screen"
   phx-window-keydown="keydown"
   phx-key="Escape"
 >
@@ -64,43 +64,37 @@
           id="chat-scroll"
           phx-hook="ChatScroll"
           data-auto-scroll={to_string(@streaming_text != "" or @status == :running)}
-          class="flex-1 overflow-y-auto p-4 space-y-2"
+          class="flex-1 overflow-y-auto"
+          style="padding: 14px 22px;"
         >
-          <div id="chat-messages" phx-update="stream">
+          <div id="chat-messages" phx-update="stream" style="display: flex; flex-direction: column; gap: 14px;">
             <div :for={{dom_id, msg} <- @streams.messages} id={dom_id}>
               <.message msg={msg} />
             </div>
           </div>
 
           <%!-- Thinking indicator (before any text arrives) --%>
-          <div :if={@status == :running && @streaming_text == ""} class="py-2 px-3">
-            <div class="flex gap-2">
-              <span class="text-ctp-blue font-bold shrink-0">ai</span>
-              <div class="flex items-center gap-2 text-xs italic text-ctp-overlay1">
-                <span class="spinner"></span>
-                <span>thinking…</span>
-              </div>
+          <div :if={@status == :running && @streaming_text == ""}>
+            <div class="msg-meta">worth</div>
+            <div class={"flex items-center gap-2 text-xs italic #{WorthWeb.ThemeHelper.color(:text_dim)}"}>
+              <.w_spinner /> <span>thinking…</span>
             </div>
           </div>
 
           <%!-- Streaming indicator --%>
-          <div :if={@streaming_text != ""} class="py-2 px-3">
-            <div class="flex gap-2">
-              <span class="text-ctp-blue font-bold shrink-0">ai</span>
-              <div class="flex-1 min-w-0">
-                <% {thinking, visible} = split_streaming_thinking(@streaming_text) %>
-                <div
-                  :if={thinking != ""}
-                  class="text-xs italic mb-2 pl-3 border-l-2 border-ctp-overlay0 text-ctp-overlay1"
-                >
-                  {thinking}
-                </div>
-                <div :if={visible != ""} class="markdown-content">
-                  {render_streaming(visible)}
-                </div>
-                <span class="text-ctp-blue animate-pulse">▍</span>
-              </div>
+          <div :if={@streaming_text != ""}>
+            <div class="msg-meta">worth</div>
+            <% {thinking, visible} = split_streaming_thinking(@streaming_text) %>
+            <div
+              :if={thinking != ""}
+              class="msg-thinking mb-2"
+            >
+              thinking · {thinking}
             </div>
+            <div :if={visible != ""} class="markdown-content">
+              {render_streaming(visible)}
+            </div>
+            <span class={WorthWeb.ThemeHelper.color(:accent)} style="animation: w-pulse 1.2s steps(1,end) infinite;">▍</span>
           </div>
 
           <%!-- Empty state --%>

@@ -20,6 +20,18 @@ defmodule WorthWeb.ChatLive do
 
   require Logger
 
+  defp assistant_model_label(models) do
+    primary = Map.get(models || %{}, :primary, %{})
+    label = Map.get(primary, :label, "")
+
+    if label != "" do
+      label
+      |> String.replace(~r/^[A-Za-z]+:\s*/, "")
+      |> String.split("/")
+      |> List.last()
+    end
+  end
+
   @impl true
   def terminate(reason, _socket) do
     Logger.error("[ChatLive] TERMINATED: #{inspect(reason, limit: :infinity, printable_limit: :infinity)}")
@@ -692,7 +704,7 @@ defmodule WorthWeb.ChatLive do
         final = final |> strip_eom_tokens() |> String.trim()
 
         socket
-        |> stream_insert(:messages, %{id: msg_id(), type: :assistant, content: final})
+        |> stream_insert(:messages, %{id: msg_id(), type: :assistant, content: final, model: assistant_model_label(socket.assigns.models)})
         |> assign(streaming_text: "", status: :idle)
         |> push_event("scroll_to_bottom", %{})
 
