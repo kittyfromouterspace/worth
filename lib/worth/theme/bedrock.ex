@@ -65,7 +65,7 @@ defmodule Worth.Theme.Bedrock do
        diff clarity. */
     :root {
       --color-ctp-base:      #0B0B0D;
-      --color-ctp-mantle:    #0B0B0D;
+      --color-ctp-mantle:    #1A1A1E;
       --color-ctp-crust:     #050506;
       --color-ctp-surface0:  #1A1A1E;
       --color-ctp-surface1:  #2A2A2E;
@@ -200,6 +200,143 @@ defmodule Worth.Theme.Bedrock do
     }
     input::placeholder, textarea::placeholder {
       color: #5A5A5F;
+    }
+
+    /* Chat input — terminal-flavored, fully transparent. Auto-grows up to
+       240px tall via the ChatInput hook (rows starts at 1, JS bumps height
+       to scrollHeight on input). Overrides the generic input chrome above. */
+    textarea.chat-input-textarea,
+    textarea.chat-input-textarea:focus {
+      background: transparent;
+      color: #E8E8EA;
+      border: none;
+      outline: none;
+      box-shadow: none;
+      resize: none;
+      padding: 0;
+      margin: 0;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 20px;
+      min-height: 20px;
+      max-height: 240px;
+      overflow-y: auto;
+      width: 100%;
+      caret-color: #FF3B2F;
+    }
+    textarea.chat-input-textarea::placeholder {
+      color: #5A5A5F;
+      font-style: normal;
+    }
+    textarea.chat-input-textarea:disabled {
+      color: #5A5A5F;
+      cursor: not-allowed;
+    }
+
+    /* W-pulse spinner — the four wedges of the Worth mark light up in
+       sequence. Replaces the braille-dot spinner. Scales with font-size,
+       inherits currentColor. Requires inline SVG child (see <.w_spinner />). */
+    .spinner {
+      display: inline-block;
+      width: 1em;
+      height: 1em;
+      position: relative;
+      vertical-align: -0.15em;
+      line-height: 1;
+    }
+    .spinner svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .spinner svg polygon {
+      fill: currentColor;
+      opacity: 0.22;
+      animation: w-pulse 1.2s steps(1, end) infinite;
+      transform-origin: center;
+    }
+    .spinner svg polygon:nth-child(1) { animation-delay: 0s; }
+    .spinner svg polygon:nth-child(2) { animation-delay: 0.15s; }
+    .spinner svg polygon:nth-child(3) { animation-delay: 0.30s; }
+    .spinner svg polygon:nth-child(4) { animation-delay: 0.45s; }
+    @keyframes w-pulse {
+      0%, 50%, 100% { opacity: 0.22; }
+      8%, 20%       { opacity: 1; }
+    }
+
+    /* Inline `code` per the UI kit — graphite chip, JetBrains Mono 12px,
+       2px radius. Markdown content uses .markdown-content > code. */
+    code, .markdown-content code {
+      background: #2A2A2E;
+      color: #E8E8EA;
+      padding: 1px 5px;
+      border-radius: 2px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+    pre, .markdown-content pre {
+      background: #1A1A1E;
+      border: 1px solid #3A3A3F;
+      border-radius: 4px;
+      padding: 10px 12px;
+      overflow-x: auto;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    pre code, .markdown-content pre code {
+      background: transparent;
+      padding: 0;
+      border-radius: 0;
+      font-size: 12px;
+    }
+
+    /* Tool-call block — terminal-flavored card.
+       Amber name, muted args, ore-green result. Tight padding so consecutive
+       tool_call + tool_result entries read as one block. */
+    .tool-call {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: rgba(42, 42, 46, 0.4);
+      border: 1px solid #3A3A3F;
+      border-radius: 4px;
+      padding: 8px 10px;
+    }
+    .tool-call-name   { color: #F0B341; }
+    .tool-call-args   { color: #8A8A8F; }
+    .tool-call-result { color: #7EC87E; margin-top: 4px; }
+    .tool-call-output {
+      color: #5A5A5F;
+      margin-top: 4px;
+      max-height: 12rem;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      font-size: 11px;
+    }
+
+    /* Message meta line — JetBrains Mono, 10px, dim.
+       e.g. `you · 14:22`, `worth · claude-sonnet-4`. */
+    .msg-meta {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: #5A5A5F;
+      margin-bottom: 3px;
+    }
+
+    /* User message card — subtle dark surface with ash border. */
+    .msg-user {
+      background: #1A1A1E;
+      border: 1px solid #3A3A3F;
+      border-radius: 4px;
+      padding: 12px 14px;
+    }
+
+    /* Thinking strip — italic dim with molten-adjacent left rule. */
+    .msg-thinking {
+      border-left: 2px solid #5A5A5F;
+      padding: 4px 12px;
+      color: #8A8A8F;
+      font-style: italic;
+      font-size: 12px;
     }
     """
   end
