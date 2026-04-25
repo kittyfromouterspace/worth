@@ -1,0 +1,427 @@
+/*
+ * Worth Design System — colors_and_type.css
+ *
+ * Single source of truth for design tokens.
+ * Two themes share one set of semantic variables:
+ *   - .theme-bedrock      (default)
+ *   - .theme-fifth-element
+ *
+ * Usage: apply a theme class to <html> or <body>, then consume
+ * the semantic vars (--fg, --bg-surface, --accent, etc).
+ * ======================================================== */
+
+/* Fonts — all free on Google Fonts. */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Orbitron:wght@400;700;900&family=Fira+Code:wght@400;500&display=swap');
+
+/* ------------------------------------------------------------------
+ * BASE TOKENS — named, brand-level values
+ * ------------------------------------------------------------------ */
+
+:root {
+  /* Bedrock palette (canonical) */
+  --bedrock-obsidian:     #0B0B0D;
+  --bedrock-dark-steel:   #1A1A1E;
+  --bedrock-graphite:     #2A2A2E;
+  --bedrock-ash:          #3A3A3F;
+  --bedrock-molten:       #FF3B2F;
+  --bedrock-heat-glow:    #FF6A3D;
+  --bedrock-text:         #E8E8EA;
+  --bedrock-text-muted:   #8A8A8F;
+  --bedrock-text-dim:     #5A5A5F;
+  --bedrock-ore-green:    #7EC87E;
+  --bedrock-amber:        #F0B341;
+
+  /* Fifth Element palette */
+  --fifth-void:           #0a0a0a;
+  --fifth-void-deep:      #050505;
+  --fifth-panel:          #1a1a1a;
+  --fifth-elevated:       #2C2C2C;
+  --fifth-safety-orange:  #FF8C00;
+  --fifth-orange-hot:     #FFAA00;
+  --fifth-orange-dim:     #CC6600;
+  --fifth-terminal-green: #00FF41;
+  --fifth-terminal-mid:   #00CC33;
+  --fifth-terminal-dim:   #009922;
+  --fifth-taxi-yellow:    #FDB813;
+  --fifth-emergency-red:  #FF3333;
+  --fifth-emergency-deep: #881111;
+  --fifth-chrome:         #C0C0C0;
+
+  /* Type — base stack tokens */
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-ui:      'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, 'Fira Code', monospace;
+  --font-industrial: 'Orbitron', 'Space Grotesk', sans-serif;
+  --font-terminal:   'Fira Code', 'JetBrains Mono', monospace;
+
+  /* Type scale — xs–2xl (size / line-height) */
+  --text-xs:   11px;  --lh-xs:   16px;  /* labels, metadata */
+  --text-sm:   13px;  --lh-sm:   18px;  /* UI default, sidebar rows */
+  --text-base: 14px;  --lh-base: 20px;  /* body copy, messages */
+  --text-md:   16px;  --lh-md:   22px;  /* section headings */
+  --text-lg:   20px;  --lh-lg:   26px;  /* page titles */
+  --text-xl:   28px;  --lh-xl:   34px;  /* hero (marketing) */
+  --text-2xl:  44px;  --lh-2xl:  48px;  /* hero display (marketing) */
+
+  /* Spacing (rare — most layout uses Tailwind tokens) */
+  --space-0: 0;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 24px;
+  --space-8: 32px;
+  --space-9: 48px;
+
+  /* Radii */
+  --radius-none: 0;
+  --radius-xs:   2px;   /* inputs, buttons (bedrock) */
+  --radius-sm:   4px;   /* cards (bedrock) */
+  --radius-md:   8px;   /* buttons (fifth) */
+  --radius-lg:   12px;  /* chassis (fifth) */
+  --radius-full: 9999px;
+
+  /* Elevation — bedrock uses almost none; fifth is physical */
+  --shadow-none:   none;
+  --shadow-active: 0 0 0 1px rgba(255, 59, 47, 0.3); /* focus/pressed bedrock */
+  --shadow-press:  0 4px 0 var(--fifth-emergency-deep),
+                   inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  --shadow-glow:   0 0 15px rgba(255, 59, 47, 0.35);
+  --shadow-chassis: 0 0 0 1px var(--fifth-safety-orange) inset,
+                    0 4px 20px rgba(255, 140, 0, 0.2);
+}
+
+/* ------------------------------------------------------------------
+ * BEDROCK THEME (default — semantic vars)
+ * ------------------------------------------------------------------ */
+
+:root,
+.theme-bedrock {
+  /* Surfaces */
+  --bg:              var(--bedrock-obsidian);
+  --bg-surface:      var(--bedrock-dark-steel);
+  --bg-elevated:     var(--bedrock-graphite);
+  --border:          var(--bedrock-ash);
+  --border-strong:   var(--bedrock-ash);
+
+  /* Foreground */
+  --fg:              var(--bedrock-text);
+  --fg-muted:        var(--bedrock-text-muted);
+  --fg-dim:          var(--bedrock-text-dim);
+
+  /* Accent — the single loud color */
+  --accent:          var(--bedrock-molten);
+  --accent-hover:    var(--bedrock-heat-glow);
+  --accent-press:    #CC2E24;
+
+  /* Semantic */
+  --success:         var(--bedrock-ore-green);
+  --warning:         var(--bedrock-amber);
+  --error:           var(--bedrock-molten);
+  --info:            #9E9EA3;
+
+  /* Type roles */
+  --font-heading:    var(--font-display);
+  --font-body:       var(--font-ui);
+  --font-code:       var(--font-mono);
+
+  /* Chrome */
+  --radius-card:     var(--radius-sm);
+  --radius-button:   var(--radius-xs);
+  --radius-input:    var(--radius-xs);
+  --text-shadow:     none;
+  --scanline:        none;
+}
+
+/* ------------------------------------------------------------------
+ * FIFTH ELEMENT THEME — semantic overrides
+ * ------------------------------------------------------------------ */
+
+.theme-fifth-element {
+  --bg:              var(--fifth-void);
+  --bg-surface:      var(--fifth-panel);
+  --bg-elevated:     var(--fifth-elevated);
+  --border:          var(--fifth-safety-orange);
+  --border-strong:   var(--fifth-safety-orange);
+
+  --fg:              var(--fifth-terminal-green);
+  --fg-muted:        var(--fifth-terminal-mid);
+  --fg-dim:          var(--fifth-terminal-dim);
+
+  --accent:          var(--fifth-safety-orange);
+  --accent-hover:    var(--fifth-orange-hot);
+  --accent-press:    var(--fifth-orange-dim);
+
+  --success:         var(--fifth-terminal-green);
+  --warning:         var(--fifth-taxi-yellow);
+  --error:           var(--fifth-emergency-red);
+  --info:            var(--fifth-taxi-yellow);
+
+  --font-heading:    var(--font-industrial);
+  --font-body:       var(--font-terminal);
+  --font-code:       var(--font-terminal);
+
+  --radius-card:     var(--radius-lg);
+  --radius-button:   var(--radius-md);
+  --radius-input:    var(--radius-xs);
+  --text-shadow:     0 0 5px rgba(0, 255, 65, 0.5);
+  --scanline:        repeating-linear-gradient(
+                       0deg,
+                       transparent, transparent 2px,
+                       rgba(0, 255, 65, 0.03) 2px,
+                       rgba(0, 255, 65, 0.03) 4px);
+}
+
+/* ------------------------------------------------------------------
+ * SEMANTIC TYPOGRAPHY HELPERS
+ *   Use these class names OR the underlying custom properties.
+ * ------------------------------------------------------------------ */
+
+.ds-h1 {
+  font-family: var(--font-heading);
+  font-size: var(--text-lg);
+  line-height: var(--lh-lg);
+  letter-spacing: -0.01em;
+  font-weight: 600;
+  color: var(--fg);
+}
+.ds-h2 {
+  font-family: var(--font-heading);
+  font-size: var(--text-md);
+  line-height: var(--lh-md);
+  letter-spacing: -0.01em;
+  font-weight: 600;
+  color: var(--fg);
+}
+.ds-h3 {
+  font-family: var(--font-heading);
+  font-size: var(--text-base);
+  line-height: var(--lh-base);
+  font-weight: 600;
+  color: var(--fg);
+}
+.ds-p {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--lh-base);
+  color: var(--fg);
+}
+.ds-small {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  color: var(--fg-muted);
+}
+.ds-label {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.ds-code, code, pre {
+  font-family: var(--font-code);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-sm);
+}
+.ds-numeric {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------
+ * BEDROCK MOTIFS
+ * ------------------------------------------------------------------ */
+
+.heat-seam {
+  position: relative;
+}
+.heat-seam::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 59, 47, 0)   0%,
+    rgba(255, 59, 47, 0.5) 20%,
+    rgba(255, 59, 47, 0.5) 80%,
+    rgba(255, 59, 47, 0)   100%);
+  pointer-events: none;
+}
+
+.strata-divider {
+  border: none;
+  height: 1px;
+  background: var(--border);
+}
+
+.btn-molten {
+  background: var(--accent);
+  color: var(--bedrock-obsidian);
+  border: 1px solid color-mix(in srgb, var(--accent-hover) 40%, transparent);
+  font-family: var(--font-body);
+  font-weight: 600;
+  border-radius: var(--radius-button);
+  padding: 4px 12px;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background 120ms linear;
+}
+.btn-molten:hover { background: linear-gradient(180deg, var(--accent-hover) 0%, var(--accent) 100%); }
+.btn-molten:active { background: var(--accent-press); box-shadow: var(--shadow-active); }
+
+/* ------------------------------------------------------------------
+ * FIFTH ELEMENT MOTIFS
+ * ------------------------------------------------------------------ */
+
+.multi-pass {
+  position: relative;
+  border: 2px solid var(--fifth-safety-orange);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, var(--fifth-panel) 0%, var(--fifth-elevated) 100%);
+  box-shadow: var(--shadow-chassis);
+}
+.multi-pass::before,
+.multi-pass::after {
+  content: '';
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: radial-gradient(circle, var(--fifth-safety-orange) 30%, #666 100%);
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(255, 140, 0, 0.5);
+}
+.multi-pass::before { top: 8px; left: 8px; }
+.multi-pass::after  { top: 8px; right: 8px; }
+
+.glass-viewport {
+  background: rgba(10, 10, 10, 0.85);
+  backdrop-filter: blur(4px) brightness(0.8);
+  border: 1px solid rgba(255, 140, 0, 0.3);
+}
+
+.warning-strip {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--fifth-taxi-yellow),
+    var(--fifth-taxi-yellow) 10px,
+    var(--fifth-panel) 10px,
+    var(--fifth-panel) 20px);
+  height: 4px;
+  width: 100%;
+}
+
+.crt-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: var(--scanline);
+  animation: scanlines 0.1s linear infinite;
+}
+@keyframes scanlines {
+  0%   { transform: translateY(0); }
+  100% { transform: translateY(4px); }
+}
+
+@keyframes terminal-flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.8; }
+  94% { opacity: 1; }
+  97% { opacity: 0.9; }
+  98% { opacity: 1; }
+}
+.animate-terminal-flicker { animation: terminal-flicker 4s linear infinite; }
+
+.emergency-button {
+  background: linear-gradient(180deg, #FF4444 0%, #CC2222 100%);
+  border: 3px solid var(--fifth-safety-orange);
+  border-radius: var(--radius-md);
+  color: var(--fifth-safety-orange);
+  font-family: var(--font-industrial);
+  font-weight: 900;
+  padding: 8px 24px;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow:
+    0 0 10px rgba(255, 68, 68, 0.5),
+    0 4px 0 var(--fifth-emergency-deep),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transition: all 0.1s ease;
+}
+.emergency-button:hover {
+  background: linear-gradient(180deg, #FF5555 0%, #DD3333 100%);
+  box-shadow:
+    0 0 20px rgba(255, 68, 68, 0.8),
+    0 4px 0 var(--fifth-emergency-deep),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+.emergency-button:active {
+  transform: translateY(2px);
+  box-shadow:
+    0 0 10px rgba(255, 68, 68, 0.5),
+    0 1px 0 var(--fifth-emergency-deep),
+    inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* ------------------------------------------------------------------
+ * BASELINE BODY (picks up active theme)
+ * ------------------------------------------------------------------ */
+
+body.ds-scope {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  line-height: var(--lh-sm);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+body.ds-scope .tabular,
+body.ds-scope code,
+body.ds-scope pre,
+body.ds-scope [data-numeric] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Spinner — the Worth "W-pulse"
+   The four wedges of the W light up in sequence left→right, like a heartbeat
+   running through the mark. Scales with font-size (1em), inherits currentColor.
+   Original to Worth — replaces the over-used braille-dot spinner.
+
+   Usage:  <span class="spinner"></span>
+   The mark is inline SVG injected by the ::before pseudo via mask; the four
+   wedge shapes are animated via CSS with staggered delays.
+*/
+.spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  position: relative;
+  vertical-align: -0.15em;
+}
+.spinner svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.spinner svg polygon {
+  fill: currentColor;
+  opacity: 0.25;
+  animation: w-pulse 1.2s steps(1, end) infinite;
+  transform-origin: center;
+}
+.spinner svg polygon:nth-child(1) { animation-delay: 0s; }
+.spinner svg polygon:nth-child(2) { animation-delay: 0.15s; }
+.spinner svg polygon:nth-child(3) { animation-delay: 0.30s; }
+.spinner svg polygon:nth-child(4) { animation-delay: 0.45s; }
+@keyframes w-pulse {
+  0%, 50%, 100% { opacity: 0.22; }
+  8%, 20%       { opacity: 1; }
+}

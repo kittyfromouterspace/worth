@@ -1,0 +1,31 @@
+/* Shared styles for preview cards. Each card is ~700px wide. */
+@import url('../colors_and_type.css');
+
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 18px;
+  padding: 20px;
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+}
+.card { width: 660px; }
+.row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.stack { display: flex; flex-direction: column; gap: 8px; }
+.swatch {
+  display: flex; flex-direction: column; gap: 4px;
+  font-family: var(--font-mono); font-size: 10px; color: var(--fg-muted);
+}
+.swatch .chip {
+  width: 72px; height: 72px; border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.swatch .name { color: var(--fg); font-weight: 600; }
+.swatch .hex { color: var(--fg-muted); }
+.label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--fg-dim); font-weight: 600;
+}

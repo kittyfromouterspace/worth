@@ -1,0 +1,76 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Status glyphs</title><link rel="stylesheet" href="_base.css">
+<style>
+  /* tighten the stack labels inside this card so the spinner box doesn't stretch */
+  .glyph-item { display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
+  .glyph-item .label-sm { font-family:'JetBrains Mono',monospace; font-size:10px; color:#8A8A8F }
+  .glyph-item .label-em { color:#E8E8EA; font-weight:500 }
+  /* local override: ensure fill cascades, and no overflow */
+  .spinner svg { overflow: hidden !important }
+</style>
+</head>
+<body class="theme-bedrock">
+<div class="card">
+  <div class="label" style="margin-bottom:14px">Status glyphs · terminal chars + the Worth <b style="color:#E8E8EA">"W-pulse"</b> spinner · never emoji</div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:28px 32px;align-items:flex-start;font-family:'JetBrains Mono',monospace;font-size:13px">
+    <div class="glyph-item"><span style="color:#7EC87E;font-size:18px">●</span><span class="label-sm">running</span></div>
+    <div class="glyph-item"><span style="color:#5A5A5F;font-size:18px">○</span><span class="label-sm">idle</span></div>
+    <div class="glyph-item"><span style="color:#FF3B2F;font-size:18px">×</span><span class="label-sm">error</span></div>
+    <div class="glyph-item"><span style="color:#7EC87E;font-size:18px">✓</span><span class="label-sm">done</span></div>
+    <div class="glyph-item"><span style="color:#FF3B2F;font-size:18px">■</span><span class="label-sm">stop</span></div>
+
+    <div class="glyph-item" style="border-left:1px solid #3A3A3F;padding-left:28px;margin-left:4px">
+      <span class="spinner" style="color:#F0B341;font-size:32px">
+        <svg viewBox="0 0 64 64" preserveAspectRatio="xMidYMid meet">
+          <polygon points="4,10 16,10 28,46 18,52" fill="currentColor"/>
+          <polygon points="22,10 30,10 32,48 28,46" fill="currentColor"/>
+          <polygon points="34,10 42,10 36,46 32,48" fill="currentColor"/>
+          <polygon points="48,10 60,10 46,52 36,46" fill="currentColor"/>
+        </svg>
+      </span>
+      <span class="label-sm label-em" style="margin-top:4px">"W-pulse"</span>
+      <span class="label-sm">1.2s · 4 wedges · 150ms stagger</span>
+    </div>
+
+    <div class="glyph-item">
+      <span class="spinner" style="color:#F0B341;font-size:16px">
+        <svg viewBox="0 0 64 64" preserveAspectRatio="xMidYMid meet">
+          <polygon points="4,10 16,10 28,46 18,52" fill="currentColor"/>
+          <polygon points="22,10 30,10 32,48 28,46" fill="currentColor"/>
+          <polygon points="34,10 42,10 36,46 32,48" fill="currentColor"/>
+          <polygon points="48,10 60,10 46,52 36,46" fill="currentColor"/>
+        </svg>
+      </span>
+      <span class="label-sm">inline @ 16px</span>
+    </div>
+
+    <div class="glyph-item">
+      <span class="spinner" style="color:#FF3B2F;font-size:48px">
+        <svg viewBox="0 0 64 64" preserveAspectRatio="xMidYMid meet">
+          <polygon points="4,10 16,10 28,46 18,52" fill="currentColor"/>
+          <polygon points="22,10 30,10 32,48 28,46" fill="currentColor"/>
+          <polygon points="34,10 42,10 36,46 32,48" fill="currentColor"/>
+          <polygon points="48,10 60,10 46,52 36,46" fill="currentColor"/>
+        </svg>
+      </span>
+      <span class="label-sm">hero @ 48px · molten</span>
+    </div>
+
+    <div class="glyph-item">
+      <span class="spinner" style="color:#7EC87E;font-size:16px">
+        <svg viewBox="0 0 64 64" preserveAspectRatio="xMidYMid meet">
+          <polygon points="4,10 16,10 28,46 18,52" fill="currentColor"/>
+          <polygon points="22,10 30,10 32,48 28,46" fill="currentColor"/>
+          <polygon points="34,10 42,10 36,46 32,48" fill="currentColor"/>
+          <polygon points="48,10 60,10 46,52 36,46" fill="currentColor"/>
+        </svg>
+      </span>
+      <span class="label-sm">sync · green</span>
+    </div>
+  </div>
+
+  <div style="margin-top:18px;padding-top:14px;border-top:1px solid #2A2A2E;font-family:'Inter';font-size:11px;color:#8A8A8F;max-width:660px;line-height:17px">
+    The four wedges of the Worth mark light up in sequence, left → right, like a pulse running through the logo — 1.2s loop, 150ms stagger. Inherits <code style="color:#E8E8EA">currentColor</code>, scales with <code style="color:#E8E8EA">font-size</code>. Replaces the generic braille-dot spinner. Original to Worth.
+  </div>
+</div>
+</body></html>
