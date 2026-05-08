@@ -80,24 +80,20 @@ defmodule Worth.MixProject do
         priv_dir = Path.join([release.path, "lib", "worth-#{release.version}", "priv"])
         File.mkdir_p!(priv_dir)
 
-        # find the actual .so file (not symlinks)
-        actual =
+        # find and copy the wxWebView shared lib. dlopen matches by embedded
+        # SONAME, so the .so.0.2.2 versioned file works directly even though
+        # wx requests "libwx_gtk3u_webview-3.2.so.0" — no symlink needed.
+        lib =
           :os.cmd('find /usr/lib /usr/local/lib /usr/lib64 -name "libwx_gtk3u_webview*.so.*" -type f 2>/dev/null')
           |> List.to_string()
           |> String.split("\n", trim: true)
           |> List.first()
 
-        if actual do
-          dest = Path.join(priv_dir, Path.basename(actual))
-          File.cp!(actual, dest)
+        if lib do
+          dest = Path.join(priv_dir, Path.basename(lib))
+          File.cp!(lib, dest)
           File.chmod!(dest, 0o755)
-
-          # also create .so.0 soname symlink for wxDynamicLibrary::Load
-          so0 = Path.join(priv_dir, "libwx_gtk3u_webview-3.2.so.0")
-          File.rm(so0)
-          :ok = :file.make_symlink(String.to_charlist(Path.basename(actual)), String.to_charlist(so0))
-
-          Mix.shell().info([:green, "* bundled wxWebView: #{Path.basename(actual)} (with .so.0 symlink)"])
+          Mix.shell().info([:green, "* bundled: #{Path.basename(lib)}"])
         end
 
       _ ->
