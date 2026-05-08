@@ -92,14 +92,28 @@ jobs:
           # desktop_deployment's otool resolver chokes when NIFs reference
           # absolute build-cache paths that don't exist on the CI runner.
           # Rewrite ALL such references to @rpath/ before the release is built.
+          # This covers both the install name (-id) and the load commands (-change).
           find _build/prod/lib \( -name "*.so" -o -name "*.dylib" \) -print 2>/dev/null | while read f; do
             echo "--- checking: $f"
+
+            # Fix the install name identity (LC_ID_DYLIB) — this is what
+            # desktop_deployment reads first and tries to otool -L
+            id="$(otool -D "$f" 2>/dev/null | tail -n +2 | head -1)"
+            case "$id" in
+              /Users/runner/work/*)
+                base=$(basename "$id")
+                echo "  FIX id: $id -> @rpath/$base"
+                install_name_tool -id "@rpath/$base" "$f"
+                ;;
+            esac
+
+            # Fix absolute dependency references (LC_LOAD_DYLIB etc)
             otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read dep; do
               case "$dep" in
                 /Users/runner/work/*)
                   base=$(basename "$dep")
                   echo "  FIX dep: $dep -> @rpath/$base"
-                  install_name_tool -change "$dep" "@rpath/$base" "$f" 2>&1 || true
+                  install_name_tool -change "$dep" "@rpath/$base" "$f"
                   ;;
               esac
             done
