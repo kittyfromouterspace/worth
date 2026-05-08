@@ -40,15 +40,15 @@ If you want to understand how AI agents actually work — not just use them — 
 
 ## Desktop App
 
-Worth ships as a native desktop application built with [Tauri](https://tauri.app/), wrapping the Phoenix LiveView web UI in a lightweight native shell. It runs on all major platforms:
+Worth ships as a native desktop application built with [elixir-desktop](https://github.com/elixir-desktop/desktop), wrapping the Phoenix LiveView web UI in a native wxWidgets window with wxWebView. It runs on all major platforms:
 
 | Platform | Format |
 |----------|--------|
-| **macOS** | `.dmg` (10.15+) |
-| **Windows** | `.exe` installer (NSIS, per-user) |
-| **Linux** | `.deb` / `.AppImage` (uses [tauri-apps/tauri#12491](https://github.com/tauri-apps/tauri/pull/12491) for truly portable AppImage) |
+| **macOS** | `.dmg` |
+| **Windows** | `.exe` installer (NSIS) |
+| **Linux** | `.run` makeself installer |
 
-The app opens a 1200x800 window with the full Worth UI — chat, sidebar, workspace management, and slash commands. Everything runs locally on your machine. No cloud, no containers.
+The app opens a 1200x800 window with the full Worth UI — chat, sidebar, workspace management, and slash commands. Everything runs locally on your machine. No cloud, no containers. No Rust required.
 
 ## Workspaces
 

@@ -35,6 +35,25 @@ defmodule Worth.Application do
       Bridge
     ]
 
+    children =
+      if desktop_mode?() do
+        children ++
+          [
+            {Desktop.Window,
+             [
+               app: :worth,
+               id: WorthWindow,
+               title: "Worth",
+               size: {1200, 800},
+               min_size: {800, 600},
+               icon: "icon.png",
+               url: &WorthWeb.Endpoint.url/0
+             ]}
+          ]
+      else
+        children
+      end
+
     case Supervisor.start_link(children, strategy: :one_for_one, name: Worth.Supervisor) do
       {:ok, pid} ->
         Agentic.Sandbox.Platform.log_status()
@@ -83,4 +102,6 @@ defmodule Worth.Application do
   defp register_strategies do
     Agentic.Strategy.Registry.register(Worth.Orchestration.Strategies.Stigmergy)
   end
+
+  defp desktop_mode?, do: System.get_env("WORTH_DESKTOP") == "1"
 end

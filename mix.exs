@@ -7,10 +7,6 @@ defmodule Worth.MixProject do
       version: "0.2.1-alpha.12",
       elixir: "~> 1.19",
       description: "An AI assistant built on Elixir/BEAM",
-      package: [
-        licenses: ["BSD-3-Clause"],
-        links: %{"GitHub" => "https://github.com/kittyfromouterspace/worth"}
-      ],
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
@@ -18,6 +14,7 @@ defmodule Worth.MixProject do
       aliases: aliases(),
       deps: deps(),
       releases: releases(),
+      desktop_package: desktop_package(),
       usage_rules: usage_rules()
     ]
   end
@@ -38,12 +35,41 @@ defmodule Worth.MixProject do
         ]
       ],
       desktop: [
-        steps: [:assemble],
         applications: [
-          worth: :permanent
+          worth: :permanent,
+          runtime_tools: :permanent,
+          ssl: :permanent,
+          wx: :permanent
         ],
-        validate_compile_env: false
+        steps: [
+          :assemble
+        ]
+      ],
+      desktop_installer: [
+        applications: [
+          worth: :permanent,
+          runtime_tools: :permanent,
+          ssl: :permanent,
+          wx: :permanent
+        ],
+        steps: [
+          :assemble,
+          &Desktop.Deployment.generate_installer/1
+        ]
       ]
+    ]
+  end
+
+  defp desktop_package do
+    [
+      name: "Worth",
+      name_long: "Worth AI Agent",
+      description: "Personal AI agent for power users",
+      description_long: "Worth is a personal AI agent that runs locally on your machine.",
+      icon: "priv/icon.png",
+      category_gnome: "GNOME;GTK;Office;",
+      category_macos: "public.app-category.productivity",
+      identifier: "com.worth.desktop"
     ]
   end
 
@@ -74,6 +100,10 @@ defmodule Worth.MixProject do
 
     other_deps = [
       {:tidewave, "~> 0.5", only: [:dev]},
+
+      # Desktop (replaces Tauri)
+      {:desktop, github: "elixir-desktop/desktop"},
+      {:desktop_deployment, github: "elixir-desktop/deployment", runtime: false},
 
       # Phoenix
       {:phoenix, "~> 1.8.5"},
