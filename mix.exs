@@ -4,7 +4,7 @@ defmodule Worth.MixProject do
   def project do
     [
       app: :worth,
-      version: "0.2.1-alpha.12",
+      version: "0.2.1-alpha.24",
       elixir: "~> 1.19",
       description: "An AI assistant built on Elixir/BEAM",
       start_permanent: Mix.env() == :prod,
@@ -54,6 +54,7 @@ defmodule Worth.MixProject do
         ],
         steps: [
           :assemble,
+          &copy_wxwebview/1,
           &Desktop.Deployment.generate_installer/1
         ]
       ]
@@ -71,6 +72,21 @@ defmodule Worth.MixProject do
       category_macos: "public.app-category.productivity",
       identifier: "com.worth.desktop"
     ]
+  end
+
+  defp copy_wxwebview(%Mix.Release{path: rel_path, version: vsn} = release) do
+    priv_dir = Path.join([rel_path, "lib", "worth-#{vsn}", "priv"])
+    File.mkdir_p!(priv_dir)
+
+    find_output = :os.cmd('find /usr/lib /usr/local/lib /usr/lib64 -name "libwx_gtk3u_webview*" -type f 2>/dev/null')
+    for path <- String.split(List.to_string(find_output), "\n", trim: true) do
+      dest = Path.join(priv_dir, Path.basename(path))
+      File.cp!(path, dest)
+      File.chmod!(dest, 0o755)
+      Mix.shell().info([:green, "* bundling wxWebView: #{Path.basename(path)}"])
+    end
+
+    release
   end
 
   def cli do
