@@ -76,6 +76,7 @@ jobs:
         env:
           MIX_ENV: prod
           WORTH_DESKTOP: "1"
+          WORTH_DEPS_MODE: prod
         run: |
           mix local.hex --force
           mix local.rebar --force
