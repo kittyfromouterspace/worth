@@ -89,32 +89,34 @@ jobs:
       - name: Fix macOS NIF rpaths for desktop_deployment
         if: startsWith(matrix.os, 'macos')
         run: |
-          echo "=== All NIF files in _build ==="
-          find _build -name "*.so" -o -name "*.dylib" 2>/dev/null
+          echo "=== priv dir listing ==="
+          ls -la _build/prod/lib/*/priv/native/ 2>/dev/null || echo "(no native dirs)"
 
           echo "=== Fixing stale RPATHs ==="
-          find _build -name "*.so" -o -name "*.dylib" 2>/dev/null | while read f; do
-            case "$f" in
-              *_build/prod/rel/*) continue ;;
-            esac
+          for dir in _build/prod/lib/*/priv/native; do
+            [ -d "$dir" ] || continue
+            for f in "$dir"/*.so "$dir"/*.dylib; do
+              [ -f "$f" ] || continue
+              echo "  checking: $f"
 
-            id="$(otool -D "$f" 2>/dev/null | tail -n +2 | head -1)"
-            case "$id" in
-              /Users/runner/work/*)
-                base=$(basename "$id")
-                echo "  FIX id($f): $id -> @rpath/$base"
-                install_name_tool -id "@rpath/$base" "$f"
-                ;;
-            esac
-
-            otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read dep; do
-              case "$dep" in
+              id="$(otool -D "$f" 2>/dev/null | tail -n +2 | head -1)"
+              case "$id" in
                 /Users/runner/work/*)
-                  base=$(basename "$dep")
-                  echo "  FIX dep($f): $dep -> @rpath/$base"
-                  install_name_tool -change "$dep" "@rpath/$base" "$f"
+                  base=$(basename "$id")
+                  echo "    FIX id: $id -> @rpath/$base"
+                  install_name_tool -id "@rpath/$base" "$f"
                   ;;
               esac
+
+              otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read dep; do
+                case "$dep" in
+                  /Users/runner/work/*)
+                    base=$(basename "$dep")
+                    echo "    FIX dep: $dep -> @rpath/$base"
+                    install_name_tool -change "$dep" "@rpath/$base" "$f"
+                    ;;
+                esac
+              done
             done
           done
 
