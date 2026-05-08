@@ -8,8 +8,6 @@ desktop_mode = System.get_env("WORTH_DESKTOP") == "1"
 port = String.to_integer(System.get_env("PORT", "4090"))
 
 # --- Resolve data directory at runtime ---
-# This MUST happen at runtime so that Path.expand("~") resolves to the
-# *current* user's home rather than the build machine's home (e.g. /home/runner).
 worth_data =
   case :os.type() do
     {:unix, :darwin} -> Path.expand("~/Library/Application Support/worth")
@@ -28,11 +26,15 @@ config :worth, Worth.Metrics.Repo, database: Path.join(worth_data, "metrics.db")
 config :worth, Worth.Repo, database: Path.join(worth_data, "worth.db")
 
 if desktop_mode do
+  # elixir-desktop: use port 0 for auto-assignment so multiple instances
+  # don't conflict. Desktop.Endpoint.url/0 resolves the actual port.
   config :worth, WorthWeb.Endpoint,
+    url: [host: "localhost", port: 0, scheme: "http"],
     http: [
       ip: {127, 0, 0, 1},
-      port: port
-    ]
+      port: 0
+    ],
+    server: true
 else
   config :worth, WorthWeb.Endpoint, http: [port: port]
 end
@@ -44,10 +46,10 @@ if config_env() == :prod do
         48 |> :crypto.strong_rand_bytes() |> Base.encode64(padding: false)
 
     config :worth, WorthWeb.Endpoint,
-      url: [host: "127.0.0.1", port: port, scheme: "http"],
+      url: [host: "127.0.0.1", port: 0, scheme: "http"],
       http: [
         ip: {127, 0, 0, 1},
-        port: port
+        port: 0
       ],
       check_origin: false,
       secret_key_base: secret_key_base,

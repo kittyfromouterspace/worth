@@ -1,47 +1,33 @@
 #!/bin/sh
 set -e
 
-# Mirror the GitHub Actions desktop-release workflow for local testing.
+# Build an elixir-desktop release with installer.
 # Usage:
-#   ./build.sh          — build only
-#   ./build.sh run      — build and run the Tauri binary
+#   ./build.sh          — build installer for current platform
+#   ./build.sh release  — build OTP release only (no installer)
 
 export MIX_ENV=prod
 
-# Detect OS for platform-specific release directory name
-case "$(uname -s)" in
-  Linux*)  os="linux" ;;
-  Darwin*) os="darwin" ;;
-  MINGW*|MSYS*|CYGWIN*) os="windows" ;;
-  *) echo "Unsupported OS"; exit 1 ;;
-esac
-
-release_dir="rel/desktop/src-tauri/rel-${os}"
-
-echo "==> Building OTP release (${os})..."
+echo "==> Installing deps..."
 mix deps.get --only prod
+
+echo "==> Building assets..."
 mix assets.deploy
+
+echo "==> Compiling..."
 mix compile --force
-mix release desktop --overwrite --path "${release_dir}"
 
-# Some NIFs (e.g. EXLA) ship read-only .so files. Tauri copies resources
-# preserving permissions, so a second build can't overwrite them. Fix this
-# by ensuring all files in the release are owner-writable.
-find "${release_dir}" -type f ! -perm -u+w -exec chmod u+w {} +
-
-echo "==> Preparing Tauri frontend dist..."
-mkdir -p rel/desktop/src-tauri/dist
-cp rel/desktop/src-tauri/dist_splash.html rel/desktop/src-tauri/dist/index.html
-
-echo "==> Building Tauri app..."
-cd rel/desktop/src-tauri
-cargo tauri build --config "{\"bundle\":{\"resources\":{\"rel-${os}\":\"rel\"}}}"
-cd -
+if [ "${1}" = "release" ]; then
+  echo "==> Building OTP release only..."
+  mix release desktop --overwrite
+else
+  echo "==> Building OTP release with installer..."
+  mix release desktop --overwrite
+fi
 
 echo "==> Build complete."
-echo "Artifacts at: rel/desktop/src-tauri/target/release/bundle/"
 
-if [ "$1" = "run" ]; then
-  echo "==> Starting Worth desktop..."
-  rel/desktop/src-tauri/target/release/worth-desktop
+if [ "${1}" = "run" ]; then
+  echo "==> Starting Worth..."
+  WORTH_DESKTOP=1 _build/prod/rel/worth/bin/desktop start
 fi
