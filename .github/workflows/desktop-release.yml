@@ -90,15 +90,27 @@ jobs:
         if: startsWith(matrix.os, 'macos')
         run: |
           # desktop_deployment's otool resolver chokes when NIFs contain absolute
-          # build-cache RPATHs (e.g. /Users/runner/work/lumis/...) that don't exist
-          # on the CI runner. Rewrite any such path to @rpath/ so otool resolves
-          # cleanly against the release bundle's own libs.
+          # build-cache RPATHs (e.g. /Users/runner/work/exqlite/...) that don't
+          # exist on the CI runner. Rewrite any such path to @rpath/ so otool
+          # resolves cleanly against the release bundle's own libs.
+          # We need TWO fixes:
+          #   1. -id  to change the install name identity (first otool -L line)
+          #   2. -change to rewrite any absolute dependency references
           find _build/prod/lib -name "*.so" -o -name "*.dylib" 2>/dev/null | while read f; do
+            # Fix the install name identity
+            id="$(otool -D "$f" 2>/dev/null | tail -n +2)"
+            case "$id" in
+              /Users/runner/work/*)
+                base=$(basename "$id")
+                install_name_tool -id "@rpath/$base" "$f"
+                ;;
+            esac
+            # Fix any absolute dependency references
             otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read dep; do
               case "$dep" in
                 /Users/runner/work/*)
                   base=$(basename "$dep")
-                  install_name_tool -change "$dep" "@rpath/$base" "$f" 2>/dev/null || true
+                  install_name_tool -change "$dep" "@rpath/$base" "$f"
                   ;;
               esac
             done
