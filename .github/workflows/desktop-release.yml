@@ -42,8 +42,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libwxgtk-webview3.0-gtk3-dev \
-            libwxgtk3.0-gtk3-dev \
+            libwxgtk-webview3.2-dev \
+            libwxgtk3.2-dev \
             libssl-dev \
             makeself \
             xz-utils
@@ -54,7 +54,9 @@ jobs:
 
       - name: Install Windows dependencies
         if: runner.os == 'Windows'
-        run: choco install nsis
+        run: |
+          choco install nsis
+          echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
