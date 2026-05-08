@@ -89,11 +89,19 @@ jobs:
       - name: Fix macOS NIF rpaths for desktop_deployment
         if: startsWith(matrix.os, 'macos')
         run: |
-          # desktop_deployment's otool resolver chokes on absolute build-time
-          # RPATHs embedded in NIFs (e.g. exqlite's sqlite3_nif.so referencing
-          # the CI worker's stale build cache path). Strip them to @rpath.
+          # desktop_deployment's otool resolver chokes when NIFs contain absolute
+          # build-cache RPATHs (e.g. /Users/runner/work/lumis/...) that don't exist
+          # on the CI runner. Rewrite any such path to @rpath/ so otool resolves
+          # cleanly against the release bundle's own libs.
           find _build/prod/lib -name "*.so" -o -name "*.dylib" 2>/dev/null | while read f; do
-            install_name_tool -id "@rpath/$(basename "$f")" "$f" 2>/dev/null || true
+            otool -L "$f" 2>/dev/null | tail -n +2 | awk '{print $1}' | while read dep; do
+              case "$dep" in
+                /Users/runner/work/*)
+                  base=$(basename "$dep")
+                  install_name_tool -change "$dep" "@rpath/$base" "$f" 2>/dev/null || true
+                  ;;
+              esac
+            done
           done
 
       - name: Build installer
