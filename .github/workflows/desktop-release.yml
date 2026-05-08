@@ -44,6 +44,7 @@ jobs:
           sudo apt-get install -y \
             libwxgtk-webview3.2-dev \
             libwxgtk3.2-dev \
+            libglib2.0-dev \
             libssl-dev \
             makeself \
             xz-utils
@@ -74,10 +75,9 @@ jobs:
           restore-keys: |
             elixir-${{ matrix.os }}-
 
-      - name: Build installer
+      - name: Build deps and compile
         env:
           MIX_ENV: prod
-          WORTH_DESKTOP: "1"
           WORTH_DEPS_MODE: prod
         run: |
           mix local.hex --force
@@ -85,6 +85,23 @@ jobs:
           mix deps.get --only prod
           mix assets.deploy
           mix compile --force
+
+      - name: Fix macOS NIF rpaths for desktop_deployment
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          # desktop_deployment's otool resolver chokes on absolute build-time
+          # RPATHs embedded in NIFs (e.g. exqlite's sqlite3_nif.so referencing
+          # the CI worker's stale build cache path). Strip them to @rpath.
+          find _build/prod/lib -name "*.so" -o -name "*.dylib" 2>/dev/null | while read f; do
+            install_name_tool -id "@rpath/$(basename "$f")" "$f" 2>/dev/null || true
+          done
+
+      - name: Build installer
+        env:
+          MIX_ENV: prod
+          WORTH_DESKTOP: "1"
+          WORTH_DEPS_MODE: prod
+        run: |
           mix release desktop_installer --overwrite
 
       - name: Upload macOS installer
