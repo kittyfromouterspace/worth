@@ -88,8 +88,8 @@ defmodule Worth.MixProject do
     internal_deps =
       if worth_deps_mode == "prod" do
         [
-          {:recollect, git: "https://github.com/kittyfromouterspace/recollect.git", tag: "v0.5.2", override: true},
-          {:agentic, git: "https://github.com/kittyfromouterspace/agentic.git", tag: "v0.3.0"}
+          {:recollect, ">= 0.5.2", override: true},
+          {:agentic, ">= 0.3.0"}
         ]
       else
         [
