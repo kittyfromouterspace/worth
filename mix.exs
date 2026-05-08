@@ -74,16 +74,22 @@ defmodule Worth.MixProject do
     ]
   end
 
-  defp copy_wxwebview(%Mix.Release{path: rel_path, version: vsn} = release) do
-    priv_dir = Path.join([rel_path, "lib", "worth-#{vsn}", "priv"])
-    File.mkdir_p!(priv_dir)
+  defp copy_wxwebview(%Mix.Release{} = release) do
+    case :os.type() do
+      {:unix, :linux} ->
+        priv_dir = Path.join([release.path, "lib", "worth-#{release.version}", "priv"])
+        File.mkdir_p!(priv_dir)
 
-    find_output = :os.cmd('find /usr/lib /usr/local/lib /usr/lib64 -name "libwx_gtk3u_webview*" -type f 2>/dev/null')
-    for path <- String.split(List.to_string(find_output), "\n", trim: true) do
-      dest = Path.join(priv_dir, Path.basename(path))
-      File.cp!(path, dest)
-      File.chmod!(dest, 0o755)
-      Mix.shell().info([:green, "* bundling wxWebView: #{Path.basename(path)}"])
+        find_output = :os.cmd('find /usr/lib /usr/local/lib /usr/lib64 -name "libwx_gtk3u_webview*" -type f 2>/dev/null')
+        for path <- String.split(List.to_string(find_output), "\n", trim: true) do
+          dest = Path.join(priv_dir, Path.basename(path))
+          File.cp!(path, dest)
+          File.chmod!(dest, 0o755)
+          Mix.shell().info([:green, "* bundling wxWebView: #{Path.basename(path)}"])
+        end
+
+      _ ->
+        :ok
     end
 
     release
