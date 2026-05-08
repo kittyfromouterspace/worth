@@ -89,11 +89,8 @@ jobs:
       - name: Fix macOS NIF rpaths for desktop_deployment
         if: startsWith(matrix.os, 'macos')
         run: |
-          echo "=== priv dir listing ==="
-          ls -la _build/prod/lib/*/priv/native/ 2>/dev/null || echo "(no native dirs)"
-
           echo "=== Fixing stale RPATHs ==="
-          for dir in _build/prod/lib/*/priv/native; do
+          for dir in _build/prod/lib/*/priv _build/prod/lib/*/priv/native; do
             [ -d "$dir" ] || continue
             for f in "$dir"/*.so "$dir"/*.dylib; do
               [ -f "$f" ] || continue
