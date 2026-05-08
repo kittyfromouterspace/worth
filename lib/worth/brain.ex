@@ -10,6 +10,7 @@ defmodule Worth.Brain do
 
   alias Worth.Agent.Tracker
   alias Worth.Brain.Session
+  alias Worth.LLM.ProviderAccountResolver
   alias Worth.Mcp.Broker
   alias Worth.Mcp.ToolIndex
   alias Worth.Memory.FactExtractor
@@ -482,7 +483,12 @@ defmodule Worth.Brain do
       history: state.history,
       tool_permissions: state.tool_permissions,
       strategy: state.strategy,
-      strategy_opts: state.strategy_opts
+      strategy_opts: state.strategy_opts,
+      metadata: %{
+        workspace: state.current_workspace,
+        workspace_path: workspace_path,
+        agent_fs_materializer: Worth.AgentFS.Materializer
+      }
     ]
 
     run_opts =
@@ -697,7 +703,7 @@ defmodule Worth.Brain do
   end
 
   defp safe_resolve_accounts do
-    Worth.LLM.ProviderAccountResolver.build_all()
+    ProviderAccountResolver.build_all()
   rescue
     e ->
       Logger.warning("[Brain] provider account resolver failed: #{Exception.message(e)}")
@@ -727,15 +733,15 @@ defmodule Worth.Brain do
   defp implicit_cli_pathway_preferences do
     accounts =
       try do
-        Worth.LLM.ProviderAccountResolver.build_all()
-        |> Map.new(fn account -> {account.provider, account} end)
+        Map.new(ProviderAccountResolver.build_all(), fn account -> {account.provider, account} end)
       rescue
         _ -> %{}
       catch
         :exit, _ -> %{}
       end
 
-    Agentic.LLM.Catalog.by_canonical(has: [:chat, :tools])
+    [has: [:chat, :tools]]
+    |> Agentic.LLM.Catalog.by_canonical()
     |> Enum.flat_map(fn {canonical, models} ->
       cli_pick =
         Enum.find(models, fn model ->

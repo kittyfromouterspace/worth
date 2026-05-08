@@ -13,7 +13,10 @@ defmodule Worth.Learning.ProjectMapping do
   in `worth_learning_state` keyed by `"project_mapping"`.
   """
 
+  import Ecto.Query
+
   alias Worth.Learning.State
+  alias Worth.Repo
 
   @mapping_key "project_mapping"
 
@@ -86,6 +89,83 @@ defmodule Worth.Learning.ProjectMapping do
         not Map.has_key?(current_mapping, to_string(agent))
       end)
     end
+  end
+
+  @doc """
+  Returns all project mappings across all workspaces.
+
+  Returns `%{workspace_name => %{agent => [projects]}}`.
+  """
+  def all_mappings do
+    from(s in State, where: s.key == ^@mapping_key, select: {s.workspace_name, s.value})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
+  Returns a map of project => workspace_name for all projects already mapped.
+
+  Only includes the first workspace for each project (in case of duplicates).
+  """
+  def project_to_workspace_map do
+    Enum.reduce(all_mappings(), %{}, fn {workspace_name, agents}, acc ->
+      Enum.reduce(agents, acc, fn {agent, projects}, acc2 ->
+        Enum.reduce(projects, acc2, fn project, acc3 ->
+          Map.put_new(acc3, "#{agent}:#{project}", workspace_name)
+        end)
+      end)
+    end)
+  end
+
+  @doc """
+  Checks if a project is already mapped to another workspace.
+
+  Returns `{:ok, workspace_name}` if mapped elsewhere, `:ok` if available.
+  """
+  def mapped_elsewhere?(agent, project, current_workspace) do
+    map = project_to_workspace_map()
+    key = "#{agent}:#{project}"
+
+    case Map.get(map, key) do
+      nil -> :ok
+      ^current_workspace -> :ok
+      other_workspace -> {:ok, other_workspace}
+    end
+  end
+
+  @doc """
+  Returns true if the project name is similar to the workspace name.
+
+  Uses word-level matching with common path segments filtered out.
+  """
+  def similar_to_workspace?(workspace_name, project_name) do
+    ws = normalize(workspace_name)
+    proj = normalize(project_name)
+
+    # Common path segments to filter out
+    common = MapSet.new(["home", "lenz", "code", "users", "tmp", "var", "opt", "usr"])
+
+    ws_words = ws |> String.split() |> MapSet.new()
+    proj_words = proj |> String.split() |> MapSet.new()
+
+    # Filter out common path segments
+    ws_sig = MapSet.difference(ws_words, common)
+    proj_sig = MapSet.difference(proj_words, common)
+
+    # If workspace name is only common segments, it can't match anything meaningfully
+    if MapSet.size(ws_sig) == 0 do
+      false
+    else
+      # Check if any significant word from workspace appears in project
+      ws_sig |> MapSet.intersection(proj_sig) |> MapSet.size() > 0
+    end
+  end
+
+  defp normalize(name) do
+    name
+    |> String.downcase()
+    |> String.replace(~r/[-_]/, " ")
+    |> String.trim()
   end
 
   defp discover_projects(provider, config) do

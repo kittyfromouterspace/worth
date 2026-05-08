@@ -16,8 +16,8 @@ defmodule WorthWeb.Components.Chat.Messages do
   """
   use Phoenix.Component
 
-  import WorthWeb.ThemeHelper, only: [color: 1]
   import WorthWeb.Components.Brand, only: [w_spinner: 1]
+  import WorthWeb.ThemeHelper, only: [color: 1]
 
   attr :msg, :map, required: true
 
@@ -71,7 +71,13 @@ defmodule WorthWeb.Components.Chat.Messages do
     <pre class={"whitespace-pre-wrap text-xs #{color(:text_muted)}"} style="font-family: var(--font-mono);">{@msg.content}</pre>
     <.learning_consent_actions :if={@has_consent} />
     <.permission_actions :if={@has_permission} agents={@msg.permission_agents} />
-    <.project_mapping_actions :if={@has_mapping} projects={@msg.project_mapping} workspace={@msg.mapping_workspace} />
+    <.project_mapping_actions
+      :if={@has_mapping}
+      projects={@msg.project_mapping}
+      workspace={@msg.mapping_workspace}
+      suggestions={@msg.project_suggestions || []}
+      mapped_elsewhere={@msg.mapped_elsewhere || []}
+    />
     <.learning_actions :if={@has_learning} report={@msg.learning_report} />
     """
   end
@@ -188,15 +194,28 @@ defmodule WorthWeb.Components.Chat.Messages do
 
   attr :projects, :map, required: true
   attr :workspace, :string, required: true
+  attr :suggestions, :list, default: []
+  attr :mapped_elsewhere, :list, default: []
 
   defp project_mapping_actions(assigns) do
     ~H"""
     <div class="mt-2 space-y-2">
+      <%= if @suggestions != [] do %>
+        <div class="flex gap-2">
+          <button
+            phx-click="map_suggested_projects"
+            phx-value-workspace={@workspace}
+            class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_primary)} cursor-pointer"}
+          >
+            Select suggested projects ({length(@suggestions)})
+          </button>
+        </div>
+      <% end %>
       <div class="flex gap-2">
         <button
           phx-click="map_all_projects"
           phx-value-workspace={@workspace}
-          class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_primary)} cursor-pointer"}
+          class={"px-3 py-1 rounded text-xs font-semibold transition-colors #{color(:button_secondary)} cursor-pointer"}
         >
           Select all projects
         </button>
@@ -206,17 +225,31 @@ defmodule WorthWeb.Components.Chat.Messages do
           <div class={"text-xs font-semibold #{color(:text)}"}>{format_agent_name(agent)}</div>
           <div class="ml-2 flex flex-wrap gap-1">
             <%= for project <- projects do %>
+              <% is_suggested = Enum.any?(@suggestions, fn s -> s.agent == agent and s.project == project end) %>
               <button
                 phx-click="map_projects"
                 phx-value-workspace={@workspace}
                 phx-value-agent={agent}
                 phx-value-projects={Jason.encode!(projects)}
-                class={"px-2 py-0.5 rounded text-xs transition-colors #{color(:button_secondary)} cursor-pointer"}
+                class={"px-2 py-0.5 rounded text-xs transition-colors cursor-pointer #{if is_suggested, do: "#{color(:button_primary)} font-bold", else: color(:button_secondary)}"}
               >
                 {project}
+                <%= if is_suggested do %>
+                  <span class="ml-1">*</span>
+                <% end %>
               </button>
             <% end %>
           </div>
+        </div>
+      <% end %>
+      <%= if @mapped_elsewhere != [] do %>
+        <div class="mt-3 pt-2 border-t border-gray-600">
+          <div class={"text-xs font-semibold mb-1 #{color(:text_muted)}"}>Already linked to other workspaces:</div>
+          <%= for m <- @mapped_elsewhere do %>
+            <div class={"text-xs #{color(:text_muted)} ml-2"}>
+              {format_agent_name(m.agent)}: {m.project} <span class="italic">(workspace: "{m.workspace}")</span>
+            </div>
+          <% end %>
         </div>
       <% end %>
     </div>

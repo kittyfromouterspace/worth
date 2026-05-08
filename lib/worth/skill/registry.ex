@@ -1,5 +1,11 @@
 defmodule Worth.Skill.Registry do
-  @moduledoc false
+  @moduledoc """
+  In-memory cache of skill metadata for fast access.
+
+  Reads from the database-backed Worth.Skill.Service and caches
+  results in persistent_term for O(1) lookups.
+  """
+
   @registry_key :worth_skill_metadata
 
   def init do
@@ -57,7 +63,9 @@ defmodule Worth.Skill.Registry do
         parts
       else
         available_text =
-          Enum.map_join(on_demand_skills, "\n", fn s -> "- #{s.name}: #{s.description} (use skill_read to load)" end)
+          Enum.map_join(on_demand_skills, "\n", fn s ->
+            "- #{s.name}: #{s.description} (use skill_read to load)"
+          end)
 
         ["## Available Skills (On Demand)\n\n#{available_text}" | parts]
       end

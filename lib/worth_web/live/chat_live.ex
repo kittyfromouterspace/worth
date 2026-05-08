@@ -9,10 +9,15 @@ defmodule WorthWeb.ChatLive do
   import WorthWeb.Components.Settings
 
   alias Agentic.LLM.Catalog
+  alias Agentic.LLM.ProviderAccount
   alias Worth.Agent.Tracker
   alias Worth.Config.Setup
   alias Worth.Learning.Permissions
   alias Worth.Learning.ProjectMapping
+  alias Worth.LLM.AdminKeys
+  alias Worth.LLM.ProviderAccountResolver
+  alias Worth.LLM.ProviderTaxonomy
+  alias Worth.LLM.SubscriptionPrompt
   alias Worth.Memory.Manager
   alias Worth.Persistence.Transcript
   alias Worth.Workspace.Learning
@@ -403,6 +408,43 @@ defmodule WorthWeb.ChatLive do
     {:noreply, socket}
   end
 
+  def handle_event("map_suggested_projects", %{"workspace" => workspace}, socket) do
+    # Get the last system message to extract suggestions
+    suggestions =
+      socket.assigns.messages
+      |> Enum.reverse()
+      |> Enum.find_value(fn msg ->
+        if msg.type == :system and Map.has_key?(msg, :project_suggestions) do
+          msg.project_suggestions
+        end
+      end) || []
+
+    # Group suggestions by agent
+    mapping =
+      suggestions
+      |> Enum.group_by(& &1.agent, & &1.project)
+      |> Map.new()
+
+    # Merge with existing mapping
+    existing = ProjectMapping.get(workspace)
+
+    merged =
+      Map.merge(existing, mapping, fn _agent, existing_projects, new_projects ->
+        Enum.uniq(existing_projects ++ new_projects)
+      end)
+
+    ProjectMapping.set_all(workspace, merged)
+    total = mapping |> Map.values() |> List.flatten() |> length()
+
+    socket =
+      socket
+      |> assign(learning_step_shown: nil)
+      |> append_system_message("Mapped #{total} suggested projects.")
+
+    send(self(), {:check_learning, workspace})
+    {:noreply, socket}
+  end
+
   def handle_event("memory_query", %{"workspace" => workspace}, socket) do
     msg =
       case Manager.recent(workspace: workspace, limit: 5) do
@@ -482,7 +524,7 @@ defmodule WorthWeb.ChatLive do
       end
 
     if provider do
-      Worth.LLM.SubscriptionPrompt.dismiss(provider)
+      SubscriptionPrompt.dismiss(provider)
     end
 
     {:noreply, assign(socket, subscription_prompts: safe_subscription_prompts())}
@@ -746,7 +788,12 @@ defmodule WorthWeb.ChatLive do
         final = final |> strip_eom_tokens() |> String.trim()
 
         socket
-        |> stream_insert(:messages, %{id: msg_id(), type: :assistant, content: final, model: assistant_model_label(socket.assigns.models)})
+        |> stream_insert(:messages, %{
+          id: msg_id(),
+          type: :assistant,
+          content: final,
+          model: assistant_model_label(socket.assigns.models)
+        })
         |> assign(streaming_text: "", status: :idle)
         |> push_event("scroll_to_bottom", %{})
 
@@ -1034,7 +1081,7 @@ defmodule WorthWeb.ChatLive do
   end
 
   defp safe_subscription_prompts do
-    Worth.LLM.SubscriptionPrompt.pending()
+    SubscriptionPrompt.pending()
   rescue
     _ -> []
   catch
@@ -1089,7 +1136,7 @@ defmodule WorthWeb.ChatLive do
   # Auto-detected CLI providers carry an `auto_detected: true` flag so
   # the UI can mark them as "no setup required".
   defp provider_account_list do
-    Worth.LLM.ProviderAccountResolver.build_all_with_metadata()
+    ProviderAccountResolver.build_all_with_metadata()
     |> Enum.map(fn %{account: account, module: mod, source: source, auto_detected: auto?} ->
       label = if mod, do: mod.label(), else: Atom.to_string(account.provider)
 
@@ -1143,8 +1190,8 @@ defmodule WorthWeb.ChatLive do
 
   defp admin_keys_status do
     %{
-      anthropic_present: Worth.LLM.AdminKeys.has?(:anthropic),
-      openai_present: Worth.LLM.AdminKeys.has?(:openai)
+      anthropic_present: AdminKeys.has?(:anthropic),
+      openai_present: AdminKeys.has?(:openai)
     }
   rescue
     _ -> %{anthropic_present: false, openai_present: false}
@@ -1165,12 +1212,11 @@ defmodule WorthWeb.ChatLive do
   # so the UI shouldn't pretend the user has no preference when in
   # practice the CLI will always win.
   defp model_pathways_list do
-    by_canonical = Agentic.LLM.Catalog.by_canonical(has: [:chat, :tools])
+    by_canonical = Catalog.by_canonical(has: [:chat, :tools])
     preferences = Worth.LLM.PathwayPreferences.all_pathway_preferences()
 
     accounts_by_provider =
-      Worth.LLM.ProviderAccountResolver.build_all()
-      |> Map.new(fn account -> {account.provider, account} end)
+      Map.new(ProviderAccountResolver.build_all(), fn account -> {account.provider, account} end)
 
     by_canonical
     |> Enum.map(fn {canonical, models} ->
@@ -1182,9 +1228,9 @@ defmodule WorthWeb.ChatLive do
         Enum.reject(models, fn m ->
           account =
             Map.get(accounts_by_provider, m.provider) ||
-              Agentic.LLM.ProviderAccount.default(m.provider)
+              ProviderAccount.default(m.provider)
 
-          Worth.LLM.ProviderTaxonomy.cli_provider?(m.provider) and
+          ProviderTaxonomy.cli_provider?(m.provider) and
             account.availability == :unavailable
         end)
 
@@ -1206,17 +1252,16 @@ defmodule WorthWeb.ChatLive do
         |> Enum.map(fn model ->
           account =
             Map.get(accounts_by_provider, model.provider) ||
-              Agentic.LLM.ProviderAccount.default(model.provider)
+              ProviderAccount.default(model.provider)
 
-          source = Worth.LLM.ProviderTaxonomy.source(model.provider)
+          source = ProviderTaxonomy.source(model.provider)
 
           %{
             id: Atom.to_string(model.provider),
             label: short_provider_label(model.provider),
             preferred: effective_preference == model.provider,
             preferred_explicitly: explicit_preference == model.provider,
-            preferred_implicitly:
-              implicit_preference == model.provider and explicit_preference == nil,
+            preferred_implicitly: implicit_preference == model.provider and explicit_preference == nil,
             unavailable: account.availability == :unavailable,
             cli: source == :coding_agent_cli,
             cost_profile: Atom.to_string(account.cost_profile),
@@ -1245,9 +1290,9 @@ defmodule WorthWeb.ChatLive do
     |> Enum.find(fn model ->
       account =
         Map.get(accounts_by_provider, model.provider) ||
-          Agentic.LLM.ProviderAccount.default(model.provider)
+          ProviderAccount.default(model.provider)
 
-      Worth.LLM.ProviderTaxonomy.cli_provider?(model.provider) and
+      ProviderTaxonomy.cli_provider?(model.provider) and
         account.availability == :ready
     end)
     |> case do
@@ -1487,7 +1532,13 @@ defmodule WorthWeb.ChatLive do
   end
 
   defp do_show_learning_step(socket, :project_mapping, report) do
-    prompt = build_project_mapping_prompt(report.workspace, report.discovered_projects)
+    prompt =
+      build_project_mapping_prompt(
+        report.workspace,
+        report.discovered_projects,
+        report.suggested_projects,
+        report.mapped_elsewhere
+      )
 
     socket
     |> assign(has_history: true, learning_step_shown: :project_mapping)
@@ -1496,6 +1547,8 @@ defmodule WorthWeb.ChatLive do
       type: :system,
       content: prompt,
       project_mapping: report.discovered_projects,
+      project_suggestions: report.suggested_projects,
+      mapped_elsewhere: report.mapped_elsewhere,
       mapping_workspace: report.workspace
     })
   end
@@ -1551,7 +1604,31 @@ defmodule WorthWeb.ChatLive do
     """
   end
 
-  defp build_project_mapping_prompt(workspace, discovered) do
+  defp build_project_mapping_prompt(workspace, discovered, suggested, mapped_elsewhere) do
+    suggestion_text =
+      if suggested == [] do
+        ""
+      else
+        suggestions =
+          Enum.map_join(suggested, "\n", fn s ->
+            "- **#{format_agent_display(s.agent)}**: #{s.project}"
+          end)
+
+        "\n\n**Suggested for this workspace** (name match detected):\n#{suggestions}\n"
+      end
+
+    filtered_text =
+      if mapped_elsewhere == [] do
+        ""
+      else
+        filtered =
+          Enum.map_join(mapped_elsewhere, "\n", fn m ->
+            "- **#{format_agent_display(m.agent)}**: #{m.project} (already linked to workspace \"#{m.workspace}\")"
+          end)
+
+        "\n\n**Filtered out** (already associated with other workspaces):\n#{filtered}\n"
+      end
+
     agent_sections =
       Enum.map_join(discovered, "\n\n", fn {agent, projects} ->
         project_list = Enum.map_join(projects, "\n", &"    - #{&1}")
@@ -1560,9 +1637,9 @@ defmodule WorthWeb.ChatLive do
 
     """
     The following coding agent projects were discovered. Select which ones are relevant to workspace "#{workspace}":
-
+    #{suggestion_text}
     #{agent_sections}
-
+    #{filtered_text}
     Only data from selected projects will be imported during learning.
     """
   end

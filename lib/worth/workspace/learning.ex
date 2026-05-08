@@ -32,8 +32,18 @@ defmodule Worth.Workspace.Learning do
         opportunities = build_opportunities(scan_report)
 
         unasked_agents = Permissions.unasked_agents()
-        needs_mapping = ProjectMapping.needs_mapping?(workspace_name)
         discovered_projects = ProjectMapping.discover()
+
+        # Filter out projects already mapped to other workspaces
+        {filtered_projects, mapped_elsewhere} =
+          filter_mapped_elsewhere(discovered_projects, workspace_name)
+
+        # Only need mapping if there are unfiltered projects to choose from
+        needs_mapping =
+          ProjectMapping.needs_mapping?(workspace_name) and map_size(filtered_projects) > 0
+
+        # Add suggestions for projects similar to workspace name
+        suggested_projects = find_suggested_projects(filtered_projects, workspace_name)
 
         recommendation =
           cond do
@@ -65,7 +75,9 @@ defmodule Worth.Workspace.Learning do
           has_learning_opportunity: scan_report.has_changes,
           unasked_agents: unasked_agents,
           needs_project_mapping: needs_mapping,
-          discovered_projects: discovered_projects
+          discovered_projects: filtered_projects,
+          mapped_elsewhere: mapped_elsewhere,
+          suggested_projects: suggested_projects
         }
 
         {:ok, report}
@@ -73,6 +85,39 @@ defmodule Worth.Workspace.Learning do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp filter_mapped_elsewhere(discovered, current_workspace) do
+    Enum.reduce(discovered, {%{}, []}, fn {agent, projects}, {filtered_acc, elsewhere_acc} ->
+      {kept, skipped} =
+        Enum.split_with(projects, fn project ->
+          case ProjectMapping.mapped_elsewhere?(agent, project, current_workspace) do
+            :ok -> true
+            {:ok, _other_ws} -> false
+          end
+        end)
+
+      new_elsewhere =
+        Enum.map(skipped, fn project ->
+          {:ok, other_ws} = ProjectMapping.mapped_elsewhere?(agent, project, current_workspace)
+          %{agent: agent, project: project, workspace: other_ws}
+        end)
+
+      updated_filtered =
+        if kept == [], do: filtered_acc, else: Map.put(filtered_acc, agent, kept)
+
+      {updated_filtered, elsewhere_acc ++ new_elsewhere}
+    end)
+  end
+
+  defp find_suggested_projects(discovered, workspace_name) do
+    Enum.flat_map(discovered, fn {agent, projects} ->
+      projects
+      |> Enum.filter(fn project ->
+        ProjectMapping.similar_to_workspace?(workspace_name, project)
+      end)
+      |> Enum.map(fn project -> %{agent: agent, project: project} end)
+    end)
   end
 
   @doc """
