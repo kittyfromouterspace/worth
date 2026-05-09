@@ -70,21 +70,20 @@ defmodule Worth.MixProject do
       icon: "priv/icon.png",
       category_gnome: "GNOME;GTK;Office;",
       category_macos: "public.app-category.productivity",
-      identifier: "com.worth.desktop"
+      identifier: "com.worth.desktop",
+      env: %{"WORTH_DESKTOP" => "1"}
     ]
   end
 
   defp copy_wxwebview(%Mix.Release{} = release) do
     case :os.type() do
       {:unix, :linux} ->
-        priv_dir = Path.join([release.path, "lib", "worth-#{release.version}", "priv"])
+        app_dir = Path.join([release.path, "lib", "worth-#{release.version}"])
+        priv_dir = Path.join(app_dir, "priv")
         File.mkdir_p!(priv_dir)
 
-        # find and copy the wxWebView shared lib. dlopen matches by embedded
-        # SONAME, so the .so.0.2.2 versioned file works directly even though
-        # wx requests "libwx_gtk3u_webview-3.2.so.0" — no symlink needed.
         lib =
-          :os.cmd('find /usr/lib /usr/local/lib /usr/lib64 -name "libwx_gtk3u_webview*.so.*" -type f 2>/dev/null')
+          :os.cmd('find /usr/lib /usr/local/lib /usr/lib64 -name "libwx_gtk3u_webview-3.2.so.*" -type f 2>/dev/null')
           |> List.to_string()
           |> String.split("\n", trim: true)
           |> List.first()
@@ -93,6 +92,12 @@ defmodule Worth.MixProject do
           dest = Path.join(priv_dir, Path.basename(lib))
           File.cp!(lib, dest)
           File.chmod!(dest, 0o755)
+
+          # wxDynamicLibrary::Load("libwx_gtk3u_webview-3.2.so.0") needs exact
+          # filename match — create .so.0 -> .so.0.X.Y symlink
+          so0 = Path.join(priv_dir, "libwx_gtk3u_webview-3.2.so.0")
+          System.cmd("ln", ["-sf", Path.basename(lib), so0])
+
           Mix.shell().info([:green, "* bundled: #{Path.basename(lib)}"])
         end
 
