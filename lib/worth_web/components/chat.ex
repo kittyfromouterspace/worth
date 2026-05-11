@@ -64,7 +64,8 @@ defmodule WorthWeb.Components.Chat do
 
       <button
         :if={@desktop_mode}
-        onclick="if(confirm('Quit Worth?')) window.close()"
+        phx-click="quit_app"
+        data-confirm="Quit Worth?"
         class={"#{color(:text_muted)} hover:#{color(:error)} transition-colors cursor-pointer"}
         title="Quit Worth"
       >

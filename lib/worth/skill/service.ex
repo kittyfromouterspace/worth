@@ -130,7 +130,7 @@ defmodule Worth.Skill.Service do
     workspace = opts[:workspace] || current_workspace()
 
     # Check if it's a core skill first
-    if is_core_skill?(name, workspace) do
+    if core_skill?(name, workspace) do
       {:error, "Cannot remove core skill '#{name}'"}
     else
       try do
@@ -158,7 +158,7 @@ defmodule Worth.Skill.Service do
     end
   end
 
-  defp is_core_skill?(name, workspace) do
+  defp core_skill?(name, workspace) do
     case Schema.find(name, workspace) do
       nil -> Paths.core?(name)
       skill -> skill.trust_level == "core"
@@ -385,13 +385,9 @@ defmodule Worth.Skill.Service do
     }
   end
 
-  defp evolution_to_map(nil), do: %{}
-
   defp evolution_to_map(evolution) when is_map(evolution) do
     Map.new(evolution, fn {k, v} -> {to_string(k), v} end)
   end
-
-  defp evolution_to_map(_), do: %{}
 
   defp parse_loading("always"), do: :always
   defp parse_loading("on_demand"), do: :on_demand

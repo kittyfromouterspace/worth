@@ -1,0 +1,1 @@
+[exit: true, format: "txt", ignore_files: [], ignore: ["DOS.StringToAtom", "Traversal.FileModule", "XSS.SendResp", "XSS.Raw", "Config.CSP", "SQL.Query"], out: nil, private: false, router: nil, skip: false, threshold: :low, verbose: false, version: false]

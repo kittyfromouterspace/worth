@@ -4,7 +4,7 @@ defmodule Worth.MixProject do
   def project do
     [
       app: :worth,
-      version: "0.2.1-alpha.24",
+      version: "0.2.1-alpha.26",
       elixir: "~> 1.19",
       description: "An AI assistant built on Elixir/BEAM",
       start_permanent: Mix.env() == :prod,
@@ -55,6 +55,7 @@ defmodule Worth.MixProject do
         steps: [
           :assemble,
           &copy_wxwebview/1,
+          &strip_heart/1,
           &Desktop.Deployment.generate_installer/1
         ]
       ]
@@ -83,7 +84,7 @@ defmodule Worth.MixProject do
         File.mkdir_p!(priv_dir)
 
         lib =
-          :os.cmd('find /usr/lib /usr/local/lib /usr/lib64 -name "libwx_gtk3u_webview-3.2.so.*" -type f 2>/dev/null')
+          :os.cmd(~c"find /usr/lib /usr/local/lib /usr/lib64 -name \"libwx_gtk3u_webview-3.2.so.*\" -type f 2>/dev/null")
           |> List.to_string()
           |> String.split("\n", trim: true)
           |> List.first()
@@ -103,6 +104,19 @@ defmodule Worth.MixProject do
 
       _ ->
         :ok
+    end
+
+    release
+  end
+
+  defp strip_heart(%Mix.Release{} = release) do
+    launcher = Path.join(release.path, "Worth")
+
+    if File.exists?(launcher) do
+      content = File.read!(launcher)
+      new_content = String.replace(content, " -heart", "")
+      File.write!(launcher, new_content)
+      Mix.shell().info([:green, "* stripped -heart flag from launcher"])
     end
 
     release
@@ -141,12 +155,13 @@ defmodule Worth.MixProject do
       {:desktop_deployment, github: "elixir-desktop/deployment", runtime: false},
 
       # Phoenix
-      {:phoenix, "~> 1.8.5"},
+      {:phoenix, "~> 1.8.6"},
+      {:gettext, "~> 0.26"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_view, "~> 1.1.0"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_pubsub, "~> 2.1"},
-      {:bandit, "~> 1.5"},
+      {:bandit, "~> 1.11"},
 
       # Assets
       {:esbuild, "~> 0.10", runtime: Mix.env() == :dev},
@@ -182,6 +197,8 @@ defmodule Worth.MixProject do
       {:ex_check, "~> 0.16", only: [:dev], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:doctor, "~> 0.22", only: [:dev], runtime: false},
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
+      {:mix_audit, "~> 2.1", only: [:dev, :test], runtime: false},
       {:styler, ">= 0.11.0", only: [:dev, :test], runtime: false},
       {:lazy_html, ">= 0.1.0", only: :test},
 

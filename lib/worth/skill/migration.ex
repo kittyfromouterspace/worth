@@ -89,13 +89,13 @@ defmodule Worth.Skill.Migration do
           attrs = %{
             name: skill.name || name,
             description: skill.description || "",
-            body: skill.body || "",
+            body: skill.body,
             license: skill.license,
             compatibility: skill.compatibility,
             metadata: skill.metadata || %{},
-            loading: Atom.to_string(skill.loading || :on_demand),
-            model_tier: Atom.to_string(skill.model_tier || :any),
-            provenance: Atom.to_string(skill.provenance || :human),
+            loading: Atom.to_string(skill.loading),
+            model_tier: Atom.to_string(skill.model_tier),
+            provenance: Atom.to_string(skill.provenance),
             trust_level: Atom.to_string(trust_level),
             allowed_tools: skill.allowed_tools,
             evolution: evolution_to_map(skill.evolution),
@@ -125,11 +125,7 @@ defmodule Worth.Skill.Migration do
     end
   end
 
-  defp evolution_to_map(nil), do: %{}
-
   defp evolution_to_map(evolution) when is_map(evolution) do
     Map.new(evolution, fn {k, v} -> {to_string(k), v} end)
   end
-
-  defp evolution_to_map(_), do: %{}
 end

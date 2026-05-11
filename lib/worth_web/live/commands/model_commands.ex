@@ -325,7 +325,7 @@ defmodule WorthWeb.Commands.ModelCommands do
     parts = [m.id]
     parts = if m.tier_hint, do: parts ++ ["[#{m.tier_hint}]"], else: parts
     parts = parts ++ cost_parts(m.cost)
-    parts = if is_free?(m), do: parts ++ ["(free)"], else: parts
+    parts = if free?(m), do: parts ++ ["(free)"], else: parts
     Enum.join(parts, "  ")
   end
 
@@ -333,7 +333,7 @@ defmodule WorthWeb.Commands.ModelCommands do
     parts = []
     parts = if m.tier_hint, do: parts ++ ["[#{m.tier_hint}]"], else: parts
     parts = parts ++ cost_parts(m.cost)
-    parts = if is_free?(m), do: parts ++ ["(free)"], else: parts
+    parts = if free?(m), do: parts ++ ["(free)"], else: parts
     if parts == [], do: "", else: Enum.join(parts, " ")
   end
 
@@ -352,7 +352,7 @@ defmodule WorthWeb.Commands.ModelCommands do
 
   defp cost_parts(_), do: []
 
-  defp is_free?(m) do
+  defp free?(m) do
     caps = m.capabilities || MapSet.new()
     :free in caps or "free" in caps
   end

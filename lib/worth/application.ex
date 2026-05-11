@@ -9,6 +9,7 @@ defmodule Worth.Application do
   def start(_type, _args) do
     if System.get_env("WORTH_DESKTOP") == "1" do
       Worth.Boot.run_migrations_before_start!()
+      :ets.new(:session, [:named_table, :public, read_concurrency: true])
     end
 
     children = [

@@ -143,21 +143,21 @@ defmodule Worth.Learning.ProjectMapping do
     proj = normalize(project_name)
 
     # Common path segments to filter out
-    common = MapSet.new(["home", "lenz", "code", "users", "tmp", "var", "opt", "usr"])
+    common = ["home", "lenz", "code", "users", "tmp", "var", "opt", "usr"]
 
-    ws_words = ws |> String.split() |> MapSet.new()
-    proj_words = proj |> String.split() |> MapSet.new()
+    ws_words = String.split(ws)
+    proj_words = String.split(proj)
 
     # Filter out common path segments
-    ws_sig = MapSet.difference(ws_words, common)
-    proj_sig = MapSet.difference(proj_words, common)
+    ws_sig = Enum.reject(ws_words, &(&1 in common))
+    proj_sig = Enum.reject(proj_words, &(&1 in common))
 
     # If workspace name is only common segments, it can't match anything meaningfully
-    if MapSet.size(ws_sig) == 0 do
+    if ws_sig == [] do
       false
     else
       # Check if any significant word from workspace appears in project
-      ws_sig |> MapSet.intersection(proj_sig) |> MapSet.size() > 0
+      Enum.any?(ws_sig, &(&1 in proj_sig))
     end
   end
 
