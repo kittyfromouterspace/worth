@@ -4,7 +4,7 @@ defmodule Worth.MixProject do
   def project do
     [
       app: :worth,
-      version: "0.2.1-alpha.28",
+      version: "0.2.1-alpha.29",
       elixir: "~> 1.19",
       description: "An AI assistant built on Elixir/BEAM",
       start_permanent: Mix.env() == :prod,
