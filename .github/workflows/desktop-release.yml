@@ -132,10 +132,11 @@ jobs:
           fi
           echo "Version verified: $MIX_VERSION"
 
-      - name: Clean old installers
+      - name: Clean old release and installers
         shell: bash
         run: |
-          echo "Removing old installer files from _build/prod/"
+          echo "Removing old release and installer files"
+          rm -rf _build/prod/rel/desktop_installer
           rm -f _build/prod/Worth-*.run _build/prod/Worth-*.dmg _build/prod/Worth-*.exe
 
       - name: Build installer
